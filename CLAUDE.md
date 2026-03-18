@@ -1,0 +1,1 @@
+- Always run `make build` to verify the go application
