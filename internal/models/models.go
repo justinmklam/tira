@@ -27,13 +27,15 @@ type LinkedIssue struct {
 }
 
 type IssueFields struct {
-	Summary     string
-	IssueType   string
-	Priority    string
-	AssigneeID  string
-	StoryPoints float64
-	Labels      []string
-	Description string
+	Summary            string
+	IssueType          string
+	Priority           string
+	Assignee           string // display name (resolved to AssigneeID before API call)
+	AssigneeID         string
+	StoryPoints        float64
+	Labels             []string
+	Description        string
+	AcceptanceCriteria string
 }
 
 type ValidValues struct {

@@ -221,7 +221,72 @@ func (c *jiraClient) extractParentSummary(fields map[string]json.RawMessage, fie
 }
 
 func (c *jiraClient) UpdateIssue(key string, fields models.IssueFields) error {
-	return fmt.Errorf("not implemented")
+	payload := map[string]any{
+		"fields": map[string]any{},
+	}
+	f := payload["fields"].(map[string]any)
+	if fields.Summary != "" {
+		f["summary"] = fields.Summary
+	}
+	if fields.IssueType != "" {
+		f["issuetype"] = map[string]any{"name": fields.IssueType}
+	}
+	if fields.Priority != "" {
+		f["priority"] = map[string]any{"name": fields.Priority}
+	}
+	if fields.AssigneeID != "" {
+		f["assignee"] = map[string]any{"accountId": fields.AssigneeID}
+	}
+	if fields.Description != "" {
+		f["description"] = markdownToADF(fields.Description)
+	}
+	if fields.StoryPoints > 0 {
+		f["story_points"] = fields.StoryPoints
+	}
+	if len(fields.Labels) > 0 {
+		f["labels"] = fields.Labels
+	}
+
+	url := fmt.Sprintf("%s/rest/api/3/issue/%s", c.baseURL, key)
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPut, url, strings.NewReader(string(body)))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		b, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("update issue %s: HTTP %d: %s", key, resp.StatusCode, string(b))
+	}
+	return nil
+}
+
+// markdownToADF wraps plain text/markdown as a minimal ADF paragraph doc.
+// For now we send the description as a plain-text paragraph block.
+func markdownToADF(text string) map[string]any {
+	return map[string]any{
+		"version": 1,
+		"type":    "doc",
+		"content": []any{
+			map[string]any{
+				"type": "paragraph",
+				"content": []any{
+					map[string]any{
+						"type": "text",
+						"text": text,
+					},
+				},
+			},
+		},
+	}
 }
 
 func (c *jiraClient) CreateIssue(projectKey string, fields models.IssueFields) (*models.Issue, error) {
@@ -229,7 +294,71 @@ func (c *jiraClient) CreateIssue(projectKey string, fields models.IssueFields) (
 }
 
 func (c *jiraClient) GetValidValues(projectKey string) (*models.ValidValues, error) {
-	return nil, fmt.Errorf("not implemented")
+	valid := &models.ValidValues{}
+
+	// Issue types
+	url := fmt.Sprintf("%s/rest/api/3/project/%s/statuses", c.baseURL, projectKey)
+	resp, err := c.http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var statusList []struct {
+		Name     string `json:"name"`
+		Subtask  bool   `json:"subtask"`
+		Statuses []struct {
+			Name string `json:"name"`
+		} `json:"statuses"`
+	}
+	if body, err := io.ReadAll(resp.Body); err == nil {
+		if err2 := json.Unmarshal(body, &statusList); err2 == nil {
+			seen := make(map[string]bool)
+			for _, t := range statusList {
+				if !seen[t.Name] {
+					valid.IssueTypes = append(valid.IssueTypes, t.Name)
+					seen[t.Name] = true
+				}
+			}
+		}
+	}
+
+	// Priorities
+	prioURL := fmt.Sprintf("%s/rest/api/3/priority", c.baseURL)
+	if prioResp, err := c.http.Get(prioURL); err == nil {
+		defer prioResp.Body.Close()
+		var priorities []struct {
+			Name string `json:"name"`
+		}
+		if body, err := io.ReadAll(prioResp.Body); err == nil {
+			if err2 := json.Unmarshal(body, &priorities); err2 == nil {
+				for _, p := range priorities {
+					valid.Priorities = append(valid.Priorities, p.Name)
+				}
+			}
+		}
+	}
+
+	// Assignees
+	assigneeURL := fmt.Sprintf("%s/rest/api/3/user/assignable/search?project=%s&maxResults=50", c.baseURL, projectKey)
+	if aResp, err := c.http.Get(assigneeURL); err == nil {
+		defer aResp.Body.Close()
+		var assignees []struct {
+			DisplayName string `json:"displayName"`
+			AccountID   string `json:"accountId"`
+		}
+		if body, err := io.ReadAll(aResp.Body); err == nil {
+			if err2 := json.Unmarshal(body, &assignees); err2 == nil {
+				for _, a := range assignees {
+					valid.Assignees = append(valid.Assignees, models.Assignee{
+						DisplayName: a.DisplayName,
+						AccountID:   a.AccountID,
+					})
+				}
+			}
+		}
+	}
+
+	return valid, nil
 }
 
 func (c *jiraClient) GetActiveSprint(boardID int) ([]models.Issue, error) {
