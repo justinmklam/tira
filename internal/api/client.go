@@ -18,6 +18,7 @@ type Client interface {
 	UpdateIssue(key string, fields models.IssueFields) error
 	CreateIssue(projectKey string, fields models.IssueFields) (*models.Issue, error)
 	GetValidValues(projectKey string) (*models.ValidValues, error)
+	GetBoardColumns(boardID int) ([]models.BoardColumn, error)
 	GetActiveSprint(boardID int) ([]models.Issue, error)
 	GetBacklog(projectKey string) ([]models.Sprint, error)
 }
@@ -417,7 +418,139 @@ func (c *jiraClient) GetValidValues(projectKey string) (*models.ValidValues, err
 }
 
 func (c *jiraClient) GetActiveSprint(boardID int) ([]models.Issue, error) {
-	return nil, fmt.Errorf("not implemented")
+	// Step 1: find the active sprint for the board.
+	sprintURL := fmt.Sprintf("%s/rest/agile/1.0/board/%d/sprint?state=active", c.baseURL, boardID)
+	resp, err := c.http.Get(sprintURL)
+	if err != nil {
+		return nil, fmt.Errorf("fetching active sprint: %w", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("active sprint: HTTP %d: %s", resp.StatusCode, string(body))
+	}
+
+	var sprintResp struct {
+		Values []struct {
+			ID   int    `json:"id"`
+			Name string `json:"name"`
+		} `json:"values"`
+	}
+	if err := json.Unmarshal(body, &sprintResp); err != nil {
+		return nil, fmt.Errorf("parsing sprint response: %w", err)
+	}
+	if len(sprintResp.Values) == 0 {
+		return nil, fmt.Errorf("no active sprint found for board %d", boardID)
+	}
+	sprint := sprintResp.Values[0]
+
+	// Step 2: fetch issues in that sprint.
+	issueURL := fmt.Sprintf(
+		"%s/rest/agile/1.0/sprint/%d/issue?maxResults=200&fields=summary,status,issuetype,priority,assignee,labels",
+		c.baseURL, sprint.ID,
+	)
+	issueResp, err := c.http.Get(issueURL)
+	if err != nil {
+		return nil, fmt.Errorf("fetching sprint issues: %w", err)
+	}
+	defer issueResp.Body.Close()
+	issueBody, err := io.ReadAll(issueResp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if issueResp.StatusCode >= 300 {
+		return nil, fmt.Errorf("sprint issues: HTTP %d: %s", issueResp.StatusCode, string(issueBody))
+	}
+
+	var issueData struct {
+		Issues []struct {
+			Key    string `json:"key"`
+			Fields struct {
+				Summary  string `json:"summary"`
+				Status   struct {
+					ID   string `json:"id"`
+					Name string `json:"name"`
+				} `json:"status"`
+				Issuetype struct {
+					Name string `json:"name"`
+				} `json:"issuetype"`
+				Priority struct {
+					Name string `json:"name"`
+				} `json:"priority"`
+				Assignee *struct {
+					DisplayName string `json:"displayName"`
+					AccountID   string `json:"accountId"`
+				} `json:"assignee"`
+				Labels []string `json:"labels"`
+			} `json:"fields"`
+		} `json:"issues"`
+	}
+	if err := json.Unmarshal(issueBody, &issueData); err != nil {
+		return nil, fmt.Errorf("parsing sprint issues: %w", err)
+	}
+
+	issues := make([]models.Issue, 0, len(issueData.Issues))
+	for _, raw := range issueData.Issues {
+		issue := models.Issue{
+			Key:        raw.Key,
+			Summary:    raw.Fields.Summary,
+			Status:     raw.Fields.Status.Name,
+			StatusID:   raw.Fields.Status.ID,
+			IssueType:  raw.Fields.Issuetype.Name,
+			Priority:   raw.Fields.Priority.Name,
+			SprintName: sprint.Name,
+			Labels:     raw.Fields.Labels,
+		}
+		if raw.Fields.Assignee != nil {
+			issue.Assignee = raw.Fields.Assignee.DisplayName
+			issue.AssigneeID = raw.Fields.Assignee.AccountID
+		}
+		issues = append(issues, issue)
+	}
+	return issues, nil
+}
+
+func (c *jiraClient) GetBoardColumns(boardID int) ([]models.BoardColumn, error) {
+	url := fmt.Sprintf("%s/rest/agile/1.0/board/%d/configuration", c.baseURL, boardID)
+	resp, err := c.http.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("fetching board configuration: %w", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("board configuration: HTTP %d: %s", resp.StatusCode, string(body))
+	}
+
+	var config struct {
+		ColumnConfig struct {
+			Columns []struct {
+				Name     string `json:"name"`
+				Statuses []struct {
+					ID string `json:"id"`
+				} `json:"statuses"`
+			} `json:"columns"`
+		} `json:"columnConfig"`
+	}
+	if err := json.Unmarshal(body, &config); err != nil {
+		return nil, fmt.Errorf("parsing board configuration: %w", err)
+	}
+
+	cols := make([]models.BoardColumn, len(config.ColumnConfig.Columns))
+	for i, col := range config.ColumnConfig.Columns {
+		ids := make([]string, len(col.Statuses))
+		for j, s := range col.Statuses {
+			ids[j] = s.ID
+		}
+		cols[i] = models.BoardColumn{Name: col.Name, StatusIDs: ids}
+	}
+	return cols, nil
 }
 
 func (c *jiraClient) GetBacklog(projectKey string) ([]models.Sprint, error) {

@@ -6,6 +6,7 @@ type Issue struct {
 	Description        string
 	AcceptanceCriteria string
 	Status             string
+	StatusID           string
 	IssueType          string
 	Priority           string
 	Assignee           string
@@ -55,4 +56,9 @@ type Sprint struct {
 	ID    int
 	Name  string
 	State string // active | future | closed
+}
+
+type BoardColumn struct {
+	Name      string
+	StatusIDs []string
 }
