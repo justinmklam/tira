@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 
 	jira "github.com/andygrunwald/go-jira/v2/cloud"
 	"github.com/justinmklam/lazyjira/internal/config"
@@ -20,6 +21,7 @@ type Client interface {
 	GetValidValues(projectKey string) (*models.ValidValues, error)
 	GetBoardColumns(boardID int) ([]models.BoardColumn, error)
 	GetActiveSprint(boardID int) ([]models.Issue, error)
+	GetSprintGroups(boardID int) ([]models.SprintGroup, error)
 	GetBacklog(projectKey string) ([]models.Sprint, error)
 }
 
@@ -551,6 +553,189 @@ func (c *jiraClient) GetBoardColumns(boardID int) ([]models.BoardColumn, error) 
 		cols[i] = models.BoardColumn{Name: col.Name, StatusIDs: ids}
 	}
 	return cols, nil
+}
+
+func (c *jiraClient) GetSprintGroups(boardID int) ([]models.SprintGroup, error) {
+	// Fetch all active and future sprints.
+	sprintURL := fmt.Sprintf("%s/rest/agile/1.0/board/%d/sprint?state=active,future&maxResults=50", c.baseURL, boardID)
+	resp, err := c.http.Get(sprintURL)
+	if err != nil {
+		return nil, fmt.Errorf("fetching sprints: %w", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("sprints: HTTP %d: %s", resp.StatusCode, string(body))
+	}
+
+	var sprintResp struct {
+		Values []struct {
+			ID    int    `json:"id"`
+			Name  string `json:"name"`
+			State string `json:"state"`
+		} `json:"values"`
+	}
+	if err := json.Unmarshal(body, &sprintResp); err != nil {
+		return nil, fmt.Errorf("parsing sprints: %w", err)
+	}
+
+	const issueFields = "summary,status,issuetype,priority,assignee,labels,parent,story_points,customfield_10016"
+
+	// Fetch all sprint issues and the backlog concurrently.
+	// Pre-allocate one slot per sprint; backlog is appended after.
+	groups := make([]models.SprintGroup, len(sprintResp.Values))
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var firstErr error
+
+	for i, sp := range sprintResp.Values {
+		i, sp := i, sp // capture for goroutine
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			issueURL := fmt.Sprintf(
+				"%s/rest/agile/1.0/sprint/%d/issue?maxResults=200&fields=%s",
+				c.baseURL, sp.ID, issueFields,
+			)
+			issues, err := c.fetchAgileIssues(issueURL, sp.Name)
+			mu.Lock()
+			defer mu.Unlock()
+			if err != nil {
+				if firstErr == nil {
+					firstErr = err
+				}
+				return
+			}
+			groups[i] = models.SprintGroup{
+				Sprint: models.Sprint{ID: sp.ID, Name: sp.Name, State: sp.State},
+				Issues: issues,
+			}
+		}()
+	}
+
+	// Backlog fetch runs concurrently with sprint fetches.
+	var backlogGroup models.SprintGroup
+	var hasBacklog bool
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		backlogURL := fmt.Sprintf(
+			"%s/rest/agile/1.0/board/%d/backlog?maxResults=200&fields=%s",
+			c.baseURL, boardID, issueFields,
+		)
+		issues, err := c.fetchAgileIssues(backlogURL, "")
+		if err == nil {
+			mu.Lock()
+			backlogGroup = models.SprintGroup{
+				Sprint: models.Sprint{Name: "Backlog", State: "backlog"},
+				Issues: issues,
+			}
+			hasBacklog = true
+			mu.Unlock()
+		}
+	}()
+
+	wg.Wait()
+	if firstErr != nil {
+		return nil, firstErr
+	}
+	if hasBacklog {
+		groups = append(groups, backlogGroup)
+	}
+	return groups, nil
+}
+
+// fetchAgileIssues fetches issues from any Jira Agile API endpoint that returns
+// an "issues" array (sprint issues, backlog, etc.).
+func (c *jiraClient) fetchAgileIssues(url, sprintName string) ([]models.Issue, error) {
+	resp, err := c.http.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("fetching issues: %w", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("issues: HTTP %d: %s", resp.StatusCode, string(body))
+	}
+
+	var data struct {
+		Issues []struct {
+			Key    string `json:"key"`
+			Fields struct {
+				Summary  string `json:"summary"`
+				Status   struct {
+					ID   string `json:"id"`
+					Name string `json:"name"`
+				} `json:"status"`
+				Issuetype struct {
+					Name string `json:"name"`
+				} `json:"issuetype"`
+				Priority struct {
+					Name string `json:"name"`
+				} `json:"priority"`
+				Assignee *struct {
+					DisplayName string `json:"displayName"`
+					AccountID   string `json:"accountId"`
+				} `json:"assignee"`
+				Labels []string `json:"labels"`
+				// Parent is used in next-gen projects; if the parent is an Epic it
+				// represents the epic link.
+				Parent *struct {
+					Key    string `json:"key"`
+					Fields struct {
+						Summary   string `json:"summary"`
+						Issuetype struct {
+							Name string `json:"name"`
+						} `json:"issuetype"`
+					} `json:"fields"`
+				} `json:"parent"`
+				// Story points — field ID varies by instance; try both.
+				StoryPoints  *float64 `json:"story_points"`
+				CustomField16 *float64 `json:"customfield_10016"`
+			} `json:"fields"`
+		} `json:"issues"`
+	}
+	if err := json.Unmarshal(body, &data); err != nil {
+		return nil, fmt.Errorf("parsing issues: %w", err)
+	}
+
+	issues := make([]models.Issue, 0, len(data.Issues))
+	for _, raw := range data.Issues {
+		issue := models.Issue{
+			Key:        raw.Key,
+			Summary:    raw.Fields.Summary,
+			Status:     raw.Fields.Status.Name,
+			StatusID:   raw.Fields.Status.ID,
+			IssueType:  raw.Fields.Issuetype.Name,
+			Priority:   raw.Fields.Priority.Name,
+			SprintName: sprintName,
+			Labels:     raw.Fields.Labels,
+		}
+		if raw.Fields.Assignee != nil {
+			issue.Assignee = raw.Fields.Assignee.DisplayName
+			issue.AssigneeID = raw.Fields.Assignee.AccountID
+		}
+		// Epic: parent issue when the parent type is "Epic".
+		if p := raw.Fields.Parent; p != nil && p.Fields.Issuetype.Name == "Epic" {
+			issue.EpicKey = p.Key
+			issue.EpicName = p.Fields.Summary
+		}
+		// Story points: prefer the direct alias, fall back to common custom field ID.
+		for _, sp := range []*float64{raw.Fields.StoryPoints, raw.Fields.CustomField16} {
+			if sp != nil && *sp > 0 {
+				issue.StoryPoints = *sp
+				break
+			}
+		}
+		issues = append(issues, issue)
+	}
+	return issues, nil
 }
 
 func (c *jiraClient) GetBacklog(projectKey string) ([]models.Sprint, error) {

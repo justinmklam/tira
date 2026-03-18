@@ -14,6 +14,8 @@ type Issue struct {
 	Reporter           string
 	StoryPoints        float64
 	Labels             []string
+	EpicKey            string
+	EpicName           string
 	SprintName         string
 	ParentKey          string
 	ParentSummary      string
@@ -61,4 +63,9 @@ type Sprint struct {
 type BoardColumn struct {
 	Name      string
 	StatusIDs []string
+}
+
+type SprintGroup struct {
+	Sprint Sprint
+	Issues []Issue
 }
