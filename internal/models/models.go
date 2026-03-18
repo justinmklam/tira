@@ -36,6 +36,7 @@ type IssueFields struct {
 	Labels             []string
 	Description        string
 	AcceptanceCriteria string
+	ParentKey          string
 }
 
 type ValidValues struct {

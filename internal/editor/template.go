@@ -45,6 +45,15 @@ func RenderTemplate(issue *models.Issue, valid *models.ValidValues) string {
 	sb.WriteString("<!-- Comma-separated, e.g. backend, auth -->\n")
 	fmt.Fprintf(&sb, "labels: %s\n\n", strings.Join(issue.Labels, ", "))
 
+	// Parent (read-only reference when pre-set; shown as a comment)
+	if issue.ParentKey != "" {
+		if issue.ParentSummary != "" {
+			fmt.Fprintf(&sb, "<!-- parent: %s: %s -->\n\n", issue.ParentKey, issue.ParentSummary)
+		} else {
+			fmt.Fprintf(&sb, "<!-- parent: %s -->\n\n", issue.ParentKey)
+		}
+	}
+
 	// Separator
 	sb.WriteString("---\n\n")
 

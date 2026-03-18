@@ -67,77 +67,16 @@ func runEditLoop(client api.Client, issue *models.Issue) error {
 		projectKey = issue.Key[:idx]
 	}
 
-	// Fetch valid values (non-fatal if it fails — we still allow editing).
-	valid, err := fetchValidValues(client, projectKey)
+	valid, err := loadValidValues(client, projectKey)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "warning: could not fetch valid values: %v\n", err)
-		valid = &models.ValidValues{}
+		return err
 	}
 
-	// Write template to a temp file.
 	content := editor.RenderTemplate(issue, valid)
-	tmpFile, err := editor.WriteTempFile(content)
-	if err != nil {
+	fields, err := openAndValidate(content, valid)
+	if err != nil || fields == nil {
 		return err
 	}
-	defer os.Remove(tmpFile)
-
-	original, err := os.ReadFile(tmpFile)
-	if err != nil {
-		return err
-	}
-
-	for {
-		if err := editor.OpenEditor(tmpFile); err != nil {
-			return fmt.Errorf("editor: %w", err)
-		}
-
-		current, err := os.ReadFile(tmpFile)
-		if err != nil {
-			return err
-		}
-		if string(current) == string(original) {
-			fmt.Fprintln(os.Stderr, "No changes. Aborting.")
-			return nil
-		}
-
-		fields, err := editor.ParseTemplate(string(current))
-		if err != nil {
-			return fmt.Errorf("could not parse file: %w", err)
-		}
-
-		errs := validator.Validate(fields, valid)
-		if len(errs) == 0 {
-			// Resolve assignee display name → account ID.
-			fields.AssigneeID = validator.ResolveAssigneeID(fields, valid)
-			break
-		}
-
-		// Annotate file with errors and ask to re-open.
-		annotated := validator.AnnotateTemplate(string(current), errs)
-		if err := os.WriteFile(tmpFile, []byte(annotated), 0600); err != nil {
-			return err
-		}
-		printValidationErrors(errs)
-
-		retry := true
-		if err := huh.NewConfirm().
-			Title("Validation failed. Re-open editor?").
-			Value(&retry).
-			Run(); err != nil {
-			return err
-		}
-		if !retry {
-			return nil
-		}
-		// Update original so another no-change check works correctly.
-		original = []byte(annotated)
-	}
-
-	// Re-read current content for the diff.
-	current, _ := os.ReadFile(tmpFile)
-	fields, _ := editor.ParseTemplate(string(current))
-	fields.AssigneeID = validator.ResolveAssigneeID(fields, valid)
 
 	printFieldDiff(issue, fields)
 
@@ -146,6 +85,77 @@ func runEditLoop(client api.Client, issue *models.Issue) error {
 	}
 	fmt.Fprintf(os.Stderr, "✓ %s updated.\n", issue.Key)
 	return nil
+}
+
+// loadValidValues fetches valid field values with a spinner, falling back to
+// an empty ValidValues on error so the edit flow can still proceed.
+func loadValidValues(client api.Client, projectKey string) (*models.ValidValues, error) {
+	valid, err := fetchValidValues(client, projectKey)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not fetch valid values: %v\n", err)
+		return &models.ValidValues{}, nil
+	}
+	return valid, nil
+}
+
+// openAndValidate writes content to a temp file, opens $EDITOR, and loops
+// until the file is valid or the user aborts. Returns nil fields (no error)
+// if the user made no changes or chose to abort after validation failure.
+func openAndValidate(content string, valid *models.ValidValues) (*models.IssueFields, error) {
+	tmpFile, err := editor.WriteTempFile(content)
+	if err != nil {
+		return nil, err
+	}
+	defer os.Remove(tmpFile)
+
+	original, err := os.ReadFile(tmpFile)
+	if err != nil {
+		return nil, err
+	}
+
+	for {
+		if err := editor.OpenEditor(tmpFile); err != nil {
+			return nil, fmt.Errorf("editor: %w", err)
+		}
+
+		current, err := os.ReadFile(tmpFile)
+		if err != nil {
+			return nil, err
+		}
+		if string(current) == string(original) {
+			fmt.Fprintln(os.Stderr, "No changes. Aborting.")
+			return nil, nil
+		}
+
+		fields, err := editor.ParseTemplate(string(current))
+		if err != nil {
+			return nil, fmt.Errorf("could not parse file: %w", err)
+		}
+
+		errs := validator.Validate(fields, valid)
+		if len(errs) == 0 {
+			fields.AssigneeID = validator.ResolveAssigneeID(fields, valid)
+			return fields, nil
+		}
+
+		annotated := validator.AnnotateTemplate(string(current), errs)
+		if err := os.WriteFile(tmpFile, []byte(annotated), 0600); err != nil {
+			return nil, err
+		}
+		printValidationErrors(errs)
+
+		retry := true
+		if err := huh.NewConfirm().
+			Title("Validation failed. Re-open editor?").
+			Value(&retry).
+			Run(); err != nil {
+			return nil, err
+		}
+		if !retry {
+			return nil, nil
+		}
+		original = []byte(annotated)
+	}
 }
 
 // fetchValidValues wraps client.GetValidValues with a spinner.

@@ -290,7 +290,62 @@ func markdownToADF(text string) map[string]any {
 }
 
 func (c *jiraClient) CreateIssue(projectKey string, fields models.IssueFields) (*models.Issue, error) {
-	return nil, fmt.Errorf("not implemented")
+	f := map[string]any{
+		"project":   map[string]any{"key": projectKey},
+		"summary":   fields.Summary,
+		"issuetype": map[string]any{"name": fields.IssueType},
+	}
+	if fields.Priority != "" {
+		f["priority"] = map[string]any{"name": fields.Priority}
+	}
+	if fields.AssigneeID != "" {
+		f["assignee"] = map[string]any{"accountId": fields.AssigneeID}
+	}
+	if fields.Description != "" {
+		f["description"] = markdownToADF(fields.Description)
+	}
+	if fields.StoryPoints > 0 {
+		f["story_points"] = fields.StoryPoints
+	}
+	if len(fields.Labels) > 0 {
+		f["labels"] = fields.Labels
+	}
+	if fields.ParentKey != "" {
+		f["parent"] = map[string]any{"key": fields.ParentKey}
+	}
+
+	payload := map[string]any{"fields": f}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+
+	url := fmt.Sprintf("%s/rest/api/3/issue", c.baseURL)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, url, strings.NewReader(string(body)))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("create issue: HTTP %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var created struct {
+		Key string `json:"key"`
+	}
+	if err := json.Unmarshal(respBody, &created); err != nil {
+		return nil, fmt.Errorf("parsing create response: %w", err)
+	}
+
+	return &models.Issue{Key: created.Key}, nil
 }
 
 func (c *jiraClient) GetValidValues(projectKey string) (*models.ValidValues, error) {
