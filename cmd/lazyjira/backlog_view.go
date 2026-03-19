@@ -119,7 +119,7 @@ func (m blModel) viewList() string {
 			"j/k: navigate", "J/K/{/}: sprint", "z/Z: collapse",
 			"space/S: select", "v: visual", "enter: view", "e: edit",
 			"x: cut", "p: paste", ">/<: adj sprint", "B: backlog",
-			"/: filter", "R: refresh", "q: quit",
+			"/: filter", "R: refresh", "tab: kanban", "q: quit",
 		}
 		left := "  " + strings.Join(hints, "   ")
 		if n := len(m.allSelected()); n > 0 {

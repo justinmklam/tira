@@ -1,8 +1,6 @@
 package main
 
 import (
-	"fmt"
-	"os"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/spinner"
@@ -15,75 +13,7 @@ import (
 	"github.com/justinmklam/lazyjira/internal/display"
 	"github.com/justinmklam/lazyjira/internal/models"
 	"github.com/justinmklam/lazyjira/internal/tui"
-	"github.com/spf13/cobra"
 )
-
-var backlogCmd = &cobra.Command{
-	Use:   "backlog",
-	Short: "Show the project backlog grouped by sprint",
-	RunE:  runBacklogCmd,
-}
-
-func init() {
-	rootCmd.AddCommand(backlogCmd)
-}
-
-func runBacklogCmd(_ *cobra.Command, _ []string) error {
-	if cfg.BoardID == 0 {
-		return fmt.Errorf("board ID not configured: set default_board_id in ~/.config/lazyjira/config.yaml")
-	}
-
-	client, err := api.NewClient(cfg)
-	if err != nil {
-		return err
-	}
-
-	groups, err := tui.RunWithSpinner("Fetching backlog…", func() ([]models.SprintGroup, error) {
-		return client.GetSprintGroups(cfg.BoardID)
-	})
-	if err != nil {
-		return err
-	}
-	if len(groups) == 0 {
-		fmt.Fprintln(os.Stderr, "No sprints or backlog issues found.")
-		return nil
-	}
-
-	for {
-		result, err := runBacklogTUI(client, groups)
-		if err != nil {
-			return err
-		}
-		if result.refresh {
-			groups, err = tui.RunWithSpinner("Fetching backlog…", func() ([]models.SprintGroup, error) {
-				return client.GetSprintGroups(cfg.BoardID)
-			})
-			if err != nil {
-				return err
-			}
-			continue
-		}
-		if result.editKey == "" {
-			break
-		}
-
-		issue, err := tui.RunWithSpinner(fmt.Sprintf("Fetching %s…", result.editKey), func() (*models.Issue, error) {
-			return client.GetIssue(result.editKey)
-		})
-		if err != nil {
-			return err
-		}
-		if err := runEditLoop(client, issue); err != nil {
-			return err
-		}
-		// Re-fetch to reflect updates.
-		if refreshed, err := client.GetSprintGroups(cfg.BoardID); err == nil {
-			groups = refreshed
-		}
-	}
-
-	return nil
-}
 
 // --- backlog TUI model ---
 
@@ -198,6 +128,13 @@ func newBacklogModel(client api.Client, groups []models.SprintGroup) blModel {
 	}
 	m.rows = blBuildRows(groups, collapsed, "")
 	return m
+}
+
+// refreshData replaces the sprint groups and rebuilds the row list.
+func (m *blModel) refreshData(groups []models.SprintGroup) {
+	m.groups = groups
+	m.rows = blBuildRows(groups, m.collapsed, m.filter)
+	m.cursor = tui.Clamp(m.cursor, 0, max(len(m.rows)-1, 0))
 }
 
 func (m blModel) viewHeight() int {
@@ -397,7 +334,7 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch key.String() {
 	case "ctrl+c", "q":
 		m.quitting = true
-		return m, tea.Quit
+		return m, nil
 
 	case "j":
 		next := tui.Clamp(m.cursor+1, 0, len(m.rows)-1)
@@ -518,12 +455,12 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case "e":
 		if issue := m.currentIssue(); issue != nil {
 			m.result = blResult{editKey: issue.Key}
-			return m, tea.Quit
+			return m, nil
 		}
 
 	case "R":
 		m.result = blResult{refresh: true}
-		return m, tea.Quit
+		return m, nil
 
 	case " ":
 		if issue := m.currentIssue(); issue != nil {
@@ -656,7 +593,7 @@ func (m blModel) updateFilter(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "ctrl+c":
 			m.quitting = true
-			return m, tea.Quit
+			return m, nil
 		}
 	}
 	var cmd tea.Cmd
@@ -677,11 +614,11 @@ func (m blModel) updateDetail(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "e":
 			if m.detailIssue != nil {
 				m.result = blResult{editKey: m.detailIssue.Key}
-				return m, tea.Quit
+				return m, nil
 			}
 		case "ctrl+c":
 			m.quitting = true
-			return m, tea.Quit
+			return m, nil
 		}
 	}
 	var cmd tea.Cmd
@@ -703,14 +640,4 @@ func blMoveMultiCmd(client api.Client, keys []string, targetSprintID, targetGrou
 			err:            err,
 		}
 	}
-}
-
-func runBacklogTUI(client api.Client, groups []models.SprintGroup) (blResult, error) {
-	m := newBacklogModel(client, groups)
-	p := tea.NewProgram(m, tea.WithAltScreen())
-	final, err := p.Run()
-	if err != nil {
-		return blResult{}, fmt.Errorf("backlog: %w", err)
-	}
-	return final.(blModel).result, nil
 }

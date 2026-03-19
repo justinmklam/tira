@@ -13,80 +13,9 @@ import (
 	"github.com/justinmklam/lazyjira/internal/display"
 	"github.com/justinmklam/lazyjira/internal/models"
 	"github.com/justinmklam/lazyjira/internal/tui"
-	"github.com/spf13/cobra"
 )
 
-var kanbanCmd = &cobra.Command{
-	Use:   "kanban",
-	Short: "Show the active sprint as an interactive kanban board",
-	RunE:  runKanbanCmd,
-}
-
-func init() {
-	rootCmd.AddCommand(kanbanCmd)
-}
-
-func runKanbanCmd(_ *cobra.Command, _ []string) error {
-	if cfg.BoardID == 0 {
-		return fmt.Errorf("board ID not configured: set default_board_id in ~/.config/lazyjira/config.yaml")
-	}
-
-	client, err := api.NewClient(cfg)
-	if err != nil {
-		return err
-	}
-
-	type boardData struct {
-		cols   []models.BoardColumn
-		issues []models.Issue
-	}
-	bd, err := tui.RunWithSpinner("Fetching active sprint…", func() (boardData, error) {
-		cols, err := client.GetBoardColumns(cfg.BoardID)
-		if err != nil {
-			return boardData{}, err
-		}
-		issues, err := client.GetActiveSprint(cfg.BoardID)
-		return boardData{cols: cols, issues: issues}, err
-	})
-	if err != nil {
-		return err
-	}
-
-	sprintName := ""
-	if len(bd.issues) > 0 {
-		sprintName = bd.issues[0].SprintName
-	}
-
-	for {
-		result, err := runKanbanTUI(client, bd.cols, bd.issues, sprintName)
-		if err != nil {
-			return err
-		}
-		if result.editKey == "" {
-			break
-		}
-
-		issue, err := tui.RunWithSpinner(fmt.Sprintf("Fetching %s…", result.editKey), func() (*models.Issue, error) {
-			return client.GetIssue(result.editKey)
-		})
-		if err != nil {
-			return err
-		}
-
-		if err := runEditLoop(client, issue); err != nil {
-			return err
-		}
-
-		// Re-fetch sprint issues to reflect any updates.
-		if refreshed, err := client.GetActiveSprint(cfg.BoardID); err == nil {
-			bd.issues = refreshed
-		}
-	}
-
-	return nil
-}
-
-// --- kanban TUI ---
+// --- kanban TUI model ---
 
 type kanbanState int
 
@@ -172,6 +101,14 @@ func newKanbanModel(client api.Client, boardCols []models.BoardColumn, issues []
 	}
 }
 
+// refreshData replaces the kanban columns with new data.
+func (m *kanbanModel) refreshData(boardCols []models.BoardColumn, issues []models.Issue, sprintName string) {
+	m.columns = buildColumns(boardCols, issues)
+	m.rowIdxs = make([]int, len(m.columns))
+	m.colIdx = tui.Clamp(m.colIdx, 0, max(len(m.columns)-1, 0))
+	m.sprintName = sprintName
+}
+
 func (m kanbanModel) currentIssue() *models.Issue {
 	if len(m.columns) == 0 || len(m.columns[m.colIdx].issues) == 0 {
 		return nil
@@ -242,7 +179,7 @@ func (m kanbanModel) updateBoard(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch key.String() {
 	case "ctrl+c", "q":
 		m.quitting = true
-		return m, tea.Quit
+		return m, nil
 	case "j":
 		col := m.columns[m.colIdx]
 		if m.rowIdxs[m.colIdx] < len(col.issues)-1 {
@@ -268,7 +205,7 @@ func (m kanbanModel) updateBoard(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case "e":
 		if issue := m.currentIssue(); issue != nil {
 			m.result = kanbanResult{editKey: issue.Key}
-			return m, tea.Quit
+			return m, nil
 		}
 	}
 	return m, nil
@@ -284,11 +221,11 @@ func (m kanbanModel) updateDetail(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "e":
 			if m.detailIssue != nil {
 				m.result = kanbanResult{editKey: m.detailIssue.Key}
-				return m, tea.Quit
+				return m, nil
 			}
 		case "ctrl+c":
 			m.quitting = true
-			return m, tea.Quit
+			return m, nil
 		}
 	}
 	var cmd tea.Cmd
@@ -414,9 +351,9 @@ func (m kanbanModel) viewBoard() string {
 	var header string
 	if m.sprintName != "" {
 		header = tui.BoldBlue.Copy().Padding(0, 1).
-			Render("Active Sprint: "+m.sprintName) + "\n"
+			Render("Kanban: "+m.sprintName) + "\n"
 	}
-	hintsStr := "  hjkl: navigate   enter: view   e: edit   q: quit"
+	hintsStr := "  hjkl: navigate   enter: view   e: edit   tab: backlog   q: quit"
 	var footer string
 	if m.state == stateLoading {
 		spinnerStr := m.loadSpinner.View() + tui.DimStyle.Render(" Loading…")
@@ -427,14 +364,4 @@ func (m kanbanModel) viewBoard() string {
 	}
 
 	return header + board + footer
-}
-
-func runKanbanTUI(client api.Client, boardCols []models.BoardColumn, issues []models.Issue, sprintName string) (kanbanResult, error) {
-	m := newKanbanModel(client, boardCols, issues, sprintName)
-	p := tea.NewProgram(m, tea.WithAltScreen())
-	final, err := p.Run()
-	if err != nil {
-		return kanbanResult{}, fmt.Errorf("kanban: %w", err)
-	}
-	return final.(kanbanModel).result, nil
 }
