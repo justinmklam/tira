@@ -8,6 +8,7 @@ import (
 	"github.com/justinmklam/lazyjira/internal/api"
 	"github.com/justinmklam/lazyjira/internal/editor"
 	"github.com/justinmklam/lazyjira/internal/models"
+	"github.com/justinmklam/lazyjira/internal/tui"
 	"github.com/spf13/cobra"
 )
 
@@ -46,7 +47,7 @@ comments inside the template.`,
 
 		// Validate --type early so the user gets a clear error before the editor opens.
 		if createType != "" && len(valid.IssueTypes) > 0 {
-			if !containsCI(valid.IssueTypes, createType) {
+			if !tui.ContainsCI(valid.IssueTypes, createType) {
 				return fmt.Errorf("invalid type %q. Valid types: %s",
 					createType, strings.Join(valid.IssueTypes, ", "))
 			}
@@ -92,12 +93,3 @@ func init() {
 	rootCmd.AddCommand(createCmd)
 }
 
-// containsCI is a case-insensitive membership check (shared with validator package logic).
-func containsCI(list []string, val string) bool {
-	for _, item := range list {
-		if strings.EqualFold(item, val) {
-			return true
-		}
-	}
-	return false
-}

@@ -9,14 +9,13 @@ import (
 
 	"golang.org/x/term"
 
-	"github.com/charmbracelet/bubbles/spinner"
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/justinmklam/lazyjira/internal/api"
 	"github.com/justinmklam/lazyjira/internal/display"
 	"github.com/justinmklam/lazyjira/internal/editor"
 	"github.com/justinmklam/lazyjira/internal/models"
+	"github.com/justinmklam/lazyjira/internal/tui"
 	"github.com/justinmklam/lazyjira/internal/validator"
 	"github.com/spf13/cobra"
 )
@@ -35,7 +34,7 @@ var getCmd = &cobra.Command{
 			return err
 		}
 
-		issue, err := fetchWithSpinner(fmt.Sprintf("Fetching %s…", key), func() (*models.Issue, error) {
+		issue, err := tui.RunWithSpinner(fmt.Sprintf("Fetching %s…", key), func() (*models.Issue, error) {
 			return client.GetIssue(key)
 		})
 		if err != nil {
@@ -90,7 +89,9 @@ func runEditLoop(client api.Client, issue *models.Issue) error {
 // loadValidValues fetches valid field values with a spinner, falling back to
 // an empty ValidValues on error so the edit flow can still proceed.
 func loadValidValues(client api.Client, projectKey string) (*models.ValidValues, error) {
-	valid, err := fetchValidValues(client, projectKey)
+	valid, err := tui.RunWithSpinner("Fetching valid values…", func() (*models.ValidValues, error) {
+		return client.GetValidValues(projectKey)
+	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "warning: could not fetch valid values: %v\n", err)
 		return &models.ValidValues{}, nil
@@ -158,73 +159,9 @@ func openAndValidate(content string, valid *models.ValidValues) (*models.IssueFi
 	}
 }
 
-// fetchValidValues wraps client.GetValidValues with a spinner.
-func fetchValidValues(client api.Client, projectKey string) (*models.ValidValues, error) {
-	ch := make(chan validResult, 1)
-	go func() {
-		v, err := client.GetValidValues(projectKey)
-		ch <- validResult{v, err}
-	}()
-
-	s := spinner.New()
-	s.Spinner = spinner.Dot
-	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
-
-	prog := tea.NewProgram(validSpinnerModel{
-		spinner: s,
-		label:   "Fetching valid values…",
-		result:  ch,
-	}, tea.WithOutput(os.Stderr))
-
-	fm, err := prog.Run()
-	if err != nil {
-		return nil, err
-	}
-	vsm := fm.(validSpinnerModel)
-	return vsm.v, vsm.err
-}
-
-type validResult struct {
-	v   *models.ValidValues
-	err error
-}
-
-type validSpinnerModel struct {
-	spinner spinner.Model
-	label   string
-	result  chan validResult
-	done    bool
-	v       *models.ValidValues
-	err     error
-}
-
-func (m validSpinnerModel) Init() tea.Cmd {
-	return tea.Batch(m.spinner.Tick, func() tea.Msg { return <-m.result })
-}
-func (m validSpinnerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case validResult:
-		m.done = true
-		m.v = msg.v
-		m.err = msg.err
-		return m, tea.Quit
-	case spinner.TickMsg:
-		var cmd tea.Cmd
-		m.spinner, cmd = m.spinner.Update(msg)
-		return m, cmd
-	}
-	return m, nil
-}
-func (m validSpinnerModel) View() string {
-	if m.done {
-		return ""
-	}
-	return m.spinner.View() + " " + m.label
-}
-
 // printValidationErrors renders a styled error summary to stderr.
 func printValidationErrors(errs []validator.ValidationError) {
-	style := lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
+	style := lipgloss.NewStyle().Foreground(tui.ColorRed)
 	fmt.Fprintln(os.Stderr, style.Render("Validation errors:"))
 	for _, e := range errs {
 		fmt.Fprintf(os.Stderr, "  • %s\n", e.Message)
@@ -234,8 +171,8 @@ func printValidationErrors(errs []validator.ValidationError) {
 // printFieldDiff shows which fields changed.
 func printFieldDiff(issue *models.Issue, fields *models.IssueFields) {
 	label := lipgloss.NewStyle().Bold(true)
-	old := lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
-	new_ := lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
+	old := lipgloss.NewStyle().Foreground(tui.ColorRed)
+	new_ := lipgloss.NewStyle().Foreground(tui.ColorGreen)
 
 	type change struct{ field, from, to string }
 	var changes []change
@@ -274,80 +211,6 @@ func printFieldDiff(issue *models.Issue, fields *models.IssueFields) {
 	if fields.Description != issue.Description {
 		fmt.Fprintln(os.Stderr, "  "+label.Render("description")+" (modified)")
 	}
-}
-
-// --- spinner ---
-
-type fetchResult struct {
-	issue *models.Issue
-	err   error
-}
-
-type spinnerModel struct {
-	spinner spinner.Model
-	label   string
-	result  chan fetchResult
-	done    bool
-	issue   *models.Issue
-	err     error
-}
-
-func (m spinnerModel) Init() tea.Cmd {
-	return tea.Batch(m.spinner.Tick, waitForResult(m.result))
-}
-
-func (m spinnerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case fetchResult:
-		m.done = true
-		m.issue = msg.issue
-		m.err = msg.err
-		return m, tea.Quit
-	case spinner.TickMsg:
-		var cmd tea.Cmd
-		m.spinner, cmd = m.spinner.Update(msg)
-		return m, cmd
-	}
-	return m, nil
-}
-
-func (m spinnerModel) View() string {
-	if m.done {
-		return ""
-	}
-	return m.spinner.View() + " " + m.label
-}
-
-func waitForResult(ch chan fetchResult) tea.Cmd {
-	return func() tea.Msg {
-		return <-ch
-	}
-}
-
-func fetchWithSpinner(label string, fn func() (*models.Issue, error)) (*models.Issue, error) {
-	ch := make(chan fetchResult, 1)
-	go func() {
-		issue, err := fn()
-		ch <- fetchResult{issue, err}
-	}()
-
-	s := spinner.New()
-	s.Spinner = spinner.Dot
-	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
-
-	p := tea.NewProgram(spinnerModel{
-		spinner: s,
-		label:   label,
-		result:  ch,
-	}, tea.WithOutput(os.Stderr))
-
-	m, err := p.Run()
-	if err != nil {
-		return nil, fmt.Errorf("spinner: %w", err)
-	}
-
-	sm := m.(spinnerModel)
-	return sm.issue, sm.err
 }
 
 // --- pager ---

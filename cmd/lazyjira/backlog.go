@@ -14,6 +14,7 @@ import (
 	"github.com/justinmklam/lazyjira/internal/api"
 	"github.com/justinmklam/lazyjira/internal/display"
 	"github.com/justinmklam/lazyjira/internal/models"
+	"github.com/justinmklam/lazyjira/internal/tui"
 	"github.com/spf13/cobra"
 )
 
@@ -37,7 +38,9 @@ func runBacklogCmd(_ *cobra.Command, _ []string) error {
 		return err
 	}
 
-	groups, err := fetchSprintGroupsWithSpinner(client, cfg.BoardID)
+	groups, err := tui.RunWithSpinner("Fetching backlog…", func() ([]models.SprintGroup, error) {
+		return client.GetSprintGroups(cfg.BoardID)
+	})
 	if err != nil {
 		return err
 	}
@@ -52,7 +55,9 @@ func runBacklogCmd(_ *cobra.Command, _ []string) error {
 			return err
 		}
 		if result.refresh {
-			groups, err = fetchSprintGroupsWithSpinner(client, cfg.BoardID)
+			groups, err = tui.RunWithSpinner("Fetching backlog…", func() ([]models.SprintGroup, error) {
+				return client.GetSprintGroups(cfg.BoardID)
+			})
 			if err != nil {
 				return err
 			}
@@ -62,7 +67,7 @@ func runBacklogCmd(_ *cobra.Command, _ []string) error {
 			break
 		}
 
-		issue, err := fetchWithSpinner(fmt.Sprintf("Fetching %s…", result.editKey), func() (*models.Issue, error) {
+		issue, err := tui.RunWithSpinner(fmt.Sprintf("Fetching %s…", result.editKey), func() (*models.Issue, error) {
 			return client.GetIssue(result.editKey)
 		})
 		if err != nil {
@@ -80,74 +85,7 @@ func runBacklogCmd(_ *cobra.Command, _ []string) error {
 	return nil
 }
 
-// --- sprint groups fetch spinner ---
-
-type sprintGroupsResult struct {
-	groups []models.SprintGroup
-	err    error
-}
-
-type sprintGroupsSpinnerModel struct {
-	spinner spinner.Model
-	label   string
-	result  chan sprintGroupsResult
-	done    bool
-	groups  []models.SprintGroup
-	err     error
-}
-
-func (m sprintGroupsSpinnerModel) Init() tea.Cmd {
-	return tea.Batch(m.spinner.Tick, func() tea.Msg { return <-m.result })
-}
-
-func (m sprintGroupsSpinnerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case sprintGroupsResult:
-		m.done = true
-		m.groups = msg.groups
-		m.err = msg.err
-		return m, tea.Quit
-	case spinner.TickMsg:
-		var cmd tea.Cmd
-		m.spinner, cmd = m.spinner.Update(msg)
-		return m, cmd
-	}
-	return m, nil
-}
-
-func (m sprintGroupsSpinnerModel) View() string {
-	if m.done {
-		return ""
-	}
-	return m.spinner.View() + " " + m.label
-}
-
-func fetchSprintGroupsWithSpinner(client api.Client, boardID int) ([]models.SprintGroup, error) {
-	ch := make(chan sprintGroupsResult, 1)
-	go func() {
-		groups, err := client.GetSprintGroups(boardID)
-		ch <- sprintGroupsResult{groups, err}
-	}()
-
-	s := spinner.New()
-	s.Spinner = spinner.Dot
-	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
-
-	p := tea.NewProgram(sprintGroupsSpinnerModel{
-		spinner: s,
-		label:   "Fetching backlog…",
-		result:  ch,
-	}, tea.WithOutput(os.Stderr))
-
-	fm, err := p.Run()
-	if err != nil {
-		return nil, err
-	}
-	m := fm.(sprintGroupsSpinnerModel)
-	return m.groups, m.err
-}
-
-// --- backlog TUI ---
+// --- backlog TUI model ---
 
 type blState int
 
@@ -231,88 +169,14 @@ func blBuildRows(groups []models.SprintGroup, collapsed map[int]bool, filter str
 	return rows
 }
 
-// blEpicColor returns a consistent terminal color for an epic key by hashing it.
-// Returns empty string for empty keys (caller should use dim/default style).
-func blEpicColor(epicKey string) string {
-	if epicKey == "" {
-		return ""
-	}
-	palette := []string{"39", "208", "141", "43", "214", "99", "203", "118", "45", "220"}
-	var sum int
-	for _, r := range epicKey {
-		sum += int(r)
-	}
-	return palette[sum%len(palette)]
-}
-
-// blTypeColor returns the terminal color number for an issue type.
-func blTypeColor(issueType string) string {
-	switch strings.ToLower(issueType) {
-	case "bug":
-		return "9" // red
-	case "story":
-		return "10" // green
-	case "task":
-		return "12" // blue
-	case "epic":
-		return "13" // magenta
-	case "sub-task", "subtask":
-		return "11" // yellow
-	default:
-		return "244"
-	}
-}
-
 func blMatchesFilter(issue models.Issue, filter string) bool {
 	f := strings.ToLower(filter)
 	return strings.Contains(strings.ToLower(issue.Key), f) ||
 		strings.Contains(strings.ToLower(issue.Summary), f)
 }
 
-// blFixedWidth returns s padded or truncated to exactly n runes.
-func blFixedWidth(s string, n int) string {
-	r := []rune(s)
-	if len(r) == n {
-		return s
-	}
-	if len(r) > n {
-		if n <= 1 {
-			return string(r[:n])
-		}
-		return string(r[:n-1]) + "…"
-	}
-	return s + strings.Repeat(" ", n-len(r))
-}
-
-func blClamp(v, lo, hi int) int {
-	if v < lo {
-		return lo
-	}
-	if v > hi {
-		return hi
-	}
-	return v
-}
-
-func blScrollToFit(m blModel) blModel {
-	vh := m.viewHeight()
-	if vh <= 0 {
-		return m
-	}
-	if m.cursor < m.offset {
-		m.offset = m.cursor
-	} else if m.cursor >= m.offset+vh {
-		m.offset = m.cursor - vh + 1
-	}
-	if m.offset < 0 {
-		m.offset = 0
-	}
-	return m
-}
-
 func newBacklogModel(client api.Client, groups []models.SprintGroup) blModel {
 	collapsed := make(map[int]bool)
-	_ = groups // all sprints start expanded
 
 	ti := textinput.New()
 	ti.Placeholder = "type to filter…"
@@ -320,7 +184,7 @@ func newBacklogModel(client api.Client, groups []models.SprintGroup) blModel {
 
 	s := spinner.New()
 	s.Spinner = spinner.Dot
-	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
+	s.Style = lipgloss.NewStyle().Foreground(tui.SpinnerColor)
 
 	m := blModel{
 		state:       blList,
@@ -329,8 +193,8 @@ func newBacklogModel(client api.Client, groups []models.SprintGroup) blModel {
 		collapsed:   collapsed,
 		filterInput: ti,
 		loadSpinner: s,
-		selected: make(map[string]bool),
-		cutKeys:  make(map[string]bool),
+		selected:    make(map[string]bool),
+		cutKeys:     make(map[string]bool),
 	}
 	m.rows = blBuildRows(groups, collapsed, "")
 	return m
@@ -399,22 +263,6 @@ func (m blModel) moveKeys() []string {
 	return nil
 }
 
-func (m blModel) listPaneWidth() int {
-	w := m.width * 40 / 100
-	if w < 30 {
-		w = 30
-	}
-	return w
-}
-
-func (m blModel) detailPaneWidth() int {
-	w := m.width - m.listPaneWidth() - 1
-	if w < 20 {
-		w = 20
-	}
-	return w
-}
-
 func (m blModel) currentIssue() *models.Issue {
 	if m.cursor >= len(m.rows) {
 		return nil
@@ -426,16 +274,43 @@ func (m blModel) currentIssue() *models.Issue {
 	return &m.groups[row.groupIdx].Issues[row.issueIdx]
 }
 
+func blScrollToFit(m blModel) blModel {
+	vh := m.viewHeight()
+	if vh <= 0 {
+		return m
+	}
+	if m.cursor < m.offset {
+		m.offset = m.cursor
+	} else if m.cursor >= m.offset+vh {
+		m.offset = m.cursor - vh + 1
+	}
+	if m.offset < 0 {
+		m.offset = 0
+	}
+	return m
+}
+
+// commitVisualSelection merges the visual range into the base selection.
+func (m *blModel) commitVisualSelection() {
+	for k := range m.visualIssueKeys() {
+		if m.selected[k] {
+			delete(m.selected, k)
+		} else {
+			m.selected[k] = true
+		}
+	}
+	m.visualMode = false
+}
+
 func (m blModel) Init() tea.Cmd { return nil }
 
 func (m blModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	// Handle global messages first.
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
 		if m.state == blDetail {
-			m.detailView.Width = m.detailPaneWidth()
+			m.detailView.Width = tui.DetailPaneWidth(m.width)
 			m.detailView.Height = msg.Height - 3
 		}
 		return m, nil
@@ -446,10 +321,11 @@ func (m blModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.detailIssue = msg.issue
+		detailW := tui.DetailPaneWidth(m.width)
 		md, _ := display.RenderIssue(msg.issue)
 		renderer, err := glamour.NewTermRenderer(
 			glamour.WithAutoStyle(),
-			glamour.WithWordWrap(m.detailPaneWidth()),
+			glamour.WithWordWrap(detailW),
 		)
 		content := md
 		if err == nil {
@@ -457,7 +333,7 @@ func (m blModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				content = rendered
 			}
 		}
-		vp := viewport.New(m.detailPaneWidth(), m.height-3)
+		vp := viewport.New(detailW, m.height-3)
 		vp.SetContent(content)
 		m.detailView = vp
 		m.state = blDetail
@@ -474,7 +350,6 @@ func (m blModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case blMoveMultiDoneMsg:
 		m.moving = false
 		if msg.err == nil {
-			// Remove moved issues from all source groups, append to target.
 			movedSet := make(map[string]bool, len(msg.movedKeys))
 			for _, k := range msg.movedKeys {
 				movedSet[k] = true
@@ -496,7 +371,7 @@ func (m blModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cutKeys = make(map[string]bool)
 			m.visualMode = false
 			m.rows = blBuildRows(m.groups, m.collapsed, m.filter)
-			m.cursor = blClamp(m.cursor, 0, len(m.rows)-1)
+			m.cursor = tui.Clamp(m.cursor, 0, len(m.rows)-1)
 			return blScrollToFit(m), nil
 		}
 		return m, nil
@@ -525,23 +400,22 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 
 	case "j":
-		next := blClamp(m.cursor+1, 0, len(m.rows)-1)
+		next := tui.Clamp(m.cursor+1, 0, len(m.rows)-1)
 		if next < len(m.rows) && m.rows[next].kind == blRowSpacer {
-			next = blClamp(next+1, 0, len(m.rows)-1)
+			next = tui.Clamp(next+1, 0, len(m.rows)-1)
 		}
 		m.cursor = next
 		return blScrollToFit(m), nil
 
 	case "k":
-		prev := blClamp(m.cursor-1, 0, len(m.rows)-1)
+		prev := tui.Clamp(m.cursor-1, 0, len(m.rows)-1)
 		if prev >= 0 && m.rows[prev].kind == blRowSpacer {
-			prev = blClamp(prev-1, 0, len(m.rows)-1)
+			prev = tui.Clamp(prev-1, 0, len(m.rows)-1)
 		}
 		m.cursor = prev
 		return blScrollToFit(m), nil
 
 	case "J", "}":
-		// Jump to next sprint header.
 		for i := m.cursor + 1; i < len(m.rows); i++ {
 			if m.rows[i].kind == blRowSprint {
 				m.cursor = i
@@ -551,7 +425,6 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return blScrollToFit(m), nil
 
 	case "K", "{":
-		// Jump to previous sprint header.
 		for i := m.cursor - 1; i >= 0; i-- {
 			if m.rows[i].kind == blRowSprint {
 				m.cursor = i
@@ -570,16 +443,16 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return blScrollToFit(m), nil
 
 	case "ctrl+d":
-		m.cursor = blClamp(m.cursor+m.viewHeight()/2, 0, len(m.rows)-1)
+		m.cursor = tui.Clamp(m.cursor+m.viewHeight()/2, 0, len(m.rows)-1)
 		if m.rows[m.cursor].kind == blRowSpacer {
-			m.cursor = blClamp(m.cursor+1, 0, len(m.rows)-1)
+			m.cursor = tui.Clamp(m.cursor+1, 0, len(m.rows)-1)
 		}
 		return blScrollToFit(m), nil
 
 	case "ctrl+u":
-		m.cursor = blClamp(m.cursor-m.viewHeight()/2, 0, len(m.rows)-1)
+		m.cursor = tui.Clamp(m.cursor-m.viewHeight()/2, 0, len(m.rows)-1)
 		if m.rows[m.cursor].kind == blRowSpacer {
-			m.cursor = blClamp(m.cursor-1, 0, len(m.rows)-1)
+			m.cursor = tui.Clamp(m.cursor-1, 0, len(m.rows)-1)
 		}
 		return blScrollToFit(m), nil
 
@@ -588,11 +461,10 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		gIdx := row.groupIdx
 		m.collapsed[gIdx] = !m.collapsed[gIdx]
 		m.rows = blBuildRows(m.groups, m.collapsed, m.filter)
-		m.cursor = blClamp(m.cursor, 0, len(m.rows)-1)
+		m.cursor = tui.Clamp(m.cursor, 0, len(m.rows)-1)
 		return blScrollToFit(m), nil
 
 	case "Z":
-		// Collapse all if any expanded; otherwise expand all.
 		anyExpanded := false
 		for i := range m.groups {
 			if !m.collapsed[i] {
@@ -604,7 +476,7 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.collapsed[i] = anyExpanded
 		}
 		m.rows = blBuildRows(m.groups, m.collapsed, m.filter)
-		m.cursor = blClamp(m.cursor, 0, len(m.rows)-1)
+		m.cursor = tui.Clamp(m.cursor, 0, len(m.rows)-1)
 		return blScrollToFit(m), nil
 
 	case "esc":
@@ -612,17 +484,9 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.filter = ""
 			m.filterInput.SetValue("")
 			m.rows = blBuildRows(m.groups, m.collapsed, "")
-			m.cursor = blClamp(m.cursor, 0, len(m.rows)-1)
+			m.cursor = tui.Clamp(m.cursor, 0, len(m.rows)-1)
 		} else if m.visualMode {
-			// Exit visual mode — toggle range in base selection (reselecting deselects).
-			for k := range m.visualIssueKeys() {
-				if m.selected[k] {
-					delete(m.selected, k)
-				} else {
-					m.selected[k] = true
-				}
-			}
-			m.visualMode = false
+			m.commitVisualSelection()
 		} else if len(m.selected) > 0 {
 			m.selected = make(map[string]bool)
 		}
@@ -642,13 +506,11 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if row.kind == blRowSprint {
-			// Toggle collapse on the sprint header.
 			m.collapsed[row.groupIdx] = !m.collapsed[row.groupIdx]
 			m.rows = blBuildRows(m.groups, m.collapsed, m.filter)
-			m.cursor = blClamp(m.cursor, 0, len(m.rows)-1)
+			m.cursor = tui.Clamp(m.cursor, 0, len(m.rows)-1)
 			return blScrollToFit(m), nil
 		}
-		// Load and show detail view.
 		issue := m.groups[row.groupIdx].Issues[row.issueIdx]
 		m.state = blLoading
 		return m, tea.Batch(m.loadSpinner.Tick, fetchIssueCmd(m.client, issue.Key))
@@ -675,15 +537,7 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case "v":
 		if m.visualMode {
-			// Exit visual mode — toggle range in base selection (reselecting deselects).
-			for k := range m.visualIssueKeys() {
-				if m.selected[k] {
-					delete(m.selected, k)
-				} else {
-					m.selected[k] = true
-				}
-			}
-			m.visualMode = false
+			m.commitVisualSelection()
 		} else {
 			m.visualMode = true
 			m.visualAnchor = m.cursor
@@ -697,10 +551,9 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				m.selected[issue.Key] = true
 			}
-			// Move cursor up.
-			prev := blClamp(m.cursor-1, 0, len(m.rows)-1)
+			prev := tui.Clamp(m.cursor-1, 0, len(m.rows)-1)
 			if prev >= 0 && m.rows[prev].kind == blRowSpacer {
-				prev = blClamp(prev-1, 0, len(m.rows)-1)
+				prev = tui.Clamp(prev-1, 0, len(m.rows)-1)
 			}
 			m.cursor = prev
 			return blScrollToFit(m), nil
@@ -708,7 +561,6 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "x":
-		// Cut: mark selected (or current) issues for move, clear selection.
 		keys := m.moveKeys()
 		if len(keys) == 0 {
 			return m, nil
@@ -721,11 +573,7 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "p":
-		// Paste: move cut issues to the sprint under the cursor.
-		if len(m.cutKeys) == 0 {
-			return m, nil
-		}
-		if m.cursor >= len(m.rows) {
+		if len(m.cutKeys) == 0 || m.cursor >= len(m.rows) {
 			return m, nil
 		}
 		targetGroupIdx := m.rows[m.cursor].groupIdx
@@ -797,14 +645,14 @@ func (m blModel) updateFilter(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.filterInput.Blur()
 			m.state = blList
 			m.rows = blBuildRows(m.groups, m.collapsed, "")
-			m.cursor = blClamp(m.cursor, 0, len(m.rows)-1)
+			m.cursor = tui.Clamp(m.cursor, 0, len(m.rows)-1)
 			return m, nil
 		case "enter":
 			m.filter = m.filterInput.Value()
 			m.filterInput.Blur()
 			m.state = blList
 			m.rows = blBuildRows(m.groups, m.collapsed, m.filter)
-			m.cursor = blClamp(m.cursor, 0, len(m.rows)-1)
+			m.cursor = tui.Clamp(m.cursor, 0, len(m.rows)-1)
 			return m, nil
 		case "ctrl+c":
 			m.quitting = true
@@ -813,10 +661,9 @@ func (m blModel) updateFilter(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	var cmd tea.Cmd
 	m.filterInput, cmd = m.filterInput.Update(msg)
-	// Live update rows as the user types.
 	m.filter = m.filterInput.Value()
 	m.rows = blBuildRows(m.groups, m.collapsed, m.filter)
-	m.cursor = blClamp(m.cursor, 0, len(m.rows)-1)
+	m.cursor = tui.Clamp(m.cursor, 0, len(m.rows)-1)
 	return m, cmd
 }
 
@@ -840,307 +687,6 @@ func (m blModel) updateDetail(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	m.detailView, cmd = m.detailView.Update(msg)
 	return m, cmd
-}
-
-func (m blModel) View() string {
-	switch m.state {
-	case blDetail:
-		return m.viewDetail()
-	default:
-		return m.viewList()
-	}
-}
-
-func (m blModel) viewDetail() string {
-	if m.detailIssue == nil {
-		return ""
-	}
-	dim := lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
-
-	leftWidth := m.listPaneWidth()
-	leftModel := m
-	leftModel.state = blList
-	leftModel.width = leftWidth
-	left := leftModel.viewList()
-
-	header := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12")).Padding(0, 1).
-		Render(m.detailIssue.Key + "  " + m.detailIssue.Summary)
-	footer := dim.Render("  e: edit   esc/q: back   j/k: scroll")
-	right := header + "\n" + m.detailView.View() + "\n" + footer
-
-	height := m.height
-	if height == 0 {
-		height = 40
-	}
-	return splitPanes(left, right, leftWidth, height)
-}
-
-// blColumnHeader returns a dim header row aligned with issue row columns.
-func blColumnHeader(width int) string {
-	const (
-		keyW    = 10
-		epicW   = 16
-		typeW   = 8
-		spW     = 5
-		assignW = 14
-	)
-	summaryW := width - 2 - keyW - 2 - epicW - 1 - typeW - 1 - spW - 1 - assignW - 2
-	if summaryW < 8 {
-		summaryW = 8
-	}
-	dim := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	return dim.Render(
-		"  " +
-			blFixedWidth("KEY", keyW) + "  " +
-			blFixedWidth("SUMMARY", summaryW) + "  " +
-			blFixedWidth("EPIC", epicW) + " " +
-			blFixedWidth("TYPE", typeW) + " " +
-			blFixedWidth("SP", spW) + " " +
-			blFixedWidth("ASSIGNEE", assignW),
-	)
-}
-
-func (m blModel) viewList() string {
-	if m.quitting {
-		return ""
-	}
-
-	width := m.width
-	if width == 0 {
-		width = 120
-	}
-
-	dim := lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
-
-	// Top bar.
-	topBar := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12")).Padding(0, 1).Render("Backlog")
-	if m.visualMode {
-		topBar += " " + lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("5")).Render("VISUAL")
-	} else if m.filter != "" {
-		topBar += " " + lipgloss.NewStyle().Foreground(lipgloss.Color("11")).Render("/ "+m.filter)
-	}
-	if len(m.cutKeys) > 0 {
-		topBar += " " + lipgloss.NewStyle().Foreground(lipgloss.Color("208")).Render(fmt.Sprintf("✂ %d cut", len(m.cutKeys)))
-	}
-
-	// Column header.
-	colHeader := blColumnHeader(width)
-
-	// Visible rows.
-	vh := m.viewHeight()
-	end := m.offset + vh
-	if end > len(m.rows) {
-		end = len(m.rows)
-	}
-	lines := make([]string, 0, vh)
-	for i := m.offset; i < end; i++ {
-		lines = append(lines, m.renderRow(i, width))
-	}
-	for len(lines) < vh {
-		lines = append(lines, "")
-	}
-
-	// Footer.
-	var footer string
-	if m.state == blFilter {
-		footer = lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Render("/") +
-			" " + m.filterInput.View() +
-			"  " + dim.Render("esc: clear  enter: apply")
-	} else {
-		hints := []string{
-			"j/k: navigate", "J/K/{/}: sprint", "z/Z: collapse",
-			"space/S: select", "v: visual", "enter: view", "e: edit",
-			"x: cut", "p: paste", ">/<: adj sprint", "B: backlog",
-			"/: filter", "R: refresh", "q: quit",
-		}
-		left := "  " + strings.Join(hints, "   ")
-		if n := len(m.allSelected()); n > 0 {
-			left = fmt.Sprintf("  %d selected   ", n) + strings.Join(hints, "   ")
-		}
-		switch {
-		case m.state == blLoading:
-			spinnerStr := m.loadSpinner.View() + dim.Render(" Loading…")
-			leftWidth := width - lipgloss.Width(spinnerStr) - 2
-			footer = dim.Render(blFixedWidth(left, leftWidth)) + "  " + spinnerStr
-		case m.moving:
-			spinnerStr := m.loadSpinner.View() + dim.Render(" Moving…")
-			leftWidth := width - lipgloss.Width(spinnerStr) - 2
-			footer = dim.Render(blFixedWidth(left, leftWidth)) + "  " + spinnerStr
-		default:
-			footer = dim.Render(left)
-		}
-	}
-
-	return topBar + "\n" + colHeader + "\n" + strings.Join(lines, "\n") + "\n" + footer
-}
-
-func (m blModel) renderRow(idx, width int) string {
-	row := m.rows[idx]
-	isSelected := idx == m.cursor
-
-	// activeGroupIdx is the sprint group the cursor currently lives in.
-	activeGroupIdx := -1
-	if m.cursor < len(m.rows) {
-		activeGroupIdx = m.rows[m.cursor].groupIdx
-	}
-
-	dim := lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
-
-	if row.kind == blRowSpacer {
-		return ""
-	}
-
-	if row.kind == blRowSprint {
-		group := m.groups[row.groupIdx]
-		icon := "▼"
-		if m.collapsed[row.groupIdx] {
-			icon = "▶"
-		}
-
-		// Left accent bar color indicates sprint state.
-		stateColor := "240"
-		stateLabel := group.Sprint.State
-		switch group.Sprint.State {
-		case "active":
-			stateColor = "10"
-		case "future":
-			stateColor = "12"
-		}
-		accentColor := stateColor
-		if row.groupIdx == activeGroupIdx {
-			accentColor = "11" // yellow — marks the currently selected sprint
-		}
-		accentStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(accentColor)).Bold(true)
-		accent := accentStyle.Render("▌")
-		stateBadge := lipgloss.NewStyle().
-			Foreground(lipgloss.Color(stateColor)).
-			Render(stateLabel)
-
-		nameStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("252"))
-		namePart := nameStyle.Render(icon + " " + group.Sprint.Name)
-
-		countStr := fmt.Sprintf("%d issues", len(group.Issues))
-		count := dim.Render(countStr)
-
-		left := accent + " " + namePart + "  " + stateBadge
-		leftLen := lipgloss.Width(left)
-		rightLen := len(countStr)
-		fillLen := width - leftLen - rightLen - 2
-		if fillLen < 1 {
-			fillLen = 1
-		}
-		fill := dim.Render(strings.Repeat("─", fillLen))
-		line := left + " " + fill + " " + count
-
-		if isSelected {
-			return lipgloss.NewStyle().Background(lipgloss.Color("237")).Width(width).Render(line)
-		}
-		return line
-	}
-
-	// Issue row.
-	issue := m.groups[row.groupIdx].Issues[row.issueIdx]
-
-	const (
-		keyW    = 10
-		epicW   = 16
-		typeW   = 8
-		spW     = 5
-		assignW = 14
-	)
-	summaryW := width - 2 - keyW - 2 - epicW - 1 - typeW - 1 - spW - 1 - assignW - 2
-	if summaryW < 8 {
-		summaryW = 8
-	}
-
-	key := blFixedWidth(issue.Key, keyW)
-	summary := blFixedWidth(issue.Summary, summaryW)
-
-	epicText := issue.EpicName
-	if epicText == "" {
-		epicText = issue.EpicKey
-	}
-	if epicText == "" {
-		epicText = "—"
-	}
-	epic := blFixedWidth(epicText, epicW)
-
-	issueType := blFixedWidth(issue.IssueType, typeW)
-
-	var spText string
-	if issue.StoryPoints > 0 {
-		if issue.StoryPoints == float64(int(issue.StoryPoints)) {
-			spText = fmt.Sprintf("%d", int(issue.StoryPoints))
-		} else {
-			spText = fmt.Sprintf("%.1f", issue.StoryPoints)
-		}
-	} else {
-		spText = "—"
-	}
-	sp := blFixedWidth(spText, spW)
-
-	assignee := issue.Assignee
-	if assignee == "" {
-		assignee = "—"
-	}
-	assignee = blFixedWidth(assignee, assignW)
-
-	epicColor := blEpicColor(issue.EpicKey)
-
-	isChecked := m.allSelected()[issue.Key]
-	isCut := m.cutKeys[issue.Key]
-
-	if isSelected {
-		bg := lipgloss.NewStyle().Background(lipgloss.Color("237"))
-		var cursorStr string
-		switch {
-		case isCut:
-			cursorStr = bg.Bold(true).Foreground(lipgloss.Color("208")).Render("✂ ")
-		default:
-			cursorStr = bg.Bold(true).Foreground(lipgloss.Color("12")).Render("▶ ")
-		}
-		keyColor := lipgloss.Color("15")
-		if isChecked {
-			keyColor = lipgloss.Color("11") // yellow when selected+cursor
-		} else if isCut {
-			keyColor = lipgloss.Color("208") // orange when cut+cursor
-		}
-		keyPart := bg.Bold(true).Foreground(keyColor).Render(key)
-		summaryPart := bg.Foreground(lipgloss.Color("15")).Render("  " + summary + "  ")
-		epicStyle := bg.Foreground(lipgloss.Color("244"))
-		if epicColor != "" {
-			epicStyle = bg.Foreground(lipgloss.Color(epicColor))
-		}
-		epicPart := epicStyle.Render(epic + " ")
-		typePart := bg.Bold(true).Foreground(lipgloss.Color(blTypeColor(issue.IssueType))).Render(issueType + " ")
-		spPart := bg.Foreground(lipgloss.Color("252")).Render(sp + " ")
-		assigneePart := bg.Foreground(lipgloss.Color("252")).Render(assignee)
-		return cursorStr + keyPart + summaryPart + epicPart + typePart + spPart + assigneePart
-	}
-
-	var cursorStr string
-	var keyPart string
-	switch {
-	case isCut:
-		cursorStr = lipgloss.NewStyle().Foreground(lipgloss.Color("208")).Render("✂ ")
-		keyPart = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("208")).Render(key)
-	case isChecked:
-		cursorStr = lipgloss.NewStyle().Foreground(lipgloss.Color("11")).Render("● ")
-		keyPart = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("11")).Render(key)
-	default:
-		cursorStr = "  "
-		keyPart = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12")).Render(key)
-	}
-	summaryPart := lipgloss.NewStyle().Foreground(lipgloss.Color("255")).Render("  " + summary + "  ")
-	epicStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
-	if epicColor != "" {
-		epicStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(epicColor))
-	}
-	epicPart := epicStyle.Render(epic + " ")
-	typePart := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(blTypeColor(issue.IssueType))).Render(issueType + " ")
-	spPart := lipgloss.NewStyle().Foreground(lipgloss.Color("244")).Render(sp + " ")
-	assigneePart := dim.Render(assignee)
-	return cursorStr + keyPart + summaryPart + epicPart + typePart + spPart + assigneePart
 }
 
 func blMoveMultiCmd(client api.Client, keys []string, targetSprintID, targetGroupIdx int) tea.Cmd {

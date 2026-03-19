@@ -1,0 +1,302 @@
+package main
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/charmbracelet/lipgloss"
+	"github.com/justinmklam/lazyjira/internal/tui"
+)
+
+// Column widths for backlog issue rows.
+const (
+	blKeyW    = 10
+	blEpicW   = 16
+	blTypeW   = 8
+	blSpW     = 5
+	blAssignW = 14
+)
+
+func blSummaryWidth(totalWidth int) int {
+	w := totalWidth - 2 - blKeyW - 2 - blEpicW - 1 - blTypeW - 1 - blSpW - 1 - blAssignW - 2
+	if w < 8 {
+		w = 8
+	}
+	return w
+}
+
+func (m blModel) View() string {
+	switch m.state {
+	case blDetail:
+		return m.viewDetail()
+	default:
+		return m.viewList()
+	}
+}
+
+func (m blModel) viewDetail() string {
+	if m.detailIssue == nil {
+		return ""
+	}
+	leftWidth := tui.ListPaneWidth(m.width)
+	leftModel := m
+	leftModel.state = blList
+	leftModel.width = leftWidth
+	left := leftModel.viewList()
+
+	header := tui.BoldBlue.Copy().Padding(0, 1).
+		Render(m.detailIssue.Key + "  " + m.detailIssue.Summary)
+	footer := tui.DimStyle.Render("  e: edit   esc/q: back   j/k: scroll")
+	right := header + "\n" + m.detailView.View() + "\n" + footer
+
+	height := m.height
+	if height == 0 {
+		height = 40
+	}
+	return tui.SplitPanes(left, right, leftWidth, height)
+}
+
+// blColumnHeader returns a dim header row aligned with issue row columns.
+func blColumnHeader(width int) string {
+	summaryW := blSummaryWidth(width)
+	return tui.DimStyle.Render(
+		"  " +
+			tui.FixedWidth("KEY", blKeyW) + "  " +
+			tui.FixedWidth("SUMMARY", summaryW) + "  " +
+			tui.FixedWidth("EPIC", blEpicW) + " " +
+			tui.FixedWidth("TYPE", blTypeW) + " " +
+			tui.FixedWidth("SP", blSpW) + " " +
+			tui.FixedWidth("ASSIGNEE", blAssignW),
+	)
+}
+
+func (m blModel) viewList() string {
+	if m.quitting {
+		return ""
+	}
+
+	width := m.width
+	if width == 0 {
+		width = 120
+	}
+
+	// Top bar.
+	topBar := tui.BoldBlue.Copy().Padding(0, 1).Render("Backlog")
+	if m.visualMode {
+		topBar += " " + lipgloss.NewStyle().Bold(true).Foreground(tui.ColorMagenta).Render("VISUAL")
+	} else if m.filter != "" {
+		topBar += " " + lipgloss.NewStyle().Foreground(tui.ColorYellow).Render("/ "+m.filter)
+	}
+	if len(m.cutKeys) > 0 {
+		topBar += " " + lipgloss.NewStyle().Foreground(tui.ColorOrange).Render(fmt.Sprintf("✂ %d cut", len(m.cutKeys)))
+	}
+
+	// Column header.
+	colHeader := blColumnHeader(width)
+
+	// Visible rows.
+	vh := m.viewHeight()
+	end := m.offset + vh
+	if end > len(m.rows) {
+		end = len(m.rows)
+	}
+	lines := make([]string, 0, vh)
+	for i := m.offset; i < end; i++ {
+		lines = append(lines, m.renderRow(i, width))
+	}
+	for len(lines) < vh {
+		lines = append(lines, "")
+	}
+
+	// Footer.
+	var footer string
+	if m.state == blFilter {
+		footer = lipgloss.NewStyle().Foreground(tui.ColorBlue).Render("/") +
+			" " + m.filterInput.View() +
+			"  " + tui.DimStyle.Render("esc: clear  enter: apply")
+	} else {
+		hints := []string{
+			"j/k: navigate", "J/K/{/}: sprint", "z/Z: collapse",
+			"space/S: select", "v: visual", "enter: view", "e: edit",
+			"x: cut", "p: paste", ">/<: adj sprint", "B: backlog",
+			"/: filter", "R: refresh", "q: quit",
+		}
+		left := "  " + strings.Join(hints, "   ")
+		if n := len(m.allSelected()); n > 0 {
+			left = fmt.Sprintf("  %d selected   ", n) + strings.Join(hints, "   ")
+		}
+		switch {
+		case m.state == blLoading:
+			spinnerStr := m.loadSpinner.View() + tui.DimStyle.Render(" Loading…")
+			leftWidth := width - lipgloss.Width(spinnerStr) - 2
+			footer = tui.DimStyle.Render(tui.FixedWidth(left, leftWidth)) + "  " + spinnerStr
+		case m.moving:
+			spinnerStr := m.loadSpinner.View() + tui.DimStyle.Render(" Moving…")
+			leftWidth := width - lipgloss.Width(spinnerStr) - 2
+			footer = tui.DimStyle.Render(tui.FixedWidth(left, leftWidth)) + "  " + spinnerStr
+		default:
+			footer = tui.DimStyle.Render(left)
+		}
+	}
+
+	return topBar + "\n" + colHeader + "\n" + strings.Join(lines, "\n") + "\n" + footer
+}
+
+func (m blModel) renderRow(idx, width int) string {
+	row := m.rows[idx]
+	isSelected := idx == m.cursor
+
+	activeGroupIdx := -1
+	if m.cursor < len(m.rows) {
+		activeGroupIdx = m.rows[m.cursor].groupIdx
+	}
+
+	if row.kind == blRowSpacer {
+		return ""
+	}
+
+	if row.kind == blRowSprint {
+		return m.renderSprintRow(row, isSelected, activeGroupIdx, width)
+	}
+
+	return m.renderIssueRow(row, isSelected, width)
+}
+
+func (m blModel) renderSprintRow(row blRow, isSelected bool, activeGroupIdx, width int) string {
+	group := m.groups[row.groupIdx]
+	icon := "▼"
+	if m.collapsed[row.groupIdx] {
+		icon = "▶"
+	}
+
+	stateColor := tui.ColorDimmer
+	stateLabel := group.Sprint.State
+	switch group.Sprint.State {
+	case "active":
+		stateColor = tui.ColorGreen
+	case "future":
+		stateColor = tui.ColorBlue
+	}
+	accentColor := stateColor
+	if row.groupIdx == activeGroupIdx {
+		accentColor = tui.ColorYellow
+	}
+	accentStyle := lipgloss.NewStyle().Foreground(accentColor).Bold(true)
+	accent := accentStyle.Render("▌")
+	stateBadge := lipgloss.NewStyle().Foreground(stateColor).Render(stateLabel)
+
+	nameStyle := lipgloss.NewStyle().Bold(true).Foreground(tui.ColorFg)
+	namePart := nameStyle.Render(icon + " " + group.Sprint.Name)
+
+	countStr := fmt.Sprintf("%d issues", len(group.Issues))
+	count := tui.DimStyle.Render(countStr)
+
+	left := accent + " " + namePart + "  " + stateBadge
+	leftLen := lipgloss.Width(left)
+	rightLen := len(countStr)
+	fillLen := width - leftLen - rightLen - 2
+	if fillLen < 1 {
+		fillLen = 1
+	}
+	fill := tui.DimStyle.Render(strings.Repeat("─", fillLen))
+	line := left + " " + fill + " " + count
+
+	if isSelected {
+		return lipgloss.NewStyle().Background(tui.ColorBg).Width(width).Render(line)
+	}
+	return line
+}
+
+func (m blModel) renderIssueRow(row blRow, isSelected bool, width int) string {
+	issue := m.groups[row.groupIdx].Issues[row.issueIdx]
+	summaryW := blSummaryWidth(width)
+
+	key := tui.FixedWidth(issue.Key, blKeyW)
+	summary := tui.FixedWidth(issue.Summary, summaryW)
+
+	epicText := issue.EpicName
+	if epicText == "" {
+		epicText = issue.EpicKey
+	}
+	if epicText == "" {
+		epicText = "—"
+	}
+	epic := tui.FixedWidth(epicText, blEpicW)
+
+	issueType := tui.FixedWidth(issue.IssueType, blTypeW)
+
+	var spText string
+	if issue.StoryPoints > 0 {
+		if issue.StoryPoints == float64(int(issue.StoryPoints)) {
+			spText = fmt.Sprintf("%d", int(issue.StoryPoints))
+		} else {
+			spText = fmt.Sprintf("%.1f", issue.StoryPoints)
+		}
+	} else {
+		spText = "—"
+	}
+	sp := tui.FixedWidth(spText, blSpW)
+
+	assignee := issue.Assignee
+	if assignee == "" {
+		assignee = "—"
+	}
+	assignee = tui.FixedWidth(assignee, blAssignW)
+
+	epicColor := tui.EpicColor(issue.EpicKey)
+	typeColor := tui.IssueTypeColor(issue.IssueType)
+
+	isChecked := m.allSelected()[issue.Key]
+	isCut := m.cutKeys[issue.Key]
+
+	if isSelected {
+		bg := tui.SelectedBg
+		var cursorStr string
+		if isCut {
+			cursorStr = bg.Copy().Bold(true).Foreground(tui.ColorOrange).Render("✂ ")
+		} else {
+			cursorStr = bg.Copy().Bold(true).Foreground(tui.ColorBlue).Render("▶ ")
+		}
+		keyColor := tui.ColorWhite
+		if isChecked {
+			keyColor = tui.ColorYellow
+		} else if isCut {
+			keyColor = tui.ColorOrange
+		}
+		keyPart := bg.Copy().Bold(true).Foreground(keyColor).Render(key)
+		summaryPart := bg.Copy().Foreground(tui.ColorWhite).Render("  " + summary + "  ")
+		epicStyle := bg.Copy().Foreground(tui.ColorDim)
+		if epicColor != "" {
+			epicStyle = bg.Copy().Foreground(epicColor)
+		}
+		epicPart := epicStyle.Render(epic + " ")
+		typePart := bg.Copy().Bold(true).Foreground(typeColor).Render(issueType + " ")
+		spPart := bg.Copy().Foreground(tui.ColorFg).Render(sp + " ")
+		assigneePart := bg.Copy().Foreground(tui.ColorFg).Render(assignee)
+		return cursorStr + keyPart + summaryPart + epicPart + typePart + spPart + assigneePart
+	}
+
+	var cursorStr string
+	var keyPart string
+	switch {
+	case isCut:
+		cursorStr = lipgloss.NewStyle().Foreground(tui.ColorOrange).Render("✂ ")
+		keyPart = lipgloss.NewStyle().Bold(true).Foreground(tui.ColorOrange).Render(key)
+	case isChecked:
+		cursorStr = lipgloss.NewStyle().Foreground(tui.ColorYellow).Render("● ")
+		keyPart = lipgloss.NewStyle().Bold(true).Foreground(tui.ColorYellow).Render(key)
+	default:
+		cursorStr = "  "
+		keyPart = lipgloss.NewStyle().Bold(true).Foreground(tui.ColorBlue).Render(key)
+	}
+	summaryPart := lipgloss.NewStyle().Foreground(tui.ColorFgBright).Render("  " + summary + "  ")
+	epicStyle := lipgloss.NewStyle().Foreground(tui.ColorDim)
+	if epicColor != "" {
+		epicStyle = lipgloss.NewStyle().Foreground(epicColor)
+	}
+	epicPart := epicStyle.Render(epic + " ")
+	typePart := lipgloss.NewStyle().Bold(true).Foreground(typeColor).Render(issueType + " ")
+	spPart := lipgloss.NewStyle().Foreground(tui.ColorDim).Render(sp + " ")
+	assigneePart := tui.DimStyle.Render(assignee)
+	return cursorStr + keyPart + summaryPart + epicPart + typePart + spPart + assigneePart
+}

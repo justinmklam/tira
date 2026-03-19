@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/spinner"
@@ -13,6 +12,7 @@ import (
 	"github.com/justinmklam/lazyjira/internal/api"
 	"github.com/justinmklam/lazyjira/internal/display"
 	"github.com/justinmklam/lazyjira/internal/models"
+	"github.com/justinmklam/lazyjira/internal/tui"
 	"github.com/spf13/cobra"
 )
 
@@ -36,18 +36,29 @@ func runKanbanCmd(_ *cobra.Command, _ []string) error {
 		return err
 	}
 
-	boardCols, issues, err := fetchBoardDataWithSpinner(client, cfg.BoardID)
+	type boardData struct {
+		cols   []models.BoardColumn
+		issues []models.Issue
+	}
+	bd, err := tui.RunWithSpinner("Fetching active sprint…", func() (boardData, error) {
+		cols, err := client.GetBoardColumns(cfg.BoardID)
+		if err != nil {
+			return boardData{}, err
+		}
+		issues, err := client.GetActiveSprint(cfg.BoardID)
+		return boardData{cols: cols, issues: issues}, err
+	})
 	if err != nil {
 		return err
 	}
 
 	sprintName := ""
-	if len(issues) > 0 {
-		sprintName = issues[0].SprintName
+	if len(bd.issues) > 0 {
+		sprintName = bd.issues[0].SprintName
 	}
 
 	for {
-		result, err := runKanbanTUI(client, boardCols, issues, sprintName)
+		result, err := runKanbanTUI(client, bd.cols, bd.issues, sprintName)
 		if err != nil {
 			return err
 		}
@@ -55,7 +66,7 @@ func runKanbanCmd(_ *cobra.Command, _ []string) error {
 			break
 		}
 
-		issue, err := fetchWithSpinner(fmt.Sprintf("Fetching %s…", result.editKey), func() (*models.Issue, error) {
+		issue, err := tui.RunWithSpinner(fmt.Sprintf("Fetching %s…", result.editKey), func() (*models.Issue, error) {
 			return client.GetIssue(result.editKey)
 		})
 		if err != nil {
@@ -68,82 +79,11 @@ func runKanbanCmd(_ *cobra.Command, _ []string) error {
 
 		// Re-fetch sprint issues to reflect any updates.
 		if refreshed, err := client.GetActiveSprint(cfg.BoardID); err == nil {
-			issues = refreshed
+			bd.issues = refreshed
 		}
 	}
 
 	return nil
-}
-
-// --- board data fetch spinner ---
-
-type boardDataResult struct {
-	boardCols []models.BoardColumn
-	issues    []models.Issue
-	err       error
-}
-
-type boardSpinnerModel struct {
-	spinner spinner.Model
-	label   string
-	result  chan boardDataResult
-	done    bool
-	data    boardDataResult
-}
-
-func (m boardSpinnerModel) Init() tea.Cmd {
-	return tea.Batch(m.spinner.Tick, func() tea.Msg { return <-m.result })
-}
-
-func (m boardSpinnerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case boardDataResult:
-		m.done = true
-		m.data = msg
-		return m, tea.Quit
-	case spinner.TickMsg:
-		var cmd tea.Cmd
-		m.spinner, cmd = m.spinner.Update(msg)
-		return m, cmd
-	}
-	return m, nil
-}
-
-func (m boardSpinnerModel) View() string {
-	if m.done {
-		return ""
-	}
-	return m.spinner.View() + " " + m.label
-}
-
-func fetchBoardDataWithSpinner(client api.Client, boardID int) ([]models.BoardColumn, []models.Issue, error) {
-	ch := make(chan boardDataResult, 1)
-	go func() {
-		cols, err := client.GetBoardColumns(boardID)
-		if err != nil {
-			ch <- boardDataResult{err: err}
-			return
-		}
-		issues, err := client.GetActiveSprint(boardID)
-		ch <- boardDataResult{boardCols: cols, issues: issues, err: err}
-	}()
-
-	s := spinner.New()
-	s.Spinner = spinner.Dot
-	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
-
-	p := tea.NewProgram(boardSpinnerModel{
-		spinner: s,
-		label:   "Fetching active sprint…",
-		result:  ch,
-	}, tea.WithOutput(os.Stderr))
-
-	fm, err := p.Run()
-	if err != nil {
-		return nil, nil, err
-	}
-	bsm := fm.(boardSpinnerModel)
-	return bsm.data.boardCols, bsm.data.issues, bsm.data.err
 }
 
 // --- kanban TUI ---
@@ -171,12 +111,12 @@ type kanbanResult struct {
 }
 
 type kanbanModel struct {
-	state      kanbanState
-	client     api.Client
-	width      int
-	height     int
-	quitting   bool
-	result     kanbanResult
+	state    kanbanState
+	client   api.Client
+	width    int
+	height   int
+	quitting bool
+	result   kanbanResult
 
 	// Board state
 	columns    []kanbanColumn
@@ -221,7 +161,7 @@ func newKanbanModel(client api.Client, boardCols []models.BoardColumn, issues []
 	cols := buildColumns(boardCols, issues)
 	s := spinner.New()
 	s.Spinner = spinner.Dot
-	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
+	s.Style = lipgloss.NewStyle().Foreground(tui.SpinnerColor)
 	return kanbanModel{
 		state:       stateBoard,
 		client:      client,
@@ -230,22 +170,6 @@ func newKanbanModel(client api.Client, boardCols []models.BoardColumn, issues []
 		sprintName:  sprintName,
 		loadSpinner: s,
 	}
-}
-
-func (m kanbanModel) listPaneWidth() int {
-	w := m.width * 40 / 100
-	if w < 30 {
-		w = 30
-	}
-	return w
-}
-
-func (m kanbanModel) detailPaneWidth() int {
-	w := m.width - m.listPaneWidth() - 1
-	if w < 20 {
-		w = 20
-	}
-	return w
 }
 
 func (m kanbanModel) currentIssue() *models.Issue {
@@ -263,22 +187,22 @@ func (m kanbanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		if m.state == stateDetail {
-			m.detailView.Width = m.detailPaneWidth()
+			m.detailView.Width = tui.DetailPaneWidth(m.width)
 			m.detailView.Height = msg.Height - 3
 		}
 		return m, nil
 
 	case issueFetchedMsg:
 		if msg.err != nil {
-			// On error fall back to board.
 			m.state = stateBoard
 			return m, nil
 		}
 		m.detailIssue = msg.issue
+		detailW := tui.DetailPaneWidth(m.width)
 		md, _ := display.RenderIssue(msg.issue)
 		renderer, err := glamour.NewTermRenderer(
 			glamour.WithAutoStyle(),
-			glamour.WithWordWrap(m.detailPaneWidth()),
+			glamour.WithWordWrap(detailW),
 		)
 		content := md
 		if err == nil {
@@ -286,7 +210,7 @@ func (m kanbanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				content = rendered
 			}
 		}
-		vp := viewport.New(m.detailPaneWidth(), m.height-3)
+		vp := viewport.New(detailW, m.height-3)
 		vp.SetContent(content)
 		m.detailView = vp
 		m.state = stateDetail
@@ -367,30 +291,9 @@ func (m kanbanModel) updateDetail(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 	}
-	// Forward all other messages (including j/k/pgup/pgdn) to viewport.
 	var cmd tea.Cmd
 	m.detailView, cmd = m.detailView.Update(msg)
 	return m, cmd
-}
-
-// splitPanes renders left and right string blocks side-by-side, separated by
-// a dim vertical bar, each block padded/trimmed to exactly height lines.
-func splitPanes(left, right string, leftWidth, height int) string {
-	div := lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("│")
-	leftLines := strings.Split(left, "\n")
-	rightLines := strings.Split(right, "\n")
-	rows := make([]string, height)
-	for i := 0; i < height; i++ {
-		var l, r string
-		if i < len(leftLines) {
-			l = leftLines[i]
-		}
-		if i < len(rightLines) {
-			r = rightLines[i]
-		}
-		rows[i] = lipgloss.NewStyle().Width(leftWidth).Render(l) + div + r
-	}
-	return strings.Join(rows, "\n")
 }
 
 func fetchIssueCmd(client api.Client, key string) tea.Cmd {
@@ -413,24 +316,22 @@ func (m kanbanModel) viewDetail() string {
 	if m.detailIssue == nil {
 		return ""
 	}
-	dim := lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
-
-	leftWidth := m.listPaneWidth()
+	leftWidth := tui.ListPaneWidth(m.width)
 	leftModel := m
 	leftModel.state = stateBoard
 	leftModel.width = leftWidth
 	left := leftModel.viewBoard()
 
-	header := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12")).Padding(0, 1).
+	header := tui.BoldBlue.Copy().Padding(0, 1).
 		Render(m.detailIssue.Key + "  " + m.detailIssue.Summary)
-	footer := dim.Render("  e: edit   esc/q: back   j/k: scroll")
+	footer := tui.DimStyle.Render("  e: edit   esc/q: back   j/k: scroll")
 	right := header + "\n" + m.detailView.View() + "\n" + footer
 
 	height := m.height
 	if height == 0 {
 		height = 40
 	}
-	return splitPanes(left, right, leftWidth, height)
+	return tui.SplitPanes(left, right, leftWidth, height)
 }
 
 func (m kanbanModel) viewBoard() string {
@@ -447,24 +348,23 @@ func (m kanbanModel) viewBoard() string {
 	if colWidth < 24 {
 		colWidth = 24
 	}
-	innerWidth := colWidth - 4 // border (1 each side) + padding (1 each side)
+	innerWidth := colWidth - 4
 
 	activeColStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("12")).
+		BorderForeground(tui.ColorBlue).
 		Padding(0, 1).
 		Width(innerWidth)
 	inactiveColStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("240")).
+		BorderForeground(tui.ColorDimmer).
 		Padding(0, 1).
 		Width(innerWidth)
 
-	colHeaderStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("255"))
-	dim := lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
-	keyStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12"))
-	selKeyStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("15")).Background(lipgloss.Color("237"))
-	selSumStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252")).Background(lipgloss.Color("237"))
+	colHeaderStyle := lipgloss.NewStyle().Bold(true).Foreground(tui.ColorFgBright)
+	keyStyle := lipgloss.NewStyle().Bold(true).Foreground(tui.ColorBlue)
+	selKeyStyle := lipgloss.NewStyle().Bold(true).Foreground(tui.ColorWhite).Background(tui.ColorBg)
+	selSumStyle := lipgloss.NewStyle().Foreground(tui.ColorFg).Background(tui.ColorBg)
 
 	var renderedCols []string
 	for ci, col := range m.columns {
@@ -472,10 +372,10 @@ func (m kanbanModel) viewBoard() string {
 
 		title := strings.ToUpper(col.name) + fmt.Sprintf(" (%d)", len(col.issues))
 		lines = append(lines, colHeaderStyle.Render(title))
-		lines = append(lines, dim.Render(strings.Repeat("─", innerWidth)))
+		lines = append(lines, tui.DimStyle.Render(strings.Repeat("─", innerWidth)))
 
 		if len(col.issues) == 0 {
-			lines = append(lines, dim.Render("  (empty)"))
+			lines = append(lines, tui.DimStyle.Render("  (empty)"))
 		}
 
 		for ri, issue := range col.issues {
@@ -497,7 +397,7 @@ func (m kanbanModel) viewBoard() string {
 			} else {
 				lines = append(lines,
 					"  "+keyStyle.Render(issue.Key),
-					"  "+dim.Render(summary),
+					"  "+tui.DimStyle.Render(summary),
 				)
 			}
 		}
@@ -513,17 +413,17 @@ func (m kanbanModel) viewBoard() string {
 
 	var header string
 	if m.sprintName != "" {
-		header = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12")).Padding(0, 1).
+		header = tui.BoldBlue.Copy().Padding(0, 1).
 			Render("Active Sprint: "+m.sprintName) + "\n"
 	}
 	hintsStr := "  hjkl: navigate   enter: view   e: edit   q: quit"
 	var footer string
 	if m.state == stateLoading {
-		spinnerStr := m.loadSpinner.View() + dim.Render(" Loading…")
-		padded := blFixedWidth(hintsStr, width-lipgloss.Width(spinnerStr)-2)
-		footer = "\n" + dim.Render(padded) + "  " + spinnerStr
+		spinnerStr := m.loadSpinner.View() + tui.DimStyle.Render(" Loading…")
+		padded := tui.FixedWidth(hintsStr, width-lipgloss.Width(spinnerStr)-2)
+		footer = "\n" + tui.DimStyle.Render(padded) + "  " + spinnerStr
 	} else {
-		footer = "\n" + dim.Render(hintsStr)
+		footer = "\n" + tui.DimStyle.Render(hintsStr)
 	}
 
 	return header + board + footer
