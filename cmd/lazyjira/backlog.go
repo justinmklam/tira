@@ -399,6 +399,22 @@ func (m blModel) moveKeys() []string {
 	return nil
 }
 
+func (m blModel) listPaneWidth() int {
+	w := m.width * 40 / 100
+	if w < 30 {
+		w = 30
+	}
+	return w
+}
+
+func (m blModel) detailPaneWidth() int {
+	w := m.width - m.listPaneWidth() - 1
+	if w < 20 {
+		w = 20
+	}
+	return w
+}
+
 func (m blModel) currentIssue() *models.Issue {
 	if m.cursor >= len(m.rows) {
 		return nil
@@ -419,7 +435,7 @@ func (m blModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		if m.state == blDetail {
-			m.detailView.Width = msg.Width
+			m.detailView.Width = m.detailPaneWidth()
 			m.detailView.Height = msg.Height - 3
 		}
 		return m, nil
@@ -433,7 +449,7 @@ func (m blModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		md, _ := display.RenderIssue(msg.issue)
 		renderer, err := glamour.NewTermRenderer(
 			glamour.WithAutoStyle(),
-			glamour.WithWordWrap(m.width),
+			glamour.WithWordWrap(m.detailPaneWidth()),
 		)
 		content := md
 		if err == nil {
@@ -441,7 +457,7 @@ func (m blModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				content = rendered
 			}
 		}
-		vp := viewport.New(m.width, m.height-3)
+		vp := viewport.New(m.detailPaneWidth(), m.height-3)
 		vp.SetContent(content)
 		m.detailView = vp
 		m.state = blDetail
@@ -828,8 +844,6 @@ func (m blModel) updateDetail(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m blModel) View() string {
 	switch m.state {
-	case blLoading:
-		return "\n  " + m.loadSpinner.View() + " Loading issue…"
 	case blDetail:
 		return m.viewDetail()
 	default:
@@ -842,10 +856,23 @@ func (m blModel) viewDetail() string {
 		return ""
 	}
 	dim := lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
+
+	leftWidth := m.listPaneWidth()
+	leftModel := m
+	leftModel.state = blList
+	leftModel.width = leftWidth
+	left := leftModel.viewList()
+
 	header := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12")).Padding(0, 1).
 		Render(m.detailIssue.Key + "  " + m.detailIssue.Summary)
-	footer := "\n" + dim.Render("  e: edit   esc/q: back to list   j/k: scroll")
-	return header + "\n" + m.detailView.View() + footer
+	footer := dim.Render("  e: edit   esc/q: back   j/k: scroll")
+	right := header + "\n" + m.detailView.View() + "\n" + footer
+
+	height := m.height
+	if height == 0 {
+		height = 40
+	}
+	return splitPanes(left, right, leftWidth, height)
 }
 
 // blColumnHeader returns a dim header row aligned with issue row columns.
@@ -930,11 +957,16 @@ func (m blModel) viewList() string {
 		if n := len(m.allSelected()); n > 0 {
 			left = fmt.Sprintf("  %d selected   ", n) + strings.Join(hints, "   ")
 		}
-		if m.moving {
+		switch {
+		case m.state == blLoading:
+			spinnerStr := m.loadSpinner.View() + dim.Render(" Loading…")
+			leftWidth := width - lipgloss.Width(spinnerStr) - 2
+			footer = dim.Render(blFixedWidth(left, leftWidth)) + "  " + spinnerStr
+		case m.moving:
 			spinnerStr := m.loadSpinner.View() + dim.Render(" Moving…")
 			leftWidth := width - lipgloss.Width(spinnerStr) - 2
 			footer = dim.Render(blFixedWidth(left, leftWidth)) + "  " + spinnerStr
-		} else {
+		default:
 			footer = dim.Render(left)
 		}
 	}

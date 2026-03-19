@@ -232,6 +232,22 @@ func newKanbanModel(client api.Client, boardCols []models.BoardColumn, issues []
 	}
 }
 
+func (m kanbanModel) listPaneWidth() int {
+	w := m.width * 40 / 100
+	if w < 30 {
+		w = 30
+	}
+	return w
+}
+
+func (m kanbanModel) detailPaneWidth() int {
+	w := m.width - m.listPaneWidth() - 1
+	if w < 20 {
+		w = 20
+	}
+	return w
+}
+
 func (m kanbanModel) currentIssue() *models.Issue {
 	if len(m.columns) == 0 || len(m.columns[m.colIdx].issues) == 0 {
 		return nil
@@ -247,7 +263,7 @@ func (m kanbanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		if m.state == stateDetail {
-			m.detailView.Width = msg.Width
+			m.detailView.Width = m.detailPaneWidth()
 			m.detailView.Height = msg.Height - 3
 		}
 		return m, nil
@@ -262,7 +278,7 @@ func (m kanbanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		md, _ := display.RenderIssue(msg.issue)
 		renderer, err := glamour.NewTermRenderer(
 			glamour.WithAutoStyle(),
-			glamour.WithWordWrap(m.width),
+			glamour.WithWordWrap(m.detailPaneWidth()),
 		)
 		content := md
 		if err == nil {
@@ -270,7 +286,7 @@ func (m kanbanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				content = rendered
 			}
 		}
-		vp := viewport.New(m.width, m.height-3)
+		vp := viewport.New(m.detailPaneWidth(), m.height-3)
 		vp.SetContent(content)
 		m.detailView = vp
 		m.state = stateDetail
@@ -357,6 +373,26 @@ func (m kanbanModel) updateDetail(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+// splitPanes renders left and right string blocks side-by-side, separated by
+// a dim vertical bar, each block padded/trimmed to exactly height lines.
+func splitPanes(left, right string, leftWidth, height int) string {
+	div := lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("│")
+	leftLines := strings.Split(left, "\n")
+	rightLines := strings.Split(right, "\n")
+	rows := make([]string, height)
+	for i := 0; i < height; i++ {
+		var l, r string
+		if i < len(leftLines) {
+			l = leftLines[i]
+		}
+		if i < len(rightLines) {
+			r = rightLines[i]
+		}
+		rows[i] = lipgloss.NewStyle().Width(leftWidth).Render(l) + div + r
+	}
+	return strings.Join(rows, "\n")
+}
+
 func fetchIssueCmd(client api.Client, key string) tea.Cmd {
 	return func() tea.Msg {
 		issue, err := client.GetIssue(key)
@@ -366,8 +402,6 @@ func fetchIssueCmd(client api.Client, key string) tea.Cmd {
 
 func (m kanbanModel) View() string {
 	switch m.state {
-	case stateLoading:
-		return "\n  " + m.loadSpinner.View() + " Loading issue…"
 	case stateDetail:
 		return m.viewDetail()
 	default:
@@ -380,10 +414,23 @@ func (m kanbanModel) viewDetail() string {
 		return ""
 	}
 	dim := lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
+
+	leftWidth := m.listPaneWidth()
+	leftModel := m
+	leftModel.state = stateBoard
+	leftModel.width = leftWidth
+	left := leftModel.viewBoard()
+
 	header := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12")).Padding(0, 1).
 		Render(m.detailIssue.Key + "  " + m.detailIssue.Summary)
-	footer := "\n" + dim.Render("  e: edit   esc/q: back to board   j/k: scroll")
-	return header + "\n" + m.detailView.View() + footer
+	footer := dim.Render("  e: edit   esc/q: back   j/k: scroll")
+	right := header + "\n" + m.detailView.View() + "\n" + footer
+
+	height := m.height
+	if height == 0 {
+		height = 40
+	}
+	return splitPanes(left, right, leftWidth, height)
 }
 
 func (m kanbanModel) viewBoard() string {
@@ -469,7 +516,15 @@ func (m kanbanModel) viewBoard() string {
 		header = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12")).Padding(0, 1).
 			Render("Active Sprint: "+m.sprintName) + "\n"
 	}
-	footer := "\n" + dim.Render("  hjkl: navigate   enter: view   e: edit   q: quit")
+	hintsStr := "  hjkl: navigate   enter: view   e: edit   q: quit"
+	var footer string
+	if m.state == stateLoading {
+		spinnerStr := m.loadSpinner.View() + dim.Render(" Loading…")
+		padded := blFixedWidth(hintsStr, width-lipgloss.Width(spinnerStr)-2)
+		footer = "\n" + dim.Render(padded) + "  " + spinnerStr
+	} else {
+		footer = "\n" + dim.Render(hintsStr)
+	}
 
 	return header + board + footer
 }
