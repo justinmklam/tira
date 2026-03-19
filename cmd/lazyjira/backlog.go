@@ -1,7 +1,6 @@
 package main
 
 import (
-	"sort"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/spinner"
@@ -14,7 +13,6 @@ import (
 	"github.com/justinmklam/lazyjira/internal/display"
 	"github.com/justinmklam/lazyjira/internal/models"
 	"github.com/justinmklam/lazyjira/internal/tui"
-	"github.com/lithammer/fuzzysearch/fuzzy"
 )
 
 // --- backlog TUI model ---
@@ -59,11 +57,6 @@ type blMoveMultiDoneMsg struct {
 
 type blRankDoneMsg struct{ err error }
 
-type blParentsFetchedMsg struct {
-	parents []models.Issue
-	err     error
-}
-
 type blParentAssignDoneMsg struct{ err error }
 
 type blModel struct {
@@ -94,13 +87,7 @@ type blModel struct {
 	moving       bool // true while a move API call is in flight
 
 	// parent picker state
-	parentList       []models.Issue
-	parentFiltered   []models.Issue
-	parentInput      textinput.Model
-	parentFilter     string
-	parentCursor     int
-	parentLoading    bool
-	parentErr        string
+	parentPicker     tui.PickerModel
 	parentTargetKeys []string
 
 	result   blResult
@@ -138,10 +125,6 @@ func newBacklogModel(client api.Client, groups []models.SprintGroup, project str
 	ti.Placeholder = "type to filter…"
 	ti.CharLimit = 60
 
-	pi := textinput.New()
-	pi.Placeholder = "search parents…"
-	pi.CharLimit = 60
-
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	s.Style = lipgloss.NewStyle().Foreground(tui.SpinnerColor)
@@ -153,7 +136,6 @@ func newBacklogModel(client api.Client, groups []models.SprintGroup, project str
 		groups:      groups,
 		collapsed:   collapsed,
 		filterInput: ti,
-		parentInput: pi,
 		loadSpinner: s,
 		selected:    make(map[string]bool),
 		cutKeys:     make(map[string]bool),
@@ -342,7 +324,7 @@ func (m blModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case spinner.TickMsg:
-		if m.state == blLoading || m.moving || m.state == blParentPicker {
+		if m.state == blLoading || m.moving {
 			var cmd tea.Cmd
 			m.loadSpinner, cmd = m.loadSpinner.Update(msg)
 			return m, cmd
@@ -381,6 +363,12 @@ func (m blModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case blRankDoneMsg:
 		// Rank API failures are non-fatal; local state is already updated.
+		return m, nil
+
+	case blParentAssignDoneMsg:
+		if msg.err == nil {
+			m.result.refresh = true
+		}
 		return m, nil
 	}
 
@@ -679,13 +667,9 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.parentTargetKeys = keys
-		m.parentFilter = ""
-		m.parentInput.SetValue("")
-		m.parentCursor = 0
-		m.parentLoading = true
-		m.parentErr = ""
+		m.parentPicker = blNewParentPicker(m.client, projectKey)
 		m.state = blParentPicker
-		return m, tea.Batch(m.loadSpinner.Tick, blFetchParentsCmd(m.client, projectKey))
+		return m, m.parentPicker.Init()
 	}
 
 	return m, nil
@@ -973,98 +957,51 @@ func blReorderUp(issues []models.Issue, moveSet map[string]bool, blockerKey stri
 }
 
 func (m blModel) updateParentPicker(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case blParentsFetchedMsg:
-		m.parentLoading = false
-		if msg.err != nil {
-			m.parentErr = msg.err.Error()
-			return m, nil
-		}
-		m.parentList = msg.parents
-		m.parentFiltered = blFilterParents(m.parentList, "")
-		m.parentCursor = 0
-		return m, m.parentInput.Focus()
-
-	case blParentAssignDoneMsg:
-		m.state = blList
-		m.parentTargetKeys = nil
-		if msg.err == nil {
-			m.result.refresh = true
-		}
-		return m, nil
-
-	case spinner.TickMsg:
-		if m.parentLoading {
-			var cmd tea.Cmd
-			m.loadSpinner, cmd = m.loadSpinner.Update(msg)
-			return m, cmd
-		}
-		return m, nil
-	}
-
-	if m.parentLoading {
-		return m, nil
-	}
-
-	key, ok := msg.(tea.KeyMsg)
-	if !ok {
-		var cmd tea.Cmd
-		m.parentInput, cmd = m.parentInput.Update(msg)
-		return m, cmd
-	}
-
-	switch key.String() {
-	case "ctrl+c":
+	// Let the app quit even from inside the picker.
+	if key, ok := msg.(tea.KeyMsg); ok && key.String() == "ctrl+c" {
 		m.quitting = true
 		return m, nil
-
-	case "esc":
-		m.state = blList
-		m.parentInput.Blur()
-		m.parentTargetKeys = nil
-		m.parentErr = ""
-		return m, nil
-
-	case "j", "down":
-		// 0 = "(none)", 1..len(parentFiltered) = actual parents
-		max := len(m.parentFiltered)
-		if m.parentCursor < max {
-			m.parentCursor++
-		}
-		return m, nil
-
-	case "k", "up":
-		if m.parentCursor > 0 {
-			m.parentCursor--
-		}
-		return m, nil
-
-	case "enter":
-		var parentKey string
-		if m.parentCursor > 0 {
-			parentKey = m.parentFiltered[m.parentCursor-1].Key
-		}
-		m.parentInput.Blur()
-		return m, blAssignParentCmd(m.client, m.parentTargetKeys, parentKey)
 	}
 
-	// All other keys go to the text input for filtering.
-	prev := m.parentInput.Value()
-	var cmd tea.Cmd
-	m.parentInput, cmd = m.parentInput.Update(msg)
-	if newVal := m.parentInput.Value(); newVal != prev {
-		m.parentFilter = newVal
-		m.parentFiltered = blFilterParents(m.parentList, m.parentFilter)
-		m.parentCursor = 0
+	updated, cmd := m.parentPicker.Update(msg)
+	m.parentPicker = updated
+
+	if m.parentPicker.Aborted {
+		m.state = blList
+		m.parentTargetKeys = nil
+		return m, nil
+	}
+	if m.parentPicker.Completed {
+		item := m.parentPicker.SelectedItem()
+		var parentKey string
+		if item != nil {
+			parentKey = item.Value
+		}
+		keys := m.parentTargetKeys
+		m.state = blList
+		m.parentTargetKeys = nil
+		return m, blAssignParentCmd(m.client, keys, parentKey)
 	}
 	return m, cmd
 }
 
-func blFetchParentsCmd(client api.Client, projectKey string) tea.Cmd {
-	return func() tea.Msg {
-		parents, err := client.GetEpics(projectKey)
-		return blParentsFetchedMsg{parents: parents, err: err}
+// blNewParentPicker creates a PickerModel whose search function queries the
+// Jira API for epics matching the typed query.
+func blNewParentPicker(client api.Client, projectKey string) tui.PickerModel {
+	search := func(query string) ([]tui.PickerItem, error) {
+		epics, err := client.GetEpics(projectKey, query)
+		if err != nil {
+			return nil, err
+		}
+		items := make([]tui.PickerItem, len(epics))
+		for i, e := range epics {
+			items[i] = tui.PickerItem{Label: e.Key, SubLabel: e.Summary, Value: e.Key}
+		}
+		return items, nil
 	}
+	m := tui.NewPickerModel(search)
+	m.NoneItem = &tui.PickerItem{Label: "(none)", SubLabel: "clear parent"}
+	return m
 }
 
 func blAssignParentCmd(client api.Client, keys []string, parentKey string) tea.Cmd {
@@ -1076,23 +1013,4 @@ func blAssignParentCmd(client api.Client, keys []string, parentKey string) tea.C
 		}
 		return blParentAssignDoneMsg{}
 	}
-}
-
-// blFilterParents returns the subset of parents matching filter, ranked by
-// fuzzy score. Returns the full list when filter is empty.
-func blFilterParents(parents []models.Issue, filter string) []models.Issue {
-	if filter == "" {
-		return parents
-	}
-	targets := make([]string, len(parents))
-	for i, p := range parents {
-		targets[i] = p.Key + " " + p.Summary
-	}
-	ranks := fuzzy.RankFindFold(filter, targets)
-	sort.Sort(ranks)
-	result := make([]models.Issue, len(ranks))
-	for i, r := range ranks {
-		result[i] = parents[r.OriginalIndex]
-	}
-	return result
 }

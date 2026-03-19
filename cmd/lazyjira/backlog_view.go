@@ -331,7 +331,6 @@ func (m blModel) viewParentPicker() string {
 	}
 	innerW := pickerW - 2 // inside border
 
-	// Title
 	n := len(m.parentTargetKeys)
 	noun := "issue"
 	if n != 1 {
@@ -341,74 +340,18 @@ func (m blModel) viewParentPicker() string {
 	header := tui.BoldBlue.Copy().Padding(0, 1).Width(innerW).
 		Render(tui.FixedWidth(title, innerW-2))
 
-	var body string
-	if m.parentLoading {
-		body = header + "\n\n" +
-			lipgloss.NewStyle().Width(innerW).Align(lipgloss.Center).
-				Render(m.loadSpinner.View()+" Loading parents…") +
-			"\n"
-	} else if m.parentErr != "" {
-		errLine := lipgloss.NewStyle().Foreground(tui.ColorRed).Render("  Error: " + m.parentErr)
-		footer := tui.DimStyle.Render("  esc: close")
-		body = header + "\n\n" + errLine + "\n\n" + footer
-	} else {
-		inputLine := " " + m.parentInput.View()
-
-		// Max rows available for the list (border=2, header=1, input=1, sep=1, footer=1).
-		listH := height/2 - 6
-		if listH < 4 {
-			listH = 4
-		}
-
-		// Build list rows: cursor 0 = "(none)", 1..n = parentFiltered entries.
-		type listEntry struct {
-			label    string
-			subLabel string
-		}
-		entries := make([]listEntry, 1+len(m.parentFiltered))
-		entries[0] = listEntry{label: "(none)", subLabel: "clear parent"}
-		for i, p := range m.parentFiltered {
-			entries[i+1] = listEntry{label: p.Key, subLabel: p.Summary}
-		}
-
-		// Scroll window around cursor.
-		start := 0
-		if m.parentCursor >= listH {
-			start = m.parentCursor - listH + 1
-		}
-		end := start + listH
-		if end > len(entries) {
-			end = len(entries)
-		}
-
-		keyW := 12
-		summaryW := innerW - keyW - 5 // "▶ " + " " between cols + padding
-		if summaryW < 10 {
-			summaryW = 10
-		}
-
-		rows := make([]string, 0, end-start)
-		for i := start; i < end; i++ {
-			e := entries[i]
-			keyPart := tui.FixedWidth(e.label, keyW)
-			subPart := tui.FixedWidth(e.subLabel, summaryW)
-			if i == m.parentCursor {
-				row := lipgloss.NewStyle().Foreground(tui.ColorBlue).Bold(true).Render("▶ "+keyPart) +
-					" " + lipgloss.NewStyle().Foreground(tui.ColorFgBright).Render(subPart)
-				rows = append(rows, row)
-			} else {
-				row := "  " + tui.DimStyle.Render(keyPart) +
-					" " + tui.DimStyle.Render(subPart)
-				rows = append(rows, row)
-			}
-		}
-
-		sep := tui.DimStyle.Render(strings.Repeat("─", innerW))
-		footer := tui.DimStyle.Render("  j/k: navigate   enter: select   esc: cancel")
-
-		body = header + "\n" + inputLine + "\n" + sep + "\n" +
-			strings.Join(rows, "\n") + "\n" + sep + "\n" + footer
+	// List rows fit in roughly half the terminal height.
+	listH := height/2 - 6
+	if listH < 4 {
+		listH = 4
 	}
+
+	footer := tui.DimStyle.Render("  ↑/↓ ctrl+p/n: navigate   enter: select   esc: cancel")
+
+	body := header + "\n" +
+		m.parentPicker.View(innerW, listH) + "\n" +
+		tui.DimStyle.Render(strings.Repeat("─", innerW)) + "\n" +
+		footer
 
 	modal := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).

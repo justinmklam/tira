@@ -26,7 +26,7 @@ type Client interface {
 	GetActiveSprint(boardID int) ([]models.Issue, error)
 	GetSprintGroups(boardID int) ([]models.SprintGroup, error)
 	GetBacklog(projectKey string) ([]models.Sprint, error)
-	GetEpics(projectKey string) ([]models.Issue, error)
+	GetEpics(projectKey, query string) ([]models.Issue, error)
 	MoveIssuesToSprint(sprintID int, keys []string) error
 	MoveIssuesToBacklog(keys []string) error
 	RankIssues(keys []string, rankAfterKey, rankBeforeKey string) error
@@ -917,9 +917,13 @@ func (c *jiraClient) GetBacklog(projectKey string) ([]models.Sprint, error) {
 	return nil, fmt.Errorf("not implemented")
 }
 
-func (c *jiraClient) GetEpics(projectKey string) ([]models.Issue, error) {
-	jql := url.QueryEscape(fmt.Sprintf(`project="%s" AND issuetype=Epic ORDER BY summary ASC`, projectKey))
-	apiURL := fmt.Sprintf("%s/rest/api/3/search/jql?jql=%s&maxResults=200&fields=summary,issuetype", c.baseURL, jql)
+func (c *jiraClient) GetEpics(projectKey, query string) ([]models.Issue, error) {
+	base := fmt.Sprintf(`project="%s" AND issuetype=Epic`, projectKey)
+	if query != "" {
+		base += fmt.Sprintf(` AND summary ~ "%s"`, strings.ReplaceAll(query, `"`, `\"`))
+	}
+	jql := url.QueryEscape(base + " ORDER BY summary ASC")
+	apiURL := fmt.Sprintf("%s/rest/api/3/search/jql?jql=%s&maxResults=50&fields=summary,issuetype", c.baseURL, jql)
 	resp, err := c.http.Get(apiURL)
 	if err != nil {
 		return nil, fmt.Errorf("fetching epics: %w", err)
