@@ -127,7 +127,7 @@ func (m blModel) viewList() string {
 		hints := []string{
 			"j/k: navigate", "J/K/{/}: sprint", "z/Z: collapse",
 			"space/S: select", "v: visual", "enter: view", "e: edit", "o: open",
-			"x: cut", "p: paste", ">/<: adj sprint", "B: backlog",
+			"ctrl+j/k: reorder", "x: cut", "p: paste", ">/<: adj sprint", "B: backlog",
 			"/: filter", "R: refresh", "tab: kanban", "q: quit",
 		}
 		left := "  " + strings.Join(hints, "   ")

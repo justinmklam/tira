@@ -51,6 +51,8 @@ type blMoveMultiDoneMsg struct {
 	err            error
 }
 
+type blRankDoneMsg struct{ err error }
+
 type blModel struct {
 	state  blState
 	client api.Client
@@ -185,19 +187,40 @@ func (m blModel) allSelected() map[string]bool {
 }
 
 // moveKeys returns the issue keys to operate on: the combined selection if any,
-// otherwise just the current issue.
+// otherwise just the current issue. Keys are returned in display order.
 func (m blModel) moveKeys() []string {
 	if combined := m.allSelected(); len(combined) > 0 {
-		keys := make([]string, 0, len(combined))
-		for k := range combined {
-			keys = append(keys, k)
-		}
-		return keys
+		return m.keysInDisplayOrder(combined)
 	}
 	if issue := m.currentIssue(); issue != nil {
 		return []string{issue.Key}
 	}
 	return nil
+}
+
+// lastIssueKey returns the key of the last issue in the group that is NOT in
+// excludeSet (used to find the rank-after anchor for bottom-of-sprint placement).
+func lastIssueKey(issues []models.Issue, excludeSet map[string]bool) string {
+	for i := len(issues) - 1; i >= 0; i-- {
+		if !excludeSet[issues[i].Key] {
+			return issues[i].Key
+		}
+	}
+	return ""
+}
+
+// keysInDisplayOrder returns the subset of keys that appear in the given set,
+// ordered by their position in the current groups/issues list.
+func (m blModel) keysInDisplayOrder(keySet map[string]bool) []string {
+	keys := make([]string, 0, len(keySet))
+	for _, g := range m.groups {
+		for _, issue := range g.Issues {
+			if keySet[issue.Key] {
+				keys = append(keys, issue.Key)
+			}
+		}
+	}
+	return keys
 }
 
 func (m blModel) currentIssue() *models.Issue {
@@ -292,11 +315,12 @@ func (m blModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			for _, k := range msg.movedKeys {
 				movedSet[k] = true
 			}
+			// Remove moved issues from all groups, append to target.
 			var movedIssues []models.Issue
 			for i := range m.groups {
 				var remaining []models.Issue
 				for _, issue := range m.groups[i].Issues {
-					if movedSet[issue.Key] && i != msg.targetGroupIdx {
+					if movedSet[issue.Key] {
 						movedIssues = append(movedIssues, issue)
 					} else {
 						remaining = append(remaining, issue)
@@ -312,6 +336,10 @@ func (m blModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cursor = tui.Clamp(m.cursor, 0, len(m.rows)-1)
 			return blScrollToFit(m), nil
 		}
+		return m, nil
+
+	case blRankDoneMsg:
+		// Rank API failures are non-fatal; local state is already updated.
 		return m, nil
 	}
 
@@ -508,6 +536,7 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cutKeys[k] = true
 		}
 		m.selected = make(map[string]bool)
+		m.visualMode = false
 		return m, nil
 
 	case "p":
@@ -516,12 +545,16 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		targetGroupIdx := m.rows[m.cursor].groupIdx
 		target := m.groups[targetGroupIdx]
-		keys := make([]string, 0, len(m.cutKeys))
-		for k := range m.cutKeys {
-			keys = append(keys, k)
-		}
+		keys := m.keysInDisplayOrder(m.cutKeys)
+		rankAfter := lastIssueKey(target.Issues, m.cutKeys)
 		m.moving = true
-		return m, tea.Batch(m.loadSpinner.Tick, blMoveMultiCmd(m.client, keys, target.Sprint.ID, targetGroupIdx))
+		return m, tea.Batch(m.loadSpinner.Tick, blMoveMultiCmd(m.client, keys, target.Sprint.ID, targetGroupIdx, rankAfter))
+
+	case "ctrl+j":
+		return m.moveSelectionDown()
+
+	case "ctrl+k":
+		return m.moveSelectionUp()
 
 	case ">":
 		keys := m.moveKeys()
@@ -534,8 +567,9 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		target := m.groups[nextIdx]
+		rankAfter := lastIssueKey(target.Issues, make(map[string]bool))
 		m.moving = true
-		return m, tea.Batch(m.loadSpinner.Tick, blMoveMultiCmd(m.client, keys, target.Sprint.ID, nextIdx))
+		return m, tea.Batch(m.loadSpinner.Tick, blMoveMultiCmd(m.client, keys, target.Sprint.ID, nextIdx, rankAfter))
 
 	case "<":
 		keys := m.moveKeys()
@@ -548,8 +582,9 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		target := m.groups[prevIdx]
+		rankAfter := lastIssueKey(target.Issues, make(map[string]bool))
 		m.moving = true
-		return m, tea.Batch(m.loadSpinner.Tick, blMoveMultiCmd(m.client, keys, target.Sprint.ID, prevIdx))
+		return m, tea.Batch(m.loadSpinner.Tick, blMoveMultiCmd(m.client, keys, target.Sprint.ID, prevIdx, rankAfter))
 
 	case "B":
 		keys := m.moveKeys()
@@ -568,7 +603,7 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.moving = true
-		return m, tea.Batch(m.loadSpinner.Tick, blMoveMultiCmd(m.client, keys, 0, backlogIdx))
+		return m, tea.Batch(m.loadSpinner.Tick, blMoveMultiCmd(m.client, keys, 0, backlogIdx, ""))
 	}
 
 	return m, nil
@@ -627,18 +662,230 @@ func (m blModel) updateDetail(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func blMoveMultiCmd(client api.Client, keys []string, targetSprintID, targetGroupIdx int) tea.Cmd {
+// blMoveMultiCmd moves keys to a sprint (or backlog) and, when rankAfterKey is
+// non-empty, explicitly ranks them after that issue so they land at the bottom.
+func blMoveMultiCmd(client api.Client, keys []string, targetSprintID, targetGroupIdx int, rankAfterKey string) tea.Cmd {
 	return func() tea.Msg {
 		var err error
 		if targetSprintID == 0 {
 			err = client.MoveIssuesToBacklog(keys)
 		} else {
 			err = client.MoveIssuesToSprint(targetSprintID, keys)
+			if err == nil && rankAfterKey != "" {
+				err = client.RankIssues(keys, rankAfterKey, "")
+			}
 		}
-		return blMoveMultiDoneMsg{
-			movedKeys:      keys,
-			targetGroupIdx: targetGroupIdx,
-			err:            err,
+		return blMoveMultiDoneMsg{movedKeys: keys, targetGroupIdx: targetGroupIdx, err: err}
+	}
+}
+
+func blRankCmd(client api.Client, keys []string, rankAfterKey, rankBeforeKey string) tea.Cmd {
+	return func() tea.Msg {
+		return blRankDoneMsg{err: client.RankIssues(keys, rankAfterKey, rankBeforeKey)}
+	}
+}
+
+// effectiveMoveSet returns the set and ordered keys to move with ctrl+j/ctrl+k.
+// If an active selection exists and all selected issues are in groupIdx, returns those.
+// Otherwise returns just the cursor issue. Returns nil if no valid issues found.
+func (m blModel) effectiveMoveSet(groupIdx int) (map[string]bool, []string) {
+	selected := m.allSelected()
+	if len(selected) > 0 {
+		// All selected issues must be within the same group.
+		for k := range selected {
+			found := false
+			for _, issue := range m.groups[groupIdx].Issues {
+				if issue.Key == k {
+					found = true
+					break
+				}
+			}
+			if !found {
+				return nil, nil
+			}
+		}
+		keys := blOrderedKeys(m.groups[groupIdx].Issues, selected)
+		return selected, keys
+	}
+	if m.cursor < len(m.rows) {
+		row := m.rows[m.cursor]
+		if row.kind == blRowIssue && row.groupIdx == groupIdx {
+			key := m.groups[groupIdx].Issues[row.issueIdx].Key
+			return map[string]bool{key: true}, []string{key}
 		}
 	}
+	return nil, nil
+}
+
+// findIssueRow returns the row index of the issue with the given key in groupIdx.
+func (m blModel) findIssueRow(groupIdx int, key string) int {
+	for i, row := range m.rows {
+		if row.kind == blRowIssue && row.groupIdx == groupIdx &&
+			m.groups[groupIdx].Issues[row.issueIdx].Key == key {
+			return i
+		}
+	}
+	return tui.Clamp(m.cursor, 0, len(m.rows)-1)
+}
+
+// moveSelectionDown moves the effective selection one step down within the sprint,
+// or to the top of the next sprint if already at the bottom.
+func (m blModel) moveSelectionDown() (tea.Model, tea.Cmd) {
+	if m.cursor >= len(m.rows) {
+		return m, nil
+	}
+	row := m.rows[m.cursor]
+	if row.kind != blRowIssue {
+		return m, nil
+	}
+	groupIdx := row.groupIdx
+	cursorKey := m.groups[groupIdx].Issues[row.issueIdx].Key
+
+	if m.visualMode {
+		m.commitVisualSelection()
+	}
+	moveSet, moveKeys := m.effectiveMoveSet(groupIdx)
+	if len(moveKeys) == 0 {
+		return m, nil
+	}
+
+	issues := m.groups[groupIdx].Issues
+	maxIdx := blMaxSelectedIdx(issues, moveSet)
+
+	// Find first non-selected issue after the last selected issue.
+	blockerIdx := -1
+	for i := maxIdx + 1; i < len(issues); i++ {
+		if !moveSet[issues[i].Key] {
+			blockerIdx = i
+			break
+		}
+	}
+	if blockerIdx == -1 {
+		return m, nil // already at bottom of sprint
+	}
+
+	blockerKey := issues[blockerIdx].Key
+	m.groups[groupIdx].Issues = blReorderDown(issues, moveSet, blockerKey)
+	m.rows = blBuildRows(m.groups, m.collapsed, m.filter)
+	m.cursor = m.findIssueRow(groupIdx, cursorKey)
+	return blScrollToFit(m), blRankCmd(m.client, moveKeys, blockerKey, "")
+}
+
+// moveSelectionUp moves the effective selection one step up within the sprint,
+// or to the bottom of the previous sprint if already at the top.
+func (m blModel) moveSelectionUp() (tea.Model, tea.Cmd) {
+	if m.cursor >= len(m.rows) {
+		return m, nil
+	}
+	row := m.rows[m.cursor]
+	if row.kind != blRowIssue {
+		return m, nil
+	}
+	groupIdx := row.groupIdx
+	cursorKey := m.groups[groupIdx].Issues[row.issueIdx].Key
+
+	if m.visualMode {
+		m.commitVisualSelection()
+	}
+	moveSet, moveKeys := m.effectiveMoveSet(groupIdx)
+	if len(moveKeys) == 0 {
+		return m, nil
+	}
+
+	issues := m.groups[groupIdx].Issues
+	minIdx := blMinSelectedIdx(issues, moveSet)
+
+	// Find last non-selected issue before the first selected issue.
+	blockerIdx := -1
+	for i := minIdx - 1; i >= 0; i-- {
+		if !moveSet[issues[i].Key] {
+			blockerIdx = i
+			break
+		}
+	}
+	if blockerIdx == -1 {
+		return m, nil // already at top of sprint
+	}
+
+	blockerKey := issues[blockerIdx].Key
+	m.groups[groupIdx].Issues = blReorderUp(issues, moveSet, blockerKey)
+	m.rows = blBuildRows(m.groups, m.collapsed, m.filter)
+	m.cursor = m.findIssueRow(groupIdx, cursorKey)
+	return blScrollToFit(m), blRankCmd(m.client, moveKeys, "", blockerKey)
+}
+
+// blOrderedKeys returns the keys in moveSet in the order they appear in issues.
+func blOrderedKeys(issues []models.Issue, moveSet map[string]bool) []string {
+	keys := make([]string, 0, len(moveSet))
+	for _, issue := range issues {
+		if moveSet[issue.Key] {
+			keys = append(keys, issue.Key)
+		}
+	}
+	return keys
+}
+
+// blMaxSelectedIdx returns the highest index in issues that is in moveSet.
+func blMaxSelectedIdx(issues []models.Issue, moveSet map[string]bool) int {
+	idx := -1
+	for i, issue := range issues {
+		if moveSet[issue.Key] {
+			idx = i
+		}
+	}
+	return idx
+}
+
+// blMinSelectedIdx returns the lowest index in issues that is in moveSet.
+func blMinSelectedIdx(issues []models.Issue, moveSet map[string]bool) int {
+	for i, issue := range issues {
+		if moveSet[issue.Key] {
+			return i
+		}
+	}
+	return -1
+}
+
+// blReorderDown moves all issues in moveSet to after the blocker issue.
+func blReorderDown(issues []models.Issue, moveSet map[string]bool, blockerKey string) []models.Issue {
+	var moved, rest []models.Issue
+	for _, issue := range issues {
+		if moveSet[issue.Key] {
+			moved = append(moved, issue)
+		} else {
+			rest = append(rest, issue)
+		}
+	}
+	for i, issue := range rest {
+		if issue.Key == blockerKey {
+			result := make([]models.Issue, 0, len(issues))
+			result = append(result, rest[:i+1]...)
+			result = append(result, moved...)
+			result = append(result, rest[i+1:]...)
+			return result
+		}
+	}
+	return issues
+}
+
+// blReorderUp moves all issues in moveSet to before the blocker issue.
+func blReorderUp(issues []models.Issue, moveSet map[string]bool, blockerKey string) []models.Issue {
+	var moved, rest []models.Issue
+	for _, issue := range issues {
+		if moveSet[issue.Key] {
+			moved = append(moved, issue)
+		} else {
+			rest = append(rest, issue)
+		}
+	}
+	for i, issue := range rest {
+		if issue.Key == blockerKey {
+			result := make([]models.Issue, 0, len(issues))
+			result = append(result, rest[:i]...)
+			result = append(result, moved...)
+			result = append(result, rest[i:]...)
+			return result
+		}
+	}
+	return issues
 }

@@ -27,6 +27,7 @@ type Client interface {
 	GetBacklog(projectKey string) ([]models.Sprint, error)
 	MoveIssuesToSprint(sprintID int, keys []string) error
 	MoveIssuesToBacklog(keys []string) error
+	RankIssues(keys []string, rankAfterKey, rankBeforeKey string) error
 }
 
 type jiraClient struct {
@@ -914,49 +915,40 @@ func (c *jiraClient) GetBacklog(projectKey string) ([]models.Sprint, error) {
 }
 
 func (c *jiraClient) MoveIssuesToSprint(sprintID int, keys []string) error {
+	req, err := c.client.NewRequest(context.Background(), http.MethodPost,
+		fmt.Sprintf("rest/agile/1.0/sprint/%d/issue", sprintID),
+		map[string]any{"issues": keys})
+	if err != nil {
+		return err
+	}
+	_, err = c.client.Do(req, nil)
+	return err
+}
+
+func (c *jiraClient) RankIssues(keys []string, rankAfterKey, rankBeforeKey string) error {
 	payload := map[string]any{"issues": keys}
-	body, err := json.Marshal(payload)
+	if rankAfterKey != "" {
+		payload["rankAfterIssue"] = rankAfterKey
+	} else if rankBeforeKey != "" {
+		payload["rankBeforeIssue"] = rankBeforeKey
+	} else {
+		return fmt.Errorf("rankIssues: must specify either rankAfterKey or rankBeforeKey")
+	}
+	req, err := c.client.NewRequest(context.Background(), http.MethodPut, "rest/agile/1.0/issue/rank", payload)
 	if err != nil {
 		return err
 	}
-	url := fmt.Sprintf("%s/rest/agile/1.0/sprint/%d/issue", c.baseURL, sprintID)
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, url, strings.NewReader(string(body)))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 300 {
-		b, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("move to sprint %d: HTTP %d: %s", sprintID, resp.StatusCode, string(b))
-	}
-	return nil
+	_, err = c.client.Do(req, nil)
+	return err
 }
 
 func (c *jiraClient) MoveIssuesToBacklog(keys []string) error {
-	payload := map[string]any{"issues": keys}
-	body, err := json.Marshal(payload)
+	req, err := c.client.NewRequest(context.Background(), http.MethodPost,
+		"rest/agile/1.0/backlog/issue",
+		map[string]any{"issues": keys})
 	if err != nil {
 		return err
 	}
-	url := fmt.Sprintf("%s/rest/agile/1.0/backlog/issue", c.baseURL)
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, url, strings.NewReader(string(body)))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 300 {
-		b, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("move to backlog: HTTP %d: %s", resp.StatusCode, string(b))
-	}
-	return nil
+	_, err = c.client.Do(req, nil)
+	return err
 }
