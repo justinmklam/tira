@@ -92,3 +92,52 @@ func saveEditCmd(client api.Client, key string, fields models.IssueFields) tea.C
 		return editSaveDoneMsg{err: client.UpdateIssue(key, fields)}
 	}
 }
+
+// createFetchedMsg is sent when valid values have been fetched for issue creation.
+type createFetchedMsg struct {
+	valid *models.ValidValues
+	err   error
+}
+
+// createSaveDoneMsg is sent when the create API call completes.
+type createSaveDoneMsg struct {
+	issue *models.Issue
+	err   error
+}
+
+// fetchCreateDataCmd fetches issue metadata (types, priorities) for the create form.
+func fetchCreateDataCmd(client api.Client, projectKey string) tea.Cmd {
+	return func() tea.Msg {
+		valid, err := client.GetIssueMetadata(projectKey)
+		if err != nil {
+			return createFetchedMsg{valid: &models.ValidValues{}}
+		}
+		return createFetchedMsg{valid: valid}
+	}
+}
+
+// saveCreateCmd creates the issue and optionally moves it to a sprint.
+func saveCreateCmd(client api.Client, projectKey string, fields models.IssueFields, sprintID int) tea.Cmd {
+	return func() tea.Msg {
+		issue, err := client.CreateIssue(projectKey, fields)
+		if err != nil {
+			return createSaveDoneMsg{err: err}
+		}
+		if sprintID != 0 {
+			err = client.MoveIssuesToSprint(sprintID, []string{issue.Key})
+		}
+		return createSaveDoneMsg{issue: issue, err: err}
+	}
+}
+
+// blankIssueFromValid returns a blank issue pre-filled with default type and priority.
+func blankIssueFromValid(valid *models.ValidValues) *models.Issue {
+	blank := &models.Issue{}
+	if len(valid.IssueTypes) > 0 {
+		blank.IssueType = valid.IssueTypes[0]
+	}
+	if len(valid.Priorities) > 0 {
+		blank.Priority = valid.Priorities[len(valid.Priorities)/2]
+	}
+	return blank
+}

@@ -52,11 +52,10 @@ Modelled on yazi's philosophy: modal only where the modality is obvious from con
 | `r` | Rename — inline edit of summary only, no editor |
 | `t` | Change type — picker |
 | `p` | Change priority — picker |
-| `a` | Change assignee — picker |
 | `s` | Set story points — inline numeric input |
 | `l` | Edit labels — inline comma-separated input |
-| `c` | Create new ticket in current sprint |
-| `C` | Create new ticket in backlog |
+| `a` | Create new ticket in current sprint |
+| `A` | Create new ticket in backlog |
 | `x` | Delete ticket — requires `y` confirmation |
 | `<Enter>` | Open ticket detail pane (press `e` from there to edit) |
 

@@ -41,8 +41,11 @@ type blRow struct {
 }
 
 type blResult struct {
-	editKey string
-	refresh bool
+	editKey        string
+	refresh        bool
+	create         bool
+	createSprintID int
+	createGroupIdx int
 }
 
 type blMoveMultiDoneMsg struct {
@@ -232,6 +235,17 @@ func (m blModel) currentIssue() *models.Issue {
 		return nil
 	}
 	return &m.groups[row.groupIdx].Issues[row.issueIdx]
+}
+
+// navigateToKey moves the cursor to the first row matching key.
+func (m *blModel) navigateToKey(key string) {
+	for i, row := range m.rows {
+		if row.kind == blRowIssue && m.groups[row.groupIdx].Issues[row.issueIdx].Key == key {
+			m.cursor = i
+			*m = blScrollToFit(*m)
+			return
+		}
+	}
 }
 
 func blScrollToFit(m blModel) blModel {
@@ -604,6 +618,25 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.moving = true
 		return m, tea.Batch(m.loadSpinner.Tick, blMoveMultiCmd(m.client, keys, 0, backlogIdx, ""))
+
+	case "a":
+		if m.cursor < len(m.rows) {
+			row := m.rows[m.cursor]
+			g := m.groups[row.groupIdx]
+			m.result = blResult{create: true, createSprintID: g.Sprint.ID, createGroupIdx: row.groupIdx}
+		}
+		return m, nil
+
+	case "A":
+		for i, g := range m.groups {
+			if g.Sprint.State == "backlog" {
+				m.result = blResult{create: true, createSprintID: 0, createGroupIdx: i}
+				return m, nil
+			}
+		}
+		// No dedicated backlog group; create in backlog (sprint 0).
+		m.result = blResult{create: true, createSprintID: 0, createGroupIdx: 0}
+		return m, nil
 	}
 
 	return m, nil
