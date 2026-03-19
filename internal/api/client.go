@@ -750,9 +750,11 @@ func (c *jiraClient) GetSprintGroups(boardID int) ([]models.SprintGroup, error) 
 
 	var sprintResp struct {
 		Values []struct {
-			ID    int    `json:"id"`
-			Name  string `json:"name"`
-			State string `json:"state"`
+			ID        int    `json:"id"`
+			Name      string `json:"name"`
+			State     string `json:"state"`
+			StartDate string `json:"startDate"`
+			EndDate   string `json:"endDate"`
 		} `json:"values"`
 	}
 	if err := json.Unmarshal(body, &sprintResp); err != nil {
@@ -787,7 +789,13 @@ func (c *jiraClient) GetSprintGroups(boardID int) ([]models.SprintGroup, error) 
 				return
 			}
 			groups[i] = models.SprintGroup{
-				Sprint: models.Sprint{ID: sp.ID, Name: sp.Name, State: sp.State},
+				Sprint: models.Sprint{
+					ID:        sp.ID,
+					Name:      sp.Name,
+					State:     sp.State,
+					StartDate: trimDateStr(sp.StartDate),
+					EndDate:   trimDateStr(sp.EndDate),
+				},
 				Issues: issues,
 			}
 		}()
@@ -1095,4 +1103,12 @@ func (c *jiraClient) MoveIssuesToBacklog(keys []string) error {
 	}
 	_, err = c.client.Do(req, nil)
 	return err
+}
+
+// trimDateStr trims a Jira date/datetime string to just the YYYY-MM-DD part.
+func trimDateStr(s string) string {
+	if len(s) >= 10 {
+		return s[:10]
+	}
+	return s
 }

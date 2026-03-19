@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/justinmklam/lazyjira/internal/tui"
@@ -183,7 +184,6 @@ func (m blModel) renderSprintRow(row blRow, isSelected bool, activeGroupIdx, wid
 	}
 
 	stateColor := tui.ColorDimmer
-	stateLabel := group.Sprint.State
 	switch group.Sprint.State {
 	case "active":
 		stateColor = tui.ColorGreen
@@ -196,7 +196,15 @@ func (m blModel) renderSprintRow(row blRow, isSelected bool, activeGroupIdx, wid
 	}
 	accentStyle := lipgloss.NewStyle().Foreground(accentColor).Bold(true)
 	accent := accentStyle.Render("▌")
-	stateBadge := lipgloss.NewStyle().Foreground(stateColor).Render(stateLabel)
+
+	// Build date range badge: "Mar 1 – Mar 14" or fall back to state label.
+	var dateBadge string
+	if group.Sprint.StartDate != "" || group.Sprint.EndDate != "" {
+		dateBadge = formatSprintDate(group.Sprint.StartDate) + " – " + formatSprintDate(group.Sprint.EndDate)
+	} else {
+		dateBadge = group.Sprint.State
+	}
+	stateBadge := lipgloss.NewStyle().Foreground(stateColor).Render(dateBadge)
 
 	nameStyle := lipgloss.NewStyle().Bold(true).Foreground(tui.ColorFg)
 	namePart := nameStyle.Render(icon + " " + group.Sprint.Name)
@@ -211,7 +219,7 @@ func (m blModel) renderSprintRow(row blRow, isSelected bool, activeGroupIdx, wid
 	if fillLen < 1 {
 		fillLen = 1
 	}
-	fill := tui.DimStyle.Render(strings.Repeat("─", fillLen))
+	fill := lipgloss.NewStyle().Foreground(accentColor).Render(strings.Repeat("─", fillLen))
 	line := left + " " + fill + " " + count
 
 	if isSelected {
@@ -268,7 +276,7 @@ func (m blModel) renderIssueRow(row blRow, isSelected bool, width int) string {
 		if isCut {
 			cursorStr = bg.Copy().Bold(true).Foreground(tui.ColorOrange).Render("✂ ")
 		} else {
-			cursorStr = bg.Copy().Bold(true).Foreground(tui.ColorBlue).Render("▶ ")
+			cursorStr = bg.Copy().Render("  ")
 		}
 		keyColor := tui.ColorWhite
 		if isChecked {
@@ -411,4 +419,18 @@ func (m blModel) viewParentPicker() string {
 		Render(body)
 
 	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, modal)
+}
+
+
+// formatSprintDate converts "YYYY-MM-DD" to "Jan 2" for compact display.
+// Returns the original string if parsing fails.
+func formatSprintDate(s string) string {
+	if len(s) < 10 {
+		return s
+	}
+	t, err := time.Parse("2006-01-02", s[:10])
+	if err != nil {
+		return s
+	}
+	return t.Format("Jan 2")
 }

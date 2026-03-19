@@ -55,9 +55,11 @@ type Assignee struct {
 }
 
 type Sprint struct {
-	ID    int
-	Name  string
-	State string // active | future | closed
+	ID        int
+	Name      string
+	State     string // active | future | closed
+	StartDate string // ISO date, e.g. "2026-03-01"
+	EndDate   string // ISO date, e.g. "2026-03-14"
 }
 
 type BoardColumn struct {
