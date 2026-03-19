@@ -185,20 +185,6 @@ func (m *editModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "tab":
-			// Accept highlighted suggestion (or first) if any.
-			if m.hasSuggestions() && len(m.suggestions) > 0 {
-				idx := m.suggCursor
-				if idx < 0 {
-					idx = 0
-				}
-				val := m.suggestions[idx]
-				if m.inputs[m.focused].Value() != val {
-					m.inputs[m.focused].SetValue(val)
-					m.suggCursor = -1
-					m.refreshSuggestions()
-					return m, nil
-				}
-			}
 			m.blurFocused()
 			m.focused = (m.focused + 1) % efFieldCount
 			m.focusFocused()
@@ -227,17 +213,24 @@ func (m *editModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "enter":
 			if m.focused < efInputCount {
-				// Accept highlighted suggestion; otherwise advance field.
-				if m.hasSuggestions() && m.suggCursor >= 0 && m.suggCursor < len(m.suggestions) {
-					m.inputs[m.focused].SetValue(m.suggestions[m.suggCursor])
-					m.suggCursor = -1
-					m.refreshSuggestions()
-				} else {
-					m.blurFocused()
-					m.focused = (m.focused + 1) % efFieldCount
-					m.focusFocused()
-					m.refreshSuggestions()
+				// Accept highlighted suggestion (or first) if any; otherwise advance field.
+				if m.hasSuggestions() && len(m.suggestions) > 0 {
+					idx := m.suggCursor
+					if idx < 0 {
+						idx = 0
+					}
+					val := m.suggestions[idx]
+					if m.inputs[m.focused].Value() != val {
+						m.inputs[m.focused].SetValue(val)
+						m.suggCursor = -1
+						m.refreshSuggestions()
+						return m, nil
+					}
 				}
+				m.blurFocused()
+				m.focused = (m.focused + 1) % efFieldCount
+				m.focusFocused()
+				m.refreshSuggestions()
 				return m, nil
 			}
 			// Textareas: fall through so enter inserts a newline.
@@ -403,7 +396,7 @@ func (m *editModel) View() string {
 		msg := lipgloss.NewStyle().Foreground(tui.ColorRed).Bold(true).Render("  Discard unsaved changes? (y/n)")
 		lines = append(lines, msg)
 	} else {
-		lines = append(lines, tui.DimStyle.Render("  tab: next/complete  shift+tab: back  ↑↓: select  ctrl+s: save  esc: cancel"))
+		lines = append(lines, tui.DimStyle.Render("  enter: next/complete  tab: next  shift+tab: back  ↑↓: select  ctrl+s: save  esc: cancel"))
 	}
 
 	// Overlay suggestion panel starting at the focused row.
