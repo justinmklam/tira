@@ -128,9 +128,9 @@ func TestSplitOnSeparator(t *testing.T) {
 
 func TestExtractSummary(t *testing.T) {
 	tests := []struct {
-		name  string
-		body  string
-		want  string
+		name string
+		body string
+		want string
 	}{
 		{"with key prefix", "# PROJ-1: My Summary", "My Summary"},
 		{"without key prefix", "# Summary goes here", "Summary goes here"},

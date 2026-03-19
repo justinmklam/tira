@@ -1,6 +1,14 @@
-## Build
+## Build & Quality
 
-- Always run `make build` to verify the go application
+- `make build` — compile the binary
+- `make test` — run all tests
+- `make test-race` — run tests with race detector
+- `make fmt` — format code in-place
+- `make fmt-check` — check formatting without modifying files
+- `make vet` — run go vet
+- `make lint` — run golangci-lint (requires [golangci-lint](https://golangci-lint.run/welcome/install/))
+- `make check` — run all checks (fmt, vet, lint, test) — mirrors CI
+- Always run `make check` before pushing
 
 ## Architecture
 

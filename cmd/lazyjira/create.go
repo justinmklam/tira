@@ -92,4 +92,3 @@ func init() {
 	createCmd.Flags().StringVar(&createParent, "parent", "", "Parent issue key (e.g. MP-42)")
 	rootCmd.AddCommand(createCmd)
 }
-

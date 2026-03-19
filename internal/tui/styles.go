@@ -10,25 +10,25 @@ import (
 var (
 	SpinnerColor = lipgloss.Color("12")
 
-	ColorRed     = lipgloss.Color("9")
-	ColorGreen   = lipgloss.Color("10")
-	ColorYellow  = lipgloss.Color("11")
-	ColorBlue    = lipgloss.Color("12")
-	ColorMagenta = lipgloss.Color("13")
-	ColorOrange  = lipgloss.Color("208")
-	ColorWhite   = lipgloss.Color("15")
-	ColorFg      = lipgloss.Color("252")
+	ColorRed      = lipgloss.Color("9")
+	ColorGreen    = lipgloss.Color("10")
+	ColorYellow   = lipgloss.Color("11")
+	ColorBlue     = lipgloss.Color("12")
+	ColorMagenta  = lipgloss.Color("13")
+	ColorOrange   = lipgloss.Color("208")
+	ColorWhite    = lipgloss.Color("15")
+	ColorFg       = lipgloss.Color("252")
 	ColorFgBright = lipgloss.Color("255")
-	ColorDim     = lipgloss.Color("244")
-	ColorDimmer  = lipgloss.Color("240")
-	ColorBg      = lipgloss.Color("237")
+	ColorDim      = lipgloss.Color("244")
+	ColorDimmer   = lipgloss.Color("240")
+	ColorBg       = lipgloss.Color("237")
 )
 
 // Reusable styles shared across TUI views.
 var (
-	DimStyle     = lipgloss.NewStyle().Foreground(ColorDim)
-	BoldBlue     = lipgloss.NewStyle().Bold(true).Foreground(ColorBlue)
-	SelectedBg   = lipgloss.NewStyle().Background(ColorBg)
+	DimStyle   = lipgloss.NewStyle().Foreground(ColorDim)
+	BoldBlue   = lipgloss.NewStyle().Bold(true).Foreground(ColorBlue)
+	SelectedBg = lipgloss.NewStyle().Background(ColorBg)
 )
 
 // IssueTypeColor returns the terminal color for a given issue type.

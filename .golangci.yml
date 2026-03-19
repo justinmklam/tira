@@ -1,0 +1,37 @@
+run:
+  timeout: 3m
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - unused
+    - gosimple
+    - ineffassign
+    - typecheck
+    - misspell
+    - gocritic
+    - revive
+    - gosec
+
+linters-settings:
+  gocritic:
+    enabled-tags:
+      - diagnostic
+      - performance
+    disabled-checks:
+      - hugeParam # bubbletea models are value types by design
+  revive:
+    rules:
+      - name: exported
+        disabled: true # internal packages don't need doc comments on every export
+  gosec:
+    excludes:
+      - G304 # file path from variable — expected in editor/temp file flow
+
+issues:
+  exclude-dirs:
+    - vendor
+  max-issues-per-linter: 50
+  max-same-issues: 5

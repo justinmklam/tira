@@ -473,8 +473,8 @@ func (c *jiraClient) GetActiveSprint(boardID int) ([]models.Issue, error) {
 		Issues []struct {
 			Key    string `json:"key"`
 			Fields struct {
-				Summary  string `json:"summary"`
-				Status   struct {
+				Summary string `json:"summary"`
+				Status  struct {
 					ID   string `json:"id"`
 					Name string `json:"name"`
 				} `json:"status"`
@@ -670,8 +670,8 @@ func (c *jiraClient) fetchAgileIssues(url, sprintName string) ([]models.Issue, e
 		Issues []struct {
 			Key    string `json:"key"`
 			Fields struct {
-				Summary  string `json:"summary"`
-				Status   struct {
+				Summary string `json:"summary"`
+				Status  struct {
 					ID   string `json:"id"`
 					Name string `json:"name"`
 				} `json:"status"`
@@ -698,7 +698,7 @@ func (c *jiraClient) fetchAgileIssues(url, sprintName string) ([]models.Issue, e
 					} `json:"fields"`
 				} `json:"parent"`
 				// Story points — field ID varies by instance; try both.
-				StoryPoints  *float64 `json:"story_points"`
+				StoryPoints   *float64 `json:"story_points"`
 				CustomField16 *float64 `json:"customfield_10016"`
 			} `json:"fields"`
 		} `json:"issues"`

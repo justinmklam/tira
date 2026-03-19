@@ -45,9 +45,9 @@ type boardModel struct {
 	// Shared data for rebuilding views on refresh/switch.
 	initData boardInitData
 
-	width    int
-	height   int
-	result   boardResult
+	width  int
+	height int
+	result boardResult
 }
 
 var boardCmd = &cobra.Command{

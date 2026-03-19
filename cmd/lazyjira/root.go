@@ -10,8 +10,8 @@ import (
 )
 
 var (
-	debug  bool
-	cfg    *config.Config
+	debug bool
+	cfg   *config.Config
 )
 
 var rootCmd = &cobra.Command{

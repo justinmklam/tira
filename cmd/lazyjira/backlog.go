@@ -74,7 +74,7 @@ type blModel struct {
 	selected     map[string]bool // issue keys marked with spacebar
 	cutKeys      map[string]bool // issue keys marked for move with 'x'
 	visualMode   bool
-	visualAnchor int // row index where 'v' was pressed
+	visualAnchor int  // row index where 'v' was pressed
 	moving       bool // true while a move API call is in flight
 
 	result   blResult
