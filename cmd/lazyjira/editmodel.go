@@ -56,6 +56,9 @@ type editModel struct {
 	origAssignee   string
 	origAssigneeID string
 
+	initialState editFormState
+	confirmAbort bool
+
 	width    int
 	height   int
 	taHeight int
@@ -103,6 +106,8 @@ func newEditModel(issue *models.Issue, valid *models.ValidValues, width, height 
 	m.acTA.SetValue(issue.AcceptanceCriteria)
 	m.acTA.ShowLineNumbers = false
 
+	m.initialState = m.currentState()
+
 	m.setSize(width, height)
 	m.inputs[0].Focus()
 	m.refreshSuggestions()
@@ -147,9 +152,25 @@ func (m *editModel) Init() tea.Cmd { return textinput.Blink }
 
 func (m *editModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if key, ok := msg.(tea.KeyMsg); ok {
+		if m.confirmAbort {
+			switch key.String() {
+			case "y", "enter":
+				m.aborted = true
+				return m, nil
+			case "n", "esc":
+				m.confirmAbort = false
+				return m, nil
+			}
+			return m, nil
+		}
+
 		switch key.String() {
 		case "esc":
-			m.aborted = true
+			if m.isDirty() {
+				m.confirmAbort = true
+			} else {
+				m.aborted = true
+			}
 			return m, nil
 
 		case "shift+tab":
@@ -303,6 +324,19 @@ func (m *editModel) refreshSuggestions() {
 	}
 }
 
+func (m *editModel) isDirty() bool {
+	curr := m.currentState()
+	init := m.initialState
+	return curr.summary != init.summary ||
+		curr.issueType != init.issueType ||
+		curr.priority != init.priority ||
+		curr.assignee != init.assignee ||
+		curr.storyPoints != init.storyPoints ||
+		curr.labels != init.labels ||
+		curr.description != init.description ||
+		curr.acceptanceCriteria != init.acceptanceCriteria
+}
+
 func (m *editModel) validate() string {
 	if strings.TrimSpace(m.inputs[efSummary].Value()) == "" {
 		return "Summary cannot be empty"
@@ -365,10 +399,15 @@ func (m *editModel) View() string {
 	}
 
 	lines = append(lines, "")
-	lines = append(lines, tui.DimStyle.Render("  tab: next/complete  shift+tab: back  ↑↓: select  ctrl+s: save  esc: cancel"))
+	if m.confirmAbort {
+		msg := lipgloss.NewStyle().Foreground(tui.ColorRed).Bold(true).Render("  Discard unsaved changes? (y/n)")
+		lines = append(lines, msg)
+	} else {
+		lines = append(lines, tui.DimStyle.Render("  tab: next/complete  shift+tab: back  ↑↓: select  ctrl+s: save  esc: cancel"))
+	}
 
 	// Overlay suggestion panel starting at the focused row.
-	if m.hasSuggestions() && len(m.suggestions) > 0 && panelW > 0 {
+	if !m.confirmAbort && m.hasSuggestions() && len(m.suggestions) > 0 && panelW > 0 {
 		show := min(10, len(m.suggestions))
 		innerW := panelW - 2 // content width inside border
 
