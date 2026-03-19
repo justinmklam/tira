@@ -10,8 +10,9 @@ import (
 )
 
 var (
-	debug bool
-	cfg   *config.Config
+	debug   bool
+	profile string
+	cfg     *config.Config
 )
 
 var rootCmd = &cobra.Command{
@@ -26,18 +27,19 @@ var rootCmd = &cobra.Command{
 		}
 
 		var err error
-		cfg, err = config.Load()
+		cfg, err = config.Load(profile)
 		if err != nil {
 			return fmt.Errorf("%w", err)
 		}
 
-		log.Debug("config loaded", "url", cfg.JiraURL, "project", cfg.Project)
+		log.Debug("config loaded", "profile", profile, "url", cfg.JiraURL, "project", cfg.Project)
 		return nil
 	},
 }
 
 func init() {
 	rootCmd.PersistentFlags().BoolVar(&debug, "debug", false, "enable debug logging")
+	rootCmd.PersistentFlags().StringVar(&profile, "profile", "default", "config profile to use")
 }
 
 func Execute() {

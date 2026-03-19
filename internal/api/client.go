@@ -64,7 +64,9 @@ func (c *jiraClient) GetIssue(key string) (*models.Issue, error) {
 		Summary:   issue.Fields.Summary,
 		Status:    issue.Fields.Status.Name,
 		IssueType: issue.Fields.Type.Name,
-		Priority:  issue.Fields.Priority.Name,
+	}
+	if issue.Fields.Priority != nil {
+		result.Priority = issue.Fields.Priority.Name
 	}
 
 	if issue.Fields.Assignee != nil {

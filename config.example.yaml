@@ -1,2 +1,13 @@
-default_project: MYPROJ
-default_board_id: 42
+profiles:
+  default:
+    jira_url: https://your-domain.atlassian.net
+    email: your-email@example.com
+    token: your-api-token
+    project: MYPROJ
+    board_id: 42
+  dev:
+    jira_url: https://dev-domain.atlassian.net
+    email: dev-email@example.com
+    token: dev-api-token
+    project: DEVPROJ
+    board_id: 43

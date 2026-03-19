@@ -6,8 +6,8 @@ A lazygit-style CLI for Jira, built in Go with Charm tooling. This project provi
 - View and edit Jira issues from the terminal
 - List active sprints and backlog
 - Create new issues with a markdown template
-- Fast, stateless auth via environment variables
-- Designed for extension into a full TUI
+- Supports multiple configuration profiles
+- Fast, stateless auth via config file
 
 ## Getting Started
 
@@ -25,23 +25,30 @@ go build -o lazyjira ./cmd/lazyjira
 ```
 
 ### Configuration
-Set the following environment variables (add to your shell profile):
-
-```sh
-export JIRA_URL=https://yourorg.atlassian.net
-export JIRA_EMAIL=you@example.com
-export JIRA_API_TOKEN=your_token_here
-```
-
-Optionally, create `~/.config/lazyjira/config.yaml` for non-sensitive defaults:
+Create `~/.config/lazyjira/config.yaml` and add your profile(s):
 
 ```yaml
-default_project: MYPROJ
-default_board_id: 42
+profiles:
+  default:
+    jira_url: https://yourorg.atlassian.net
+    email: you@example.com
+    token: your_token_here
+    project: MYPROJ
+    board_id: 42
+  dev:
+    jira_url: https://dev-domain.atlassian.net
+    email: dev-email@example.com
+    token: dev-api-token
+    project: DEVPROJ
+    board_id: 43
 ```
 
 ### Usage
 
+- Use a specific profile (defaults to `default`):
+  ```sh
+  ./lazyjira --profile dev list
+  ```
 - View an issue:
   ```sh
   ./lazyjira get MP-101
@@ -64,6 +71,7 @@ default_board_id: 42
   ```
 
 ### Flags
+- `--profile <name>` to select a config profile (default: `default`)
 - `--debug` for verbose logging
 - `--no-color` to disable color output
 
