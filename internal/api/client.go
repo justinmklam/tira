@@ -232,6 +232,11 @@ func (c *jiraClient) UpdateIssue(key string, fields models.IssueFields) error {
 		"fields": map[string]any{},
 	}
 	f := payload["fields"].(map[string]any)
+
+	// Fetch field IDs for this issue so we can resolve custom fields like
+	// "Acceptance Criteria" and "Story Points".
+	nameToID, _ := c.fetchFieldIDs(key)
+
 	if fields.Summary != "" {
 		f["summary"] = fields.Summary
 	}
@@ -247,9 +252,28 @@ func (c *jiraClient) UpdateIssue(key string, fields models.IssueFields) error {
 	if fields.Description != "" {
 		f["description"] = markdownToADF(fields.Description)
 	}
-	if fields.StoryPoints > 0 {
-		f["story_points"] = fields.StoryPoints
+
+	// Acceptance Criteria
+	if fields.AcceptanceCriteria != "" && nameToID != nil {
+		for _, candidate := range []string{"acceptance criteria", "acceptance criterion"} {
+			if id, ok := nameToID[candidate]; ok {
+				f[id] = markdownToADF(fields.AcceptanceCriteria)
+				break
+			}
+		}
 	}
+
+	// Story Points
+	if fields.StoryPoints > 0 {
+		if id, ok := nameToID["story points"]; ok {
+			f[id] = fields.StoryPoints
+		} else if id, ok := nameToID["story point estimate"]; ok {
+			f[id] = fields.StoryPoints
+		} else {
+			f["story_points"] = fields.StoryPoints // fallback
+		}
+	}
+
 	if len(fields.Labels) > 0 {
 		f["labels"] = fields.Labels
 	}
@@ -274,6 +298,32 @@ func (c *jiraClient) UpdateIssue(key string, fields models.IssueFields) error {
 		return fmt.Errorf("update issue %s: HTTP %d: %s", key, resp.StatusCode, string(b))
 	}
 	return nil
+}
+
+func (c *jiraClient) fetchFieldIDs(key string) (map[string]string, error) {
+	url := fmt.Sprintf("%s/rest/api/3/issue/%s?expand=names", c.baseURL, key)
+	resp, err := c.http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+
+	var raw struct {
+		Names map[string]string `json:"names"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		return nil, err
+	}
+
+	nameToID := make(map[string]string, len(raw.Names))
+	for id, name := range raw.Names {
+		nameToID[strings.ToLower(name)] = id
+	}
+	return nameToID, nil
 }
 
 // markdownToADF wraps plain text/markdown as a minimal ADF paragraph doc.
@@ -302,6 +352,11 @@ func (c *jiraClient) CreateIssue(projectKey string, fields models.IssueFields) (
 		"summary":   fields.Summary,
 		"issuetype": map[string]any{"name": fields.IssueType},
 	}
+
+	// Fetch all field IDs so we can resolve custom fields like
+	// "Acceptance Criteria" and "Story Points".
+	nameToID, _ := c.fetchAllFieldIDs()
+
 	if fields.Priority != "" {
 		f["priority"] = map[string]any{"name": fields.Priority}
 	}
@@ -311,9 +366,28 @@ func (c *jiraClient) CreateIssue(projectKey string, fields models.IssueFields) (
 	if fields.Description != "" {
 		f["description"] = markdownToADF(fields.Description)
 	}
-	if fields.StoryPoints > 0 {
-		f["story_points"] = fields.StoryPoints
+
+	// Acceptance Criteria
+	if fields.AcceptanceCriteria != "" && nameToID != nil {
+		for _, candidate := range []string{"acceptance criteria", "acceptance criterion"} {
+			if id, ok := nameToID[candidate]; ok {
+				f[id] = markdownToADF(fields.AcceptanceCriteria)
+				break
+			}
+		}
 	}
+
+	// Story Points
+	if fields.StoryPoints > 0 {
+		if id, ok := nameToID["story points"]; ok {
+			f[id] = fields.StoryPoints
+		} else if id, ok := nameToID["story point estimate"]; ok {
+			f[id] = fields.StoryPoints
+		} else {
+			f["story_points"] = fields.StoryPoints // fallback
+		}
+	}
+
 	if len(fields.Labels) > 0 {
 		f["labels"] = fields.Labels
 	}
@@ -353,6 +427,33 @@ func (c *jiraClient) CreateIssue(projectKey string, fields models.IssueFields) (
 	}
 
 	return &models.Issue{Key: created.Key}, nil
+}
+
+func (c *jiraClient) fetchAllFieldIDs() (map[string]string, error) {
+	url := fmt.Sprintf("%s/rest/api/3/field", c.baseURL)
+	resp, err := c.http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+
+	var fields []struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&fields); err != nil {
+		return nil, err
+	}
+
+	nameToID := make(map[string]string, len(fields))
+	for _, f := range fields {
+		nameToID[strings.ToLower(f.Name)] = f.ID
+	}
+	return nameToID, nil
 }
 
 func (c *jiraClient) GetValidValues(projectKey string) (*models.ValidValues, error) {
