@@ -7,6 +7,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/justinmklam/lazyjira/internal/api"
 	"github.com/justinmklam/lazyjira/internal/models"
+	"github.com/justinmklam/lazyjira/internal/tui"
 	"github.com/justinmklam/lazyjira/internal/validator"
 )
 
@@ -128,6 +129,29 @@ func saveCreateCmd(client api.Client, projectKey string, fields models.IssueFiel
 		}
 		return createSaveDoneMsg{issue: issue, err: err}
 	}
+}
+
+// newAssigneePicker builds a PickerModel backed by a debounced assignee search.
+// projectKey may be derived from an issue key (e.g. "PROJ-1" → "PROJ").
+func newAssigneePicker(client api.Client, projectKey string) tui.PickerModel {
+	search := func(query string) ([]tui.PickerItem, error) {
+		assignees, err := client.SearchAssignees(projectKey, query)
+		if err != nil {
+			return nil, err
+		}
+		items := make([]tui.PickerItem, len(assignees))
+		for i, a := range assignees {
+			items[i] = tui.PickerItem{
+				Label:    a.DisplayName,
+				SubLabel: a.AccountID,
+				Value:    a.AccountID,
+			}
+		}
+		return items, nil
+	}
+	m := tui.NewPickerModel(search)
+	m.NoneItem = &tui.PickerItem{Label: "(none)", SubLabel: "unassign"}
+	return m
 }
 
 // blankIssueFromValid returns a blank issue pre-filled with default type and priority.

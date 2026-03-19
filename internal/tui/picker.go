@@ -76,10 +76,16 @@ func (m *PickerModel) Init() tea.Cmd {
 	return tea.Batch(m.Input.Focus(), m.dispatchSearch(""))
 }
 
+// noneVisible reports whether the NoneItem should currently be shown.
+// It is hidden whenever the user has typed a query.
+func (m PickerModel) noneVisible() bool {
+	return m.NoneItem != nil && m.Input.Value() == ""
+}
+
 // SelectedItem returns the highlighted item, or nil if NoneItem is selected.
 func (m PickerModel) SelectedItem() *PickerItem {
 	offset := 0
-	if m.NoneItem != nil {
+	if m.noneVisible() {
 		offset = 1
 	}
 	idx := m.Cursor - offset
@@ -92,7 +98,7 @@ func (m PickerModel) SelectedItem() *PickerItem {
 
 func (m *PickerModel) totalRows() int {
 	n := len(m.Items)
-	if m.NoneItem != nil {
+	if m.noneVisible() {
 		n++
 	}
 	return n
@@ -170,6 +176,7 @@ func (m PickerModel) Update(msg tea.Msg) (PickerModel, tea.Cmd) {
 	var cmd tea.Cmd
 	m.Input, cmd = m.Input.Update(msg)
 	if newVal := m.Input.Value(); newVal != prev {
+		m.Cursor = 0
 		m.debounceToken++
 		debTok := m.debounceToken
 		query := newVal
@@ -202,7 +209,7 @@ func (m PickerModel) View(innerW, maxListRows int) string {
 		// Build display entries: optional NoneItem followed by results.
 		type entry struct{ label, subLabel string }
 		var entries []entry
-		if m.NoneItem != nil {
+		if m.noneVisible() {
 			entries = append(entries, entry{m.NoneItem.Label, m.NoneItem.SubLabel})
 		}
 		for _, item := range m.Items {
@@ -222,10 +229,16 @@ func (m PickerModel) View(innerW, maxListRows int) string {
 				end = len(entries)
 			}
 
-			keyW := 14
-			subW := innerW - keyW - 5
-			if subW < 8 {
-				subW = 8
+			// Label gets 2/3 of usable width, subLabel gets the rest.
+			// "  " prefix (2) + " " separator (1) = 3 chars overhead per row.
+			usable := innerW - 3
+			keyW := usable * 2 / 5
+			subW := usable - keyW
+			if keyW < 8 {
+				keyW = 8
+			}
+			if subW < 4 {
+				subW = 4
 			}
 
 			for i := start; i < end; i++ {

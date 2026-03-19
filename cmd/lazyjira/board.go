@@ -27,7 +27,8 @@ const (
 	viewEditSaving    // API call in flight
 	viewCreateLoading // fetching valid values for new issue
 	viewCreate        // create form active
-	viewCreateSaving  // create API call in flight
+	viewCreateSaving   // create API call in flight
+	viewAssigneePicker // assignee fuzzy picker (edit form or direct assignment)
 )
 
 // boardInitData holds the initial fetch results needed by both views.
@@ -70,6 +71,10 @@ type boardModel struct {
 	// In-TUI create state.
 	createSprintID  int
 	createResultKey string // key of newly created issue; used to navigate after refresh
+
+	// In-TUI assignee picker state.
+	assigneePicker  tui.PickerModel
+	assigneeForEdit bool // true = inject result into editForm; false = used externally
 }
 
 var boardCmd = &cobra.Command{
@@ -174,7 +179,7 @@ func newBoardModel(client api.Client, boardID int, jiraURL, project string, clas
 	return boardModel{
 		activeView:     startView,
 		backlog:        newBacklogModel(client, data.groups, project),
-		kanban:         newKanbanModel(client, data.boardCols, issues, sprintName),
+		kanban:         newKanbanModel(client, data.boardCols, issues, sprintName, project),
 		client:         client,
 		boardID:        boardID,
 		jiraURL:        strings.TrimRight(jiraURL, "/"),
@@ -264,6 +269,20 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.activeView = m.prevView
 			m.editForm = nil
 		}
+		if m.editForm != nil && m.editForm.wantAssigneePicker {
+			m.editForm.wantAssigneePicker = false
+			projectKey := m.project
+			if projectKey == "" {
+				if idx := strings.Index(m.editKey, "-"); idx > 0 {
+					projectKey = m.editKey[:idx]
+				}
+			}
+			m.assigneePicker = newAssigneePicker(m.client, projectKey)
+			m.assigneeForEdit = true
+			m.prevView = m.activeView
+			m.activeView = viewAssigneePicker
+			return m, m.assigneePicker.Init()
+		}
 		return m, cmd
 
 	case viewEditSaving:
@@ -325,6 +344,20 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.activeView = m.prevView
 			m.editForm = nil
 		}
+		if m.editForm != nil && m.editForm.wantAssigneePicker {
+			m.editForm.wantAssigneePicker = false
+			projectKey := m.project
+			if projectKey == "" {
+				if idx := strings.Index(m.editKey, "-"); idx > 0 {
+					projectKey = m.editKey[:idx]
+				}
+			}
+			m.assigneePicker = newAssigneePicker(m.client, projectKey)
+			m.assigneeForEdit = true
+			m.prevView = m.activeView
+			m.activeView = viewAssigneePicker
+			return m, m.assigneePicker.Init()
+		}
 		return m, cmd
 
 	case viewCreateSaving:
@@ -346,10 +379,36 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.refreshCmd()
 		}
 		return m, nil
+
+	case viewAssigneePicker:
+		if key, ok := msg.(tea.KeyMsg); ok && key.String() == "ctrl+c" {
+			m.activeView = m.prevView
+			m.editForm = nil
+			return m, nil
+		}
+		updated, cmd := m.assigneePicker.Update(msg)
+		m.assigneePicker = updated
+		if m.assigneePicker.Aborted {
+			m.activeView = m.prevView
+			return m, nil
+		}
+		if m.assigneePicker.Completed {
+			item := m.assigneePicker.SelectedItem()
+			if m.assigneeForEdit && m.editForm != nil {
+				if item != nil {
+					m.editForm.setAssignee(item.Label, item.Value)
+				} else {
+					m.editForm.setAssignee("", "")
+				}
+				m.activeView = m.prevView
+				return m, nil
+			}
+		}
+		return m, cmd
 	}
 
-	// Open in browser.
-	if key, ok := msg.(tea.KeyMsg); ok && key.String() == "o" {
+	// Open in browser (only when sub-model is in its base navigation state).
+	if key, ok := msg.(tea.KeyMsg); ok && key.String() == "o" && m.canSwitchView() {
 		var issueKey string
 		switch m.activeView {
 		case viewBacklog:
@@ -444,6 +503,10 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.activeView = viewEditLoading
 			return m, tea.Batch(m.editSpinner.Tick, fetchEditDataCmd(m.client, key))
 		}
+		if m.kanban.result.refresh {
+			m.kanban.result.refresh = false
+			return m, m.refreshCmd()
+		}
 		return m, cmd
 	}
 
@@ -526,6 +589,9 @@ func (m boardModel) View() string {
 		msg := m.editSpinner.View() + tui.DimStyle.Render(" Creating issue…")
 		return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, msg)
 
+	case viewAssigneePicker:
+		return m.viewAssigneePickerOverlay(w, h)
+
 	case viewKanban:
 		return m.kanban.View()
 
@@ -600,6 +666,40 @@ func openInBrowserCmd(url string) tea.Cmd {
 		_ = cmd.Start()
 		return nil
 	}
+}
+
+func (m boardModel) viewAssigneePickerOverlay(w, h int) string {
+	pickerW := w * 2 / 3
+	if pickerW < 52 {
+		pickerW = 52
+	}
+	if pickerW > 90 {
+		pickerW = 90
+	}
+	innerW := pickerW - 2
+
+	header := tui.BoldBlue.Copy().Padding(0, 1).Width(innerW).
+		Render(tui.FixedWidth("Set Assignee", innerW-2))
+
+	listH := h/2 - 6
+	if listH < 4 {
+		listH = 4
+	}
+
+	footer := tui.DimStyle.Render("  ↑/↓ ctrl+p/n: navigate   enter: select   esc: cancel")
+
+	body := header + "\n" +
+		m.assigneePicker.View(innerW, listH) + "\n" +
+		tui.DimStyle.Render(strings.Repeat("─", innerW)) + "\n" +
+		footer
+
+	modal := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(tui.ColorBlue).
+		Width(innerW).
+		Render(body)
+
+	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, modal)
 }
 
 func runBoardTUI(client api.Client, boardID int, data boardInitData, startView boardView) error {

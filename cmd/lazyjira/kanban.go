@@ -23,6 +23,7 @@ const (
 	stateBoard   kanbanState = iota
 	stateLoading             // fetching full issue for detail view
 	stateDetail
+	stateAssignPicker
 )
 
 type kanbanColumn struct {
@@ -37,11 +38,15 @@ type issueFetchedMsg struct {
 
 type kanbanResult struct {
 	editKey string // non-empty when the user pressed e
+	refresh bool
 }
+
+type kanbanAssignDoneMsg struct{ err error }
 
 type kanbanModel struct {
 	state    kanbanState
 	client   api.Client
+	project  string
 	width    int
 	height   int
 	quitting bool
@@ -59,6 +64,10 @@ type kanbanModel struct {
 	// Detail state
 	detailIssue *models.Issue
 	detailView  viewport.Model
+
+	// Assignee picker state
+	assignPicker     tui.PickerModel
+	assignTargetKeys []string
 }
 
 // buildColumns maps sprint issues into the board's fixed column order.
@@ -86,7 +95,7 @@ func buildColumns(boardCols []models.BoardColumn, issues []models.Issue) []kanba
 	return cols
 }
 
-func newKanbanModel(client api.Client, boardCols []models.BoardColumn, issues []models.Issue, sprintName string) kanbanModel {
+func newKanbanModel(client api.Client, boardCols []models.BoardColumn, issues []models.Issue, sprintName, project string) kanbanModel {
 	cols := buildColumns(boardCols, issues)
 	s := spinner.New()
 	s.Spinner = spinner.Dot
@@ -94,6 +103,7 @@ func newKanbanModel(client api.Client, boardCols []models.BoardColumn, issues []
 	return kanbanModel{
 		state:       stateBoard,
 		client:      client,
+		project:     project,
 		columns:     cols,
 		rowIdxs:     make([]int, len(cols)),
 		sprintName:  sprintName,
@@ -169,6 +179,12 @@ func (m kanbanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 		return m, nil
+
+	case kanbanAssignDoneMsg:
+		if msg.err == nil {
+			m.result.refresh = true
+		}
+		return m, nil
 	}
 
 	switch m.state {
@@ -176,6 +192,8 @@ func (m kanbanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateBoard(msg)
 	case stateDetail:
 		return m.updateDetail(msg)
+	case stateAssignPicker:
+		return m.updateAssignPicker(msg)
 	}
 	return m, nil
 }
@@ -216,6 +234,19 @@ func (m kanbanModel) updateBoard(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.result = kanbanResult{editKey: issue.Key}
 			return m, nil
 		}
+	case "A":
+		if issue := m.currentIssue(); issue != nil {
+			projectKey := m.project
+			if projectKey == "" {
+				if idx := strings.Index(issue.Key, "-"); idx > 0 {
+					projectKey = issue.Key[:idx]
+				}
+			}
+			m.assignTargetKeys = []string{issue.Key}
+			m.assignPicker = newAssigneePicker(m.client, projectKey)
+			m.state = stateAssignPicker
+			return m, m.assignPicker.Init()
+		}
 	}
 	return m, nil
 }
@@ -242,6 +273,43 @@ func (m kanbanModel) updateDetail(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+func (m kanbanModel) updateAssignPicker(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if key, ok := msg.(tea.KeyMsg); ok && key.String() == "ctrl+c" {
+		m.quitting = true
+		return m, nil
+	}
+	updated, cmd := m.assignPicker.Update(msg)
+	m.assignPicker = updated
+	if m.assignPicker.Aborted {
+		m.state = stateBoard
+		m.assignTargetKeys = nil
+		return m, nil
+	}
+	if m.assignPicker.Completed {
+		item := m.assignPicker.SelectedItem()
+		var accountID string
+		if item != nil {
+			accountID = item.Value
+		}
+		keys := m.assignTargetKeys
+		m.state = stateBoard
+		m.assignTargetKeys = nil
+		return m, kanbanAssignCmd(m.client, keys, accountID)
+	}
+	return m, cmd
+}
+
+func kanbanAssignCmd(client api.Client, keys []string, accountID string) tea.Cmd {
+	return func() tea.Msg {
+		for _, k := range keys {
+			if err := client.SetAssignee(k, accountID); err != nil {
+				return kanbanAssignDoneMsg{err: err}
+			}
+		}
+		return kanbanAssignDoneMsg{}
+	}
+}
+
 func fetchIssueCmd(client api.Client, key string) tea.Cmd {
 	return func() tea.Msg {
 		issue, err := client.GetIssue(key)
@@ -253,9 +321,54 @@ func (m kanbanModel) View() string {
 	switch m.state {
 	case stateDetail:
 		return m.viewDetail()
+	case stateAssignPicker:
+		return m.viewAssignPicker()
 	default:
 		return m.viewBoard()
 	}
+}
+
+func (m kanbanModel) viewAssignPicker() string {
+	width := m.width
+	if width == 0 {
+		width = 120
+	}
+	height := m.height
+	if height == 0 {
+		height = 40
+	}
+
+	pickerW := width * 2 / 3
+	if pickerW < 52 {
+		pickerW = 52
+	}
+	if pickerW > 90 {
+		pickerW = 90
+	}
+	innerW := pickerW - 2
+
+	header := tui.BoldBlue.Copy().Padding(0, 1).Width(innerW).
+		Render(tui.FixedWidth("Set Assignee", innerW-2))
+
+	listH := height/2 - 6
+	if listH < 4 {
+		listH = 4
+	}
+
+	footer := tui.DimStyle.Render("  ↑/↓ ctrl+p/n: navigate   enter: select   esc: cancel")
+
+	body := header + "\n" +
+		m.assignPicker.View(innerW, listH) + "\n" +
+		tui.DimStyle.Render(strings.Repeat("─", innerW)) + "\n" +
+		footer
+
+	modal := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(tui.ColorBlue).
+		Width(innerW).
+		Render(body)
+
+	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, modal)
 }
 
 func (m kanbanModel) viewDetail() string {

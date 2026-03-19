@@ -31,6 +31,8 @@ type Client interface {
 	MoveIssuesToBacklog(keys []string) error
 	RankIssues(keys []string, rankAfterKey, rankBeforeKey string) error
 	SetParent(issueKey, parentKey string) error
+	SearchAssignees(projectKey, query string) ([]models.Assignee, error)
+	SetAssignee(issueKey, accountID string) error
 }
 
 type jiraClient struct {
@@ -988,6 +990,70 @@ func (c *jiraClient) SetParent(issueKey, parentKey string) error {
 	if resp.StatusCode >= 300 {
 		b, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("set parent %s: HTTP %d: %s", issueKey, resp.StatusCode, string(b))
+	}
+	return nil
+}
+
+func (c *jiraClient) SearchAssignees(projectKey, query string) ([]models.Assignee, error) {
+	apiURL := fmt.Sprintf("%s/rest/api/3/user/assignable/search?project=%s&maxResults=20",
+		c.baseURL, url.QueryEscape(projectKey))
+	if query != "" {
+		apiURL += "&query=" + url.QueryEscape(query)
+	}
+	resp, err := c.http.Get(apiURL)
+	if err != nil {
+		return nil, fmt.Errorf("searching assignees: %w", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("assignees: HTTP %d: %s", resp.StatusCode, string(body))
+	}
+	var users []struct {
+		DisplayName string `json:"displayName"`
+		AccountID   string `json:"accountId"`
+	}
+	if err := json.Unmarshal(body, &users); err != nil {
+		return nil, fmt.Errorf("parsing assignees: %w", err)
+	}
+	result := make([]models.Assignee, len(users))
+	for i, u := range users {
+		result[i] = models.Assignee{DisplayName: u.DisplayName, AccountID: u.AccountID}
+	}
+	return result, nil
+}
+
+func (c *jiraClient) SetAssignee(issueKey, accountID string) error {
+	var assigneeField any
+	if accountID != "" {
+		assigneeField = map[string]any{"accountId": accountID}
+	}
+	payload := map[string]any{
+		"fields": map[string]any{
+			"assignee": assigneeField,
+		},
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	apiURL := fmt.Sprintf("%s/rest/api/3/issue/%s", c.baseURL, issueKey)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPut, apiURL, strings.NewReader(string(body)))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		b, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("set assignee %s: HTTP %d: %s", issueKey, resp.StatusCode, string(b))
 	}
 	return nil
 }

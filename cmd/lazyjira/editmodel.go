@@ -65,6 +65,8 @@ type editModel struct {
 	completed bool
 	aborted   bool
 	validErr  string
+
+	wantAssigneePicker bool
 }
 
 func newEditModel(issue *models.Issue, valid *models.ValidValues, width, height int) *editModel {
@@ -213,6 +215,11 @@ func (m *editModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "enter":
 			if m.focused < efInputCount {
+				// Assignee field: open picker instead of advancing.
+				if m.focused == efAssignee {
+					m.wantAssigneePicker = true
+					return m, nil
+				}
 				// Accept highlighted suggestion (or first) if any; otherwise advance field.
 				if m.hasSuggestions() && len(m.suggestions) > 0 {
 					idx := m.suggCursor
@@ -355,6 +362,12 @@ func (m *editModel) currentState() editFormState {
 		description:        m.descTA.Value(),
 		acceptanceCriteria: m.acTA.Value(),
 	}
+}
+
+func (m *editModel) setAssignee(displayName, accountID string) {
+	m.inputs[efAssignee].SetValue(displayName)
+	m.origAssignee = displayName
+	m.origAssigneeID = accountID
 }
 
 func (m *editModel) View() string {

@@ -25,6 +25,7 @@ const (
 	blDetail
 	blFilter
 	blParentPicker // floating parent/epic picker
+	blAssignPicker // floating assignee picker
 )
 
 type blRowKind int
@@ -59,6 +60,8 @@ type blRankDoneMsg struct{ err error }
 
 type blParentAssignDoneMsg struct{ err error }
 
+type blAssignDoneMsg struct{ err error }
+
 type blModel struct {
 	state   blState
 	client  api.Client
@@ -89,6 +92,10 @@ type blModel struct {
 	// parent picker state
 	parentPicker     tui.PickerModel
 	parentTargetKeys []string
+
+	// assignee picker state
+	assignPicker     tui.PickerModel
+	assignTargetKeys []string
 
 	result   blResult
 	quitting bool
@@ -370,6 +377,12 @@ func (m blModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.result.refresh = true
 		}
 		return m, nil
+
+	case blAssignDoneMsg:
+		if msg.err == nil {
+			m.result.refresh = true
+		}
+		return m, nil
 	}
 
 	switch m.state {
@@ -381,6 +394,8 @@ func (m blModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateDetail(msg)
 	case blParentPicker:
 		return m.updateParentPicker(msg)
+	case blAssignPicker:
+		return m.updateAssignPicker(msg)
 	}
 	return m, nil
 }
@@ -644,7 +659,7 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case "A":
+	case "C":
 		for i, g := range m.groups {
 			if g.Sprint.State == "backlog" {
 				m.result = blResult{create: true, createSprintID: 0, createGroupIdx: i}
@@ -670,6 +685,22 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.parentPicker = blNewParentPicker(m.client, projectKey)
 		m.state = blParentPicker
 		return m, m.parentPicker.Init()
+
+	case "A":
+		keys := m.moveKeys()
+		if len(keys) == 0 {
+			return m, nil
+		}
+		projectKey := m.project
+		if projectKey == "" && len(keys) > 0 {
+			if idx := strings.Index(keys[0], "-"); idx > 0 {
+				projectKey = keys[0][:idx]
+			}
+		}
+		m.assignTargetKeys = keys
+		m.assignPicker = newAssigneePicker(m.client, projectKey)
+		m.state = blAssignPicker
+		return m, m.assignPicker.Init()
 	}
 
 	return m, nil
@@ -1002,6 +1033,43 @@ func blNewParentPicker(client api.Client, projectKey string) tui.PickerModel {
 	m := tui.NewPickerModel(search)
 	m.NoneItem = &tui.PickerItem{Label: "(none)", SubLabel: "clear parent"}
 	return m
+}
+
+func (m blModel) updateAssignPicker(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if key, ok := msg.(tea.KeyMsg); ok && key.String() == "ctrl+c" {
+		m.quitting = true
+		return m, nil
+	}
+	updated, cmd := m.assignPicker.Update(msg)
+	m.assignPicker = updated
+	if m.assignPicker.Aborted {
+		m.state = blList
+		m.assignTargetKeys = nil
+		return m, nil
+	}
+	if m.assignPicker.Completed {
+		item := m.assignPicker.SelectedItem()
+		var accountID string
+		if item != nil {
+			accountID = item.Value
+		}
+		keys := m.assignTargetKeys
+		m.state = blList
+		m.assignTargetKeys = nil
+		return m, blDoAssignCmd(m.client, keys, accountID)
+	}
+	return m, cmd
+}
+
+func blDoAssignCmd(client api.Client, keys []string, accountID string) tea.Cmd {
+	return func() tea.Msg {
+		for _, k := range keys {
+			if err := client.SetAssignee(k, accountID); err != nil {
+				return blAssignDoneMsg{err: err}
+			}
+		}
+		return blAssignDoneMsg{}
+	}
 }
 
 func blAssignParentCmd(client api.Client, keys []string, parentKey string) tea.Cmd {
