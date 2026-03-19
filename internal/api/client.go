@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 
@@ -25,9 +26,11 @@ type Client interface {
 	GetActiveSprint(boardID int) ([]models.Issue, error)
 	GetSprintGroups(boardID int) ([]models.SprintGroup, error)
 	GetBacklog(projectKey string) ([]models.Sprint, error)
+	GetEpics(projectKey string) ([]models.Issue, error)
 	MoveIssuesToSprint(sprintID int, keys []string) error
 	MoveIssuesToBacklog(keys []string) error
 	RankIssues(keys []string, rankAfterKey, rankBeforeKey string) error
+	SetParent(issueKey, parentKey string) error
 }
 
 type jiraClient struct {
@@ -912,6 +915,77 @@ func (c *jiraClient) fetchAgileIssues(url, sprintName string) ([]models.Issue, e
 
 func (c *jiraClient) GetBacklog(projectKey string) ([]models.Sprint, error) {
 	return nil, fmt.Errorf("not implemented")
+}
+
+func (c *jiraClient) GetEpics(projectKey string) ([]models.Issue, error) {
+	jql := url.QueryEscape(fmt.Sprintf(`project="%s" AND issuetype=Epic ORDER BY summary ASC`, projectKey))
+	apiURL := fmt.Sprintf("%s/rest/api/3/search/jql?jql=%s&maxResults=200&fields=summary,issuetype", c.baseURL, jql)
+	resp, err := c.http.Get(apiURL)
+	if err != nil {
+		return nil, fmt.Errorf("fetching epics: %w", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("epics: HTTP %d: %s", resp.StatusCode, string(body))
+	}
+
+	var data struct {
+		Issues []struct {
+			Key    string `json:"key"`
+			Fields struct {
+				Summary string `json:"summary"`
+			} `json:"fields"`
+		} `json:"issues"`
+	}
+	if err := json.Unmarshal(body, &data); err != nil {
+		return nil, fmt.Errorf("parsing epics: %w", err)
+	}
+
+	issues := make([]models.Issue, 0, len(data.Issues))
+	for _, raw := range data.Issues {
+		issues = append(issues, models.Issue{
+			Key:       raw.Key,
+			Summary:   raw.Fields.Summary,
+			IssueType: "Epic",
+		})
+	}
+	return issues, nil
+}
+
+func (c *jiraClient) SetParent(issueKey, parentKey string) error {
+	var parentField any
+	if parentKey != "" {
+		parentField = map[string]any{"key": parentKey}
+	}
+	payload := map[string]any{
+		"fields": map[string]any{
+			"parent": parentField,
+		},
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	apiURL := fmt.Sprintf("%s/rest/api/3/issue/%s", c.baseURL, issueKey)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPut, apiURL, strings.NewReader(string(body)))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		b, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("set parent %s: HTTP %d: %s", issueKey, resp.StatusCode, string(b))
+	}
+	return nil
 }
 
 func (c *jiraClient) MoveIssuesToSprint(sprintID int, keys []string) error {

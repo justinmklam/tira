@@ -1,6 +1,7 @@
 package main
 
 import (
+	"sort"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/spinner"
@@ -13,6 +14,7 @@ import (
 	"github.com/justinmklam/lazyjira/internal/display"
 	"github.com/justinmklam/lazyjira/internal/models"
 	"github.com/justinmklam/lazyjira/internal/tui"
+	"github.com/lithammer/fuzzysearch/fuzzy"
 )
 
 // --- backlog TUI model ---
@@ -20,10 +22,11 @@ import (
 type blState int
 
 const (
-	blList    blState = iota
-	blLoading         // fetching full issue for detail view
+	blList         blState = iota
+	blLoading              // fetching full issue for detail view
 	blDetail
 	blFilter
+	blParentPicker // floating parent/epic picker
 )
 
 type blRowKind int
@@ -56,9 +59,17 @@ type blMoveMultiDoneMsg struct {
 
 type blRankDoneMsg struct{ err error }
 
+type blParentsFetchedMsg struct {
+	parents []models.Issue
+	err     error
+}
+
+type blParentAssignDoneMsg struct{ err error }
+
 type blModel struct {
-	state  blState
-	client api.Client
+	state   blState
+	client  api.Client
+	project string
 
 	groups    []models.SprintGroup
 	rows      []blRow
@@ -81,6 +92,16 @@ type blModel struct {
 	visualMode   bool
 	visualAnchor int  // row index where 'v' was pressed
 	moving       bool // true while a move API call is in flight
+
+	// parent picker state
+	parentList       []models.Issue
+	parentFiltered   []models.Issue
+	parentInput      textinput.Model
+	parentFilter     string
+	parentCursor     int
+	parentLoading    bool
+	parentErr        string
+	parentTargetKeys []string
 
 	result   blResult
 	quitting bool
@@ -110,12 +131,16 @@ func blMatchesFilter(issue models.Issue, filter string) bool {
 		strings.Contains(strings.ToLower(issue.Summary), f)
 }
 
-func newBacklogModel(client api.Client, groups []models.SprintGroup) blModel {
+func newBacklogModel(client api.Client, groups []models.SprintGroup, project string) blModel {
 	collapsed := make(map[int]bool)
 
 	ti := textinput.New()
 	ti.Placeholder = "type to filter…"
 	ti.CharLimit = 60
+
+	pi := textinput.New()
+	pi.Placeholder = "search parents…"
+	pi.CharLimit = 60
 
 	s := spinner.New()
 	s.Spinner = spinner.Dot
@@ -124,9 +149,11 @@ func newBacklogModel(client api.Client, groups []models.SprintGroup) blModel {
 	m := blModel{
 		state:       blList,
 		client:      client,
+		project:     project,
 		groups:      groups,
 		collapsed:   collapsed,
 		filterInput: ti,
+		parentInput: pi,
 		loadSpinner: s,
 		selected:    make(map[string]bool),
 		cutKeys:     make(map[string]bool),
@@ -315,7 +342,7 @@ func (m blModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case spinner.TickMsg:
-		if m.state == blLoading || m.moving {
+		if m.state == blLoading || m.moving || m.state == blParentPicker {
 			var cmd tea.Cmd
 			m.loadSpinner, cmd = m.loadSpinner.Update(msg)
 			return m, cmd
@@ -364,6 +391,8 @@ func (m blModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateFilter(msg)
 	case blDetail:
 		return m.updateDetail(msg)
+	case blParentPicker:
+		return m.updateParentPicker(msg)
 	}
 	return m, nil
 }
@@ -637,6 +666,26 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// No dedicated backlog group; create in backlog (sprint 0).
 		m.result = blResult{create: true, createSprintID: 0, createGroupIdx: 0}
 		return m, nil
+
+	case "P":
+		keys := m.moveKeys()
+		if len(keys) == 0 {
+			return m, nil
+		}
+		projectKey := m.project
+		if projectKey == "" && len(keys) > 0 {
+			if idx := strings.Index(keys[0], "-"); idx > 0 {
+				projectKey = keys[0][:idx]
+			}
+		}
+		m.parentTargetKeys = keys
+		m.parentFilter = ""
+		m.parentInput.SetValue("")
+		m.parentCursor = 0
+		m.parentLoading = true
+		m.parentErr = ""
+		m.state = blParentPicker
+		return m, tea.Batch(m.loadSpinner.Tick, blFetchParentsCmd(m.client, projectKey))
 	}
 
 	return m, nil
@@ -921,4 +970,129 @@ func blReorderUp(issues []models.Issue, moveSet map[string]bool, blockerKey stri
 		}
 	}
 	return issues
+}
+
+func (m blModel) updateParentPicker(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case blParentsFetchedMsg:
+		m.parentLoading = false
+		if msg.err != nil {
+			m.parentErr = msg.err.Error()
+			return m, nil
+		}
+		m.parentList = msg.parents
+		m.parentFiltered = blFilterParents(m.parentList, "")
+		m.parentCursor = 0
+		return m, m.parentInput.Focus()
+
+	case blParentAssignDoneMsg:
+		m.state = blList
+		m.parentTargetKeys = nil
+		if msg.err == nil {
+			m.result.refresh = true
+		}
+		return m, nil
+
+	case spinner.TickMsg:
+		if m.parentLoading {
+			var cmd tea.Cmd
+			m.loadSpinner, cmd = m.loadSpinner.Update(msg)
+			return m, cmd
+		}
+		return m, nil
+	}
+
+	if m.parentLoading {
+		return m, nil
+	}
+
+	key, ok := msg.(tea.KeyMsg)
+	if !ok {
+		var cmd tea.Cmd
+		m.parentInput, cmd = m.parentInput.Update(msg)
+		return m, cmd
+	}
+
+	switch key.String() {
+	case "ctrl+c":
+		m.quitting = true
+		return m, nil
+
+	case "esc":
+		m.state = blList
+		m.parentInput.Blur()
+		m.parentTargetKeys = nil
+		m.parentErr = ""
+		return m, nil
+
+	case "j", "down":
+		// 0 = "(none)", 1..len(parentFiltered) = actual parents
+		max := len(m.parentFiltered)
+		if m.parentCursor < max {
+			m.parentCursor++
+		}
+		return m, nil
+
+	case "k", "up":
+		if m.parentCursor > 0 {
+			m.parentCursor--
+		}
+		return m, nil
+
+	case "enter":
+		var parentKey string
+		if m.parentCursor > 0 {
+			parentKey = m.parentFiltered[m.parentCursor-1].Key
+		}
+		m.parentInput.Blur()
+		return m, blAssignParentCmd(m.client, m.parentTargetKeys, parentKey)
+	}
+
+	// All other keys go to the text input for filtering.
+	prev := m.parentInput.Value()
+	var cmd tea.Cmd
+	m.parentInput, cmd = m.parentInput.Update(msg)
+	if newVal := m.parentInput.Value(); newVal != prev {
+		m.parentFilter = newVal
+		m.parentFiltered = blFilterParents(m.parentList, m.parentFilter)
+		m.parentCursor = 0
+	}
+	return m, cmd
+}
+
+func blFetchParentsCmd(client api.Client, projectKey string) tea.Cmd {
+	return func() tea.Msg {
+		parents, err := client.GetEpics(projectKey)
+		return blParentsFetchedMsg{parents: parents, err: err}
+	}
+}
+
+func blAssignParentCmd(client api.Client, keys []string, parentKey string) tea.Cmd {
+	return func() tea.Msg {
+		for _, k := range keys {
+			if err := client.SetParent(k, parentKey); err != nil {
+				return blParentAssignDoneMsg{err: err}
+			}
+		}
+		return blParentAssignDoneMsg{}
+	}
+}
+
+// blFilterParents returns the subset of parents matching filter, ranked by
+// fuzzy score. Returns the full list when filter is empty.
+func blFilterParents(parents []models.Issue, filter string) []models.Issue {
+	if filter == "" {
+		return parents
+	}
+	targets := make([]string, len(parents))
+	for i, p := range parents {
+		targets[i] = p.Key + " " + p.Summary
+	}
+	ranks := fuzzy.RankFindFold(filter, targets)
+	sort.Sort(ranks)
+	result := make([]models.Issue, len(ranks))
+	for i, r := range ranks {
+		result[i] = parents[r.OriginalIndex]
+	}
+	return result
 }

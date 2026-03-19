@@ -20,14 +20,14 @@ import (
 type boardView int
 
 const (
-	viewBacklog        boardView = iota
+	viewBacklog boardView = iota
 	viewKanban
-	viewEditLoading    // fetching issue + valid values
-	viewEdit           // huh form active
-	viewEditSaving     // API call in flight
-	viewCreateLoading  // fetching valid values for new issue
-	viewCreate         // create form active
-	viewCreateSaving   // create API call in flight
+	viewEditLoading   // fetching issue + valid values
+	viewEdit          // huh form active
+	viewEditSaving    // API call in flight
+	viewCreateLoading // fetching valid values for new issue
+	viewCreate        // create form active
+	viewCreateSaving  // create API call in flight
 )
 
 // boardInitData holds the initial fetch results needed by both views.
@@ -43,11 +43,11 @@ type boardRefreshDoneMsg struct {
 }
 
 type boardModel struct {
-	activeView boardView
-	prevView   boardView // restored after edit completes
-	backlog    blModel
-	kanban     kanbanModel
-	client     api.Client
+	activeView     boardView
+	prevView       boardView // restored after edit completes
+	backlog        blModel
+	kanban         kanbanModel
+	client         api.Client
 	boardID        int
 	jiraURL        string
 	project        string
@@ -173,7 +173,7 @@ func newBoardModel(client api.Client, boardID int, jiraURL, project string, clas
 
 	return boardModel{
 		activeView:     startView,
-		backlog:        newBacklogModel(client, data.groups),
+		backlog:        newBacklogModel(client, data.groups, project),
 		kanban:         newKanbanModel(client, data.boardCols, issues, sprintName),
 		client:         client,
 		boardID:        boardID,

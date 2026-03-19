@@ -59,9 +59,9 @@ type editModel struct {
 	initialState editFormState
 	confirmAbort bool
 
-	width    int
-	height   int
-	taHeight int
+	width     int
+	height    int
+	taHeight  int
 	completed bool
 	aborted   bool
 	validErr  string
