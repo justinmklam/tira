@@ -277,7 +277,7 @@ func (m kanbanModel) viewDetail() string {
 
 	header := tui.BoldBlue.Copy().Padding(0, 1).Width(innerW).
 		Render(tui.FixedWidth(m.detailIssue.Key+"  "+m.detailIssue.Summary, innerW-2))
-	footer := tui.DimStyle.Render("  e: edit   esc/q: back   j/k: scroll")
+	footer := tui.DimStyle.Render("  e: edit   o: open in browser   esc/q: back   j/k: scroll")
 	body := header + "\n" + m.detailView.View() + "\n" + footer
 
 	modal := lipgloss.NewStyle().
@@ -371,7 +371,7 @@ func (m kanbanModel) viewBoard() string {
 		header = tui.BoldBlue.Copy().Padding(0, 1).
 			Render("Kanban: "+m.sprintName) + "\n"
 	}
-	hintsStr := "  hjkl: navigate   enter: view   e: edit   tab: backlog   q: quit"
+	hintsStr := "  hjkl: navigate   enter: view   e: edit   o: open   tab: backlog   q: quit"
 	var footer string
 	if m.state == stateLoading {
 		spinnerStr := m.loadSpinner.View() + tui.DimStyle.Render(" Loading…")

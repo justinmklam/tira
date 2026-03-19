@@ -3,6 +3,9 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
+	"runtime"
+	"strings"
 	"sync"
 
 	"github.com/charmbracelet/bubbles/spinner"
@@ -42,7 +45,10 @@ type boardModel struct {
 	backlog    blModel
 	kanban     kanbanModel
 	client     api.Client
-	boardID    int
+	boardID        int
+	jiraURL        string
+	project        string
+	classicProject bool
 
 	// Shared data for rebuilding views on refresh/switch.
 	initData boardInitData
@@ -151,7 +157,7 @@ func activeSprintFromGroups(groups []models.SprintGroup) ([]models.Issue, string
 	return nil, ""
 }
 
-func newBoardModel(client api.Client, boardID int, data boardInitData, startView boardView) boardModel {
+func newBoardModel(client api.Client, boardID int, jiraURL, project string, classicProject bool, data boardInitData, startView boardView) boardModel {
 	issues, sprintName := activeSprintFromGroups(data.groups)
 
 	s := spinner.New()
@@ -159,13 +165,16 @@ func newBoardModel(client api.Client, boardID int, data boardInitData, startView
 	s.Style = lipgloss.NewStyle().Foreground(tui.SpinnerColor)
 
 	return boardModel{
-		activeView:  startView,
-		backlog:     newBacklogModel(client, data.groups),
-		kanban:      newKanbanModel(client, data.boardCols, issues, sprintName),
-		client:      client,
-		boardID:     boardID,
-		initData:    data,
-		editSpinner: s,
+		activeView:     startView,
+		backlog:        newBacklogModel(client, data.groups),
+		kanban:         newKanbanModel(client, data.boardCols, issues, sprintName),
+		client:         client,
+		boardID:        boardID,
+		jiraURL:        strings.TrimRight(jiraURL, "/"),
+		project:        project,
+		classicProject: classicProject,
+		initData:       data,
+		editSpinner:    s,
 	}
 }
 
@@ -263,6 +272,28 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.refreshCmd()
 		}
 		return m, nil
+	}
+
+	// Open in browser.
+	if key, ok := msg.(tea.KeyMsg); ok && key.String() == "o" {
+		var issueKey string
+		switch m.activeView {
+		case viewBacklog:
+			if m.backlog.state == blDetail && m.backlog.detailIssue != nil {
+				issueKey = m.backlog.detailIssue.Key
+			} else if issue := m.backlog.currentIssue(); issue != nil {
+				issueKey = issue.Key
+			}
+		case viewKanban:
+			if m.kanban.state == stateDetail && m.kanban.detailIssue != nil {
+				issueKey = m.kanban.detailIssue.Key
+			} else if issue := m.kanban.currentIssue(); issue != nil {
+				issueKey = issue.Key
+			}
+		}
+		if issueKey != "" {
+			return m, openInBrowserCmd(m.issueURL(issueKey))
+		}
 	}
 
 	// View-switching keys: only when the sub-model is in its base state.
@@ -439,8 +470,38 @@ func (m boardModel) viewEditForm(w, h int) string {
 	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, modal)
 }
 
+func (m boardModel) issueURL(key string) string {
+	base := m.jiraURL
+	projectPath := "projects"
+	if m.classicProject {
+		projectPath = "c/projects"
+	}
+	switch m.activeView {
+	case viewBacklog:
+		return fmt.Sprintf("%s/jira/software/%s/%s/boards/%d/backlog?selectedIssue=%s", base, projectPath, m.project, m.boardID, key)
+	case viewKanban:
+		return fmt.Sprintf("%s/jira/software/%s/%s/boards/%d?selectedIssue=%s", base, projectPath, m.project, m.boardID, key)
+	default:
+		return fmt.Sprintf("%s/browse/%s", base, key)
+	}
+}
+
+func openInBrowserCmd(url string) tea.Cmd {
+	return func() tea.Msg {
+		var cmd *exec.Cmd
+		switch runtime.GOOS {
+		case "darwin":
+			cmd = exec.Command("open", url)
+		default:
+			cmd = exec.Command("xdg-open", url)
+		}
+		_ = cmd.Start()
+		return nil
+	}
+}
+
 func runBoardTUI(client api.Client, boardID int, data boardInitData, startView boardView) error {
-	m := newBoardModel(client, boardID, data, startView)
+	m := newBoardModel(client, boardID, cfg.JiraURL, cfg.Project, cfg.ClassicProject, data, startView)
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	_, err := p.Run()
 	if err != nil {

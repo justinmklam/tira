@@ -9,11 +9,12 @@ import (
 )
 
 type Config struct {
-	JiraURL string `mapstructure:"jira_url"`
-	Email   string `mapstructure:"email"`
-	Token   string `mapstructure:"token"`
-	Project string `mapstructure:"project"`
-	BoardID int    `mapstructure:"board_id"`
+	JiraURL        string `mapstructure:"jira_url"`
+	Email          string `mapstructure:"email"`
+	Token          string `mapstructure:"token"`
+	Project        string `mapstructure:"project"`
+	BoardID        int    `mapstructure:"board_id"`
+	ClassicProject bool   `mapstructure:"classic_project"`
 }
 
 func Load(profileName string, searchPaths ...string) (*Config, error) {

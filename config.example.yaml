@@ -5,6 +5,7 @@ profiles:
     token: your-api-token
     project: MYPROJ
     board_id: 42
+    classic_project: true   # set to true for company-managed (classic) projects
   dev:
     jira_url: https://dev-domain.atlassian.net
     email: dev-email@example.com
