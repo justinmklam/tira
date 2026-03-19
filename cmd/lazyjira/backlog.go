@@ -247,8 +247,9 @@ func (m blModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		if m.state == blDetail {
-			m.detailView.Width = tui.DetailPaneWidth(m.width)
-			m.detailView.Height = msg.Height - 3
+			vpW, vpH := tui.OverlayViewportSize(m.width, m.height)
+			m.detailView.Width = vpW
+			m.detailView.Height = vpH
 		}
 		return m, nil
 
@@ -258,11 +259,11 @@ func (m blModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.detailIssue = msg.issue
-		detailW := tui.DetailPaneWidth(m.width)
+		vpW, vpH := tui.OverlayViewportSize(m.width, m.height)
 		md, _ := display.RenderIssue(msg.issue)
 		renderer, err := glamour.NewTermRenderer(
 			glamour.WithAutoStyle(),
-			glamour.WithWordWrap(detailW),
+			glamour.WithWordWrap(vpW),
 		)
 		content := md
 		if err == nil {
@@ -270,7 +271,7 @@ func (m blModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				content = rendered
 			}
 		}
-		vp := viewport.New(detailW, m.height-3)
+		vp := viewport.New(vpW, vpH)
 		vp.SetContent(content)
 		m.detailView = vp
 		m.state = blDetail

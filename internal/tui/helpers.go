@@ -70,6 +70,42 @@ func DetailPaneWidth(totalWidth int) int {
 	return w
 }
 
+// OverlaySize returns the outer (border-inclusive) dimensions for the floating
+// detail overlay, clamped to reasonable min/max values.
+func OverlaySize(totalWidth, totalHeight int) (w, h int) {
+	w = totalWidth * 85 / 100
+	if w > 140 {
+		w = 140
+	}
+	if w < 60 {
+		w = 60
+	}
+	h = totalHeight * 85 / 100
+	if h > 50 {
+		h = 50
+	}
+	if h < 15 {
+		h = 15
+	}
+	return
+}
+
+// OverlayViewportSize returns the (width, height) for the viewport inside the
+// floating detail overlay, accounting for border (2) and chrome lines (header,
+// footer, two newline separators → 4 more rows).
+func OverlayViewportSize(totalWidth, totalHeight int) (vpW, vpH int) {
+	w, h := OverlaySize(totalWidth, totalHeight)
+	vpW = w - 4 // 2 border + 2 padding
+	vpH = h - 6 // 2 border + header(1) + sep(1) + sep(1) + footer(1)
+	if vpW < 20 {
+		vpW = 20
+	}
+	if vpH < 5 {
+		vpH = 5
+	}
+	return
+}
+
 // ContainsCI is a case-insensitive membership check.
 func ContainsCI(list []string, val string) bool {
 	for _, item := range list {

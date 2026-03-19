@@ -124,8 +124,9 @@ func (m kanbanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		if m.state == stateDetail {
-			m.detailView.Width = tui.DetailPaneWidth(m.width)
-			m.detailView.Height = msg.Height - 3
+			vpW, vpH := tui.OverlayViewportSize(m.width, m.height)
+			m.detailView.Width = vpW
+			m.detailView.Height = vpH
 		}
 		return m, nil
 
@@ -135,11 +136,11 @@ func (m kanbanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.detailIssue = msg.issue
-		detailW := tui.DetailPaneWidth(m.width)
+		vpW, vpH := tui.OverlayViewportSize(m.width, m.height)
 		md, _ := display.RenderIssue(msg.issue)
 		renderer, err := glamour.NewTermRenderer(
 			glamour.WithAutoStyle(),
-			glamour.WithWordWrap(detailW),
+			glamour.WithWordWrap(vpW),
 		)
 		content := md
 		if err == nil {
@@ -147,7 +148,7 @@ func (m kanbanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				content = rendered
 			}
 		}
-		vp := viewport.New(detailW, m.height-3)
+		vp := viewport.New(vpW, vpH)
 		vp.SetContent(content)
 		m.detailView = vp
 		m.state = stateDetail
@@ -253,22 +254,31 @@ func (m kanbanModel) viewDetail() string {
 	if m.detailIssue == nil {
 		return ""
 	}
-	leftWidth := tui.ListPaneWidth(m.width)
-	leftModel := m
-	leftModel.state = stateBoard
-	leftModel.width = leftWidth
-	left := leftModel.viewBoard()
 
-	header := tui.BoldBlue.Copy().Padding(0, 1).
-		Render(m.detailIssue.Key + "  " + m.detailIssue.Summary)
-	footer := tui.DimStyle.Render("  e: edit   esc/q: back   j/k: scroll")
-	right := header + "\n" + m.detailView.View() + "\n" + footer
-
+	width := m.width
+	if width == 0 {
+		width = 120
+	}
 	height := m.height
 	if height == 0 {
 		height = 40
 	}
-	return tui.SplitPanes(left, right, leftWidth, height)
+
+	overlayW, _ := tui.OverlaySize(width, height)
+	innerW := overlayW - 2
+
+	header := tui.BoldBlue.Copy().Padding(0, 1).Width(innerW).
+		Render(tui.FixedWidth(m.detailIssue.Key+"  "+m.detailIssue.Summary, innerW-2))
+	footer := tui.DimStyle.Render("  e: edit   esc/q: back   j/k: scroll")
+	body := header + "\n" + m.detailView.View() + "\n" + footer
+
+	modal := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(tui.ColorBlue).
+		Width(innerW).
+		Render(body)
+
+	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, modal)
 }
 
 func (m kanbanModel) viewBoard() string {
