@@ -115,12 +115,20 @@ func (c *jiraClient) GetIssue(key string) (*models.Issue, error) {
 		}
 	}
 
-	// Fetch ADF fields (description, acceptance criteria) and sprint via raw
-	// HTTP: go-jira can't decode ADF objects into strings and sprint is a
-	// custom field. ?expand=names gives us the customfield_* → display name map.
-	if err := c.fetchRawFields(key, result); err == nil {
-		// non-fatal — display whatever we got from go-jira
-	}
+	// Fetch ADF fields and comments concurrently (both non-fatal).
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		c.fetchRawFields(key, result) //nolint:errcheck
+	}()
+	go func() {
+		defer wg.Done()
+		if comments, err := c.fetchComments(key); err == nil {
+			result.Comments = comments
+		}
+	}()
+	wg.Wait()
 
 	return result, nil
 }
@@ -185,6 +193,48 @@ func (c *jiraClient) fetchRawFields(key string, result *models.Issue) error {
 	}
 
 	return nil
+}
+
+func (c *jiraClient) fetchComments(key string) ([]models.Comment, error) {
+	url := fmt.Sprintf("%s/rest/api/3/issue/%s/comment?maxResults=50&orderBy=-created", c.baseURL, key)
+	resp, err := c.http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("comments: HTTP %d", resp.StatusCode)
+	}
+
+	var result struct {
+		Comments []struct {
+			Author  struct{ DisplayName string `json:"displayName"` } `json:"author"`
+			Body    json.RawMessage                                    `json:"body"`
+			Created string                                             `json:"created"`
+		} `json:"comments"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, err
+	}
+
+	comments := make([]models.Comment, 0, len(result.Comments))
+	for _, c := range result.Comments {
+		var adf map[string]any
+		body := ""
+		if err := json.Unmarshal(c.Body, &adf); err == nil {
+			body = ADFToMarkdown(adf)
+		}
+		comments = append(comments, models.Comment{
+			Author:  c.Author.DisplayName,
+			Body:    body,
+			Created: c.Created,
+		})
+	}
+	return comments, nil
 }
 
 func (c *jiraClient) extractADF(fields map[string]json.RawMessage, fieldID string) string {

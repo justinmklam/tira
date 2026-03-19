@@ -20,6 +20,7 @@ type Issue struct {
 	ParentKey          string
 	ParentSummary      string
 	LinkedIssues       []LinkedIssue
+	Comments           []Comment
 }
 
 type LinkedIssue struct {
@@ -27,6 +28,12 @@ type LinkedIssue struct {
 	Key          string
 	Summary      string
 	Status       string
+}
+
+type Comment struct {
+	Author  string
+	Body    string
+	Created string // ISO date, e.g. "2026-03-01"
 }
 
 type IssueFields struct {

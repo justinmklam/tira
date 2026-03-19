@@ -3,6 +3,7 @@ package display
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/justinmklam/lazyjira/internal/models"
 )
@@ -73,5 +74,32 @@ func RenderIssue(issue *models.Issue) (string, error) {
 		sb.WriteString("\n")
 	}
 
+	// Comments
+	if len(issue.Comments) > 0 {
+		fmt.Fprintf(&sb, "\n## Comments\n\n")
+		for _, c := range issue.Comments {
+			fmt.Fprintf(&sb, "**%s** _%s_\n\n", c.Author, formatCommentTime(c.Created))
+			sb.WriteString(c.Body)
+			sb.WriteString("\n\n---\n\n")
+		}
+	}
+
 	return sb.String(), nil
+}
+
+// formatCommentTime parses a Jira timestamp and returns a human-readable string.
+// Jira returns timestamps as "2006-01-02T15:04:05.000-0700".
+func formatCommentTime(s string) string {
+	formats := []string{
+		"2006-01-02T15:04:05.999-0700",
+		"2006-01-02T15:04:05.999Z",
+		"2006-01-02T15:04:05-0700",
+		"2006-01-02",
+	}
+	for _, f := range formats {
+		if t, err := time.Parse(f, s); err == nil {
+			return t.UTC().Format("January 2, 2006 at 3:04 PM UTC")
+		}
+	}
+	return s
 }
