@@ -101,10 +101,18 @@ func newKanbanModel(client api.Client, boardCols []models.BoardColumn, issues []
 	}
 }
 
-// refreshData replaces the kanban columns with new data.
+// refreshData replaces the kanban columns with new data, preserving cursor
+// positions (clamped to the new column sizes).
 func (m *kanbanModel) refreshData(boardCols []models.BoardColumn, issues []models.Issue, sprintName string) {
+	prev := m.rowIdxs
 	m.columns = buildColumns(boardCols, issues)
-	m.rowIdxs = make([]int, len(m.columns))
+	newRowIdxs := make([]int, len(m.columns))
+	for i := range newRowIdxs {
+		if i < len(prev) && len(m.columns[i].issues) > 0 {
+			newRowIdxs[i] = tui.Clamp(prev[i], 0, len(m.columns[i].issues)-1)
+		}
+	}
+	m.rowIdxs = newRowIdxs
 	m.colIdx = tui.Clamp(m.colIdx, 0, max(len(m.columns)-1, 0))
 	m.sprintName = sprintName
 }

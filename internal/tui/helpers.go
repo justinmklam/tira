@@ -80,10 +80,7 @@ func OverlaySize(totalWidth, totalHeight int) (w, h int) {
 	if w < 60 {
 		w = 60
 	}
-	h = totalHeight * 85 / 100
-	if h > 50 {
-		h = 50
-	}
+	h = totalHeight * 95 / 100
 	if h < 15 {
 		h = 15
 	}

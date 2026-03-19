@@ -6,6 +6,9 @@
 build:
 	GOTOOLCHAIN=local go build -o lazyjira ./cmd/lazyjira
 
+run:
+	./lazyjira backlog
+
 # Remove build artifacts
 clean:
 	rm -f lazyjira

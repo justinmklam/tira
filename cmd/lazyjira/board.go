@@ -5,7 +5,9 @@ import (
 	"os"
 	"sync"
 
+	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/justinmklam/lazyjira/internal/api"
 	"github.com/justinmklam/lazyjira/internal/models"
 	"github.com/justinmklam/lazyjira/internal/tui"
@@ -15,8 +17,11 @@ import (
 type boardView int
 
 const (
-	viewBacklog boardView = iota
+	viewBacklog     boardView = iota
 	viewKanban
+	viewEditLoading // fetching issue + valid values
+	viewEdit        // huh form active
+	viewEditSaving  // API call in flight
 )
 
 // boardInitData holds the initial fetch results needed by both views.
@@ -31,12 +36,9 @@ type boardRefreshDoneMsg struct {
 	err  error
 }
 
-type boardResult struct {
-	editKey string
-}
-
 type boardModel struct {
 	activeView boardView
+	prevView   boardView // restored after edit completes
 	backlog    blModel
 	kanban     kanbanModel
 	client     api.Client
@@ -47,7 +49,14 @@ type boardModel struct {
 
 	width  int
 	height int
-	result boardResult
+
+	// In-TUI edit state.
+	editKey     string
+	editIssue   *models.Issue
+	editValid   *models.ValidValues
+	editForm    *editModel
+	editErr     string // last save error message
+	editSpinner spinner.Model
 }
 
 var boardCmd = &cobra.Command{
@@ -99,33 +108,7 @@ func runBoardCmd(startView boardView) error {
 		return nil
 	}
 
-	for {
-		result, err := runBoardTUI(client, cfg.BoardID, data, startView)
-		if err != nil {
-			return err
-		}
-		if result.editKey == "" {
-			break
-		}
-
-		// Edit flow: must exit TUI for $EDITOR.
-		issue, err := tui.RunWithSpinner(fmt.Sprintf("Fetching %s…", result.editKey), func() (*models.Issue, error) {
-			return client.GetIssue(result.editKey)
-		})
-		if err != nil {
-			return err
-		}
-		if err := runEditLoop(client, issue); err != nil {
-			return err
-		}
-
-		// Re-fetch all data to reflect updates.
-		if refreshed, err := fetchBoardData(client, cfg.BoardID); err == nil {
-			data = refreshed
-		}
-	}
-
-	return nil
+	return runBoardTUI(client, cfg.BoardID, data, startView)
 }
 
 func fetchBoardData(client api.Client, boardID int) (boardInitData, error) {
@@ -171,20 +154,25 @@ func activeSprintFromGroups(groups []models.SprintGroup) ([]models.Issue, string
 func newBoardModel(client api.Client, boardID int, data boardInitData, startView boardView) boardModel {
 	issues, sprintName := activeSprintFromGroups(data.groups)
 
+	s := spinner.New()
+	s.Spinner = spinner.Dot
+	s.Style = lipgloss.NewStyle().Foreground(tui.SpinnerColor)
+
 	return boardModel{
-		activeView: startView,
-		backlog:    newBacklogModel(client, data.groups),
-		kanban:     newKanbanModel(client, data.boardCols, issues, sprintName),
-		client:     client,
-		boardID:    boardID,
-		initData:   data,
+		activeView:  startView,
+		backlog:     newBacklogModel(client, data.groups),
+		kanban:      newKanbanModel(client, data.boardCols, issues, sprintName),
+		client:      client,
+		boardID:     boardID,
+		initData:    data,
+		editSpinner: s,
 	}
 }
 
 func (m boardModel) Init() tea.Cmd { return nil }
 
 func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	// Window size → forward to both sub-models.
+	// Window size is always forwarded.
 	if ws, ok := msg.(tea.WindowSizeMsg); ok {
 		m.width = ws.Width
 		m.height = ws.Height
@@ -192,10 +180,14 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.backlog = updated.(blModel)
 		updated, _ = m.kanban.Update(ws)
 		m.kanban = updated.(kanbanModel)
+		if m.activeView == viewEdit && m.editForm != nil {
+			overlayW, overlayH := tui.OverlaySize(m.width, m.height)
+			m.editForm.setSize(overlayW-4, overlayH-4)
+		}
 		return m, nil
 	}
 
-	// Board-level refresh result.
+	// Board-level refresh result (may arrive at any time).
 	if msg, ok := msg.(boardRefreshDoneMsg); ok {
 		if msg.err == nil {
 			m.initData = msg.data
@@ -204,6 +196,72 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.kanban.refreshData(msg.data.boardCols, issues, sprintName)
 		}
 		m.backlog.moving = false
+		return m, nil
+	}
+
+	// --- Edit state machine ---
+	switch m.activeView {
+	case viewEditLoading:
+		switch msg := msg.(type) {
+		case spinner.TickMsg:
+			var cmd tea.Cmd
+			m.editSpinner, cmd = m.editSpinner.Update(msg)
+			return m, cmd
+		case editFetchedMsg:
+			if msg.err != nil {
+				// Return to previous view on error.
+				m.activeView = m.prevView
+				return m, nil
+			}
+			m.editIssue = msg.issue
+			m.editValid = msg.valid
+			overlayW, overlayH := tui.OverlaySize(m.width, m.height)
+			m.editForm = newEditModel(msg.issue, msg.valid, overlayW-4, overlayH-4)
+			m.activeView = viewEdit
+			return m, m.editForm.Init()
+		}
+		return m, nil
+
+	case viewEdit:
+		if m.editForm == nil {
+			return m, nil
+		}
+		// Intercept ctrl+c so it cancels the form rather than quitting.
+		if key, ok := msg.(tea.KeyMsg); ok && key.String() == "ctrl+c" {
+			m.activeView = m.prevView
+			m.editForm = nil
+			return m, nil
+		}
+		updated, cmd := m.editForm.Update(msg)
+		m.editForm = updated.(*editModel)
+		if m.editForm.completed {
+			fields := m.editForm.currentState().toIssueFields(m.editValid)
+			m.activeView = viewEditSaving
+			m.editErr = ""
+			return m, tea.Batch(m.editSpinner.Tick, saveEditCmd(m.client, m.editKey, fields))
+		}
+		if m.editForm.aborted {
+			m.activeView = m.prevView
+			m.editForm = nil
+		}
+		return m, cmd
+
+	case viewEditSaving:
+		switch msg := msg.(type) {
+		case spinner.TickMsg:
+			var cmd tea.Cmd
+			m.editSpinner, cmd = m.editSpinner.Update(msg)
+			return m, cmd
+		case editSaveDoneMsg:
+			m.editForm = nil
+			m.editIssue = nil
+			m.activeView = m.prevView
+			if msg.err != nil {
+				m.editErr = fmt.Sprintf("Save failed: %v", msg.err)
+				return m, nil
+			}
+			return m, m.refreshCmd()
+		}
 		return m, nil
 	}
 
@@ -236,8 +294,17 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 		if m.backlog.result.editKey != "" {
-			m.result = boardResult{editKey: m.backlog.result.editKey}
-			return m, tea.Quit
+			key := m.backlog.result.editKey
+			m.backlog.result.editKey = ""
+			// If editing from the detail view, return to the list.
+			if m.backlog.state == blDetail {
+				m.backlog.state = blList
+				m.backlog.detailIssue = nil
+			}
+			m.prevView = viewBacklog
+			m.editKey = key
+			m.activeView = viewEditLoading
+			return m, tea.Batch(m.editSpinner.Tick, fetchEditDataCmd(m.client, key))
 		}
 		if m.backlog.result.refresh {
 			m.backlog.result.refresh = false
@@ -253,8 +320,17 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 		if m.kanban.result.editKey != "" {
-			m.result = boardResult{editKey: m.kanban.result.editKey}
-			return m, tea.Quit
+			key := m.kanban.result.editKey
+			m.kanban.result.editKey = ""
+			// If editing from the detail view, return to the board.
+			if m.kanban.state == stateDetail {
+				m.kanban.state = stateBoard
+				m.kanban.detailIssue = nil
+			}
+			m.prevView = viewKanban
+			m.editKey = key
+			m.activeView = viewEditLoading
+			return m, tea.Batch(m.editSpinner.Tick, fetchEditDataCmd(m.client, key))
 		}
 		return m, cmd
 	}
@@ -271,7 +347,7 @@ func (m boardModel) canSwitchView() bool {
 	case viewKanban:
 		return m.kanban.state == stateBoard
 	}
-	return false
+	return false // edit states: no switching
 }
 
 func (m boardModel) refreshCmd() tea.Cmd {
@@ -307,20 +383,68 @@ func (m boardModel) refreshCmd() tea.Cmd {
 }
 
 func (m boardModel) View() string {
+	w, h := m.width, m.height
+	if w == 0 {
+		w = 120
+	}
+	if h == 0 {
+		h = 40
+	}
+
 	switch m.activeView {
+	case viewEditLoading:
+		msg := m.editSpinner.View() + tui.DimStyle.Render(" Fetching issue…")
+		return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, msg)
+
+	case viewEdit:
+		return m.viewEditForm(w, h)
+
+	case viewEditSaving:
+		msg := m.editSpinner.View() + tui.DimStyle.Render(" Saving…")
+		return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, msg)
+
 	case viewKanban:
 		return m.kanban.View()
+
 	default:
 		return m.backlog.View()
 	}
 }
 
-func runBoardTUI(client api.Client, boardID int, data boardInitData, startView boardView) (boardResult, error) {
+func (m boardModel) viewEditForm(w, h int) string {
+	if m.editForm == nil {
+		return ""
+	}
+	overlayW, _ := tui.OverlaySize(w, h)
+	innerW := overlayW - 2
+
+	titleStr := m.editKey
+	if m.editIssue != nil {
+		titleStr = m.editIssue.Key + "  " + m.editIssue.Summary
+	}
+	header := tui.BoldBlue.Copy().Padding(0, 1).Width(innerW).
+		Render(tui.FixedWidth(titleStr, innerW-2))
+
+	body := header + "\n" + m.editForm.View()
+	if m.editErr != "" {
+		body += "\n" + lipgloss.NewStyle().Foreground(tui.ColorRed).Render("  "+m.editErr)
+	}
+
+	modal := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(tui.ColorBlue).
+		Width(innerW).
+		Render(body)
+
+	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, modal)
+}
+
+func runBoardTUI(client api.Client, boardID int, data boardInitData, startView boardView) error {
 	m := newBoardModel(client, boardID, data, startView)
 	p := tea.NewProgram(m, tea.WithAltScreen())
-	final, err := p.Run()
+	_, err := p.Run()
 	if err != nil {
-		return boardResult{}, fmt.Errorf("board: %w", err)
+		return fmt.Errorf("board: %w", err)
 	}
-	return final.(boardModel).result, nil
+	return nil
 }

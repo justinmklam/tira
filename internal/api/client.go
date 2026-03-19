@@ -19,6 +19,8 @@ type Client interface {
 	UpdateIssue(key string, fields models.IssueFields) error
 	CreateIssue(projectKey string, fields models.IssueFields) (*models.Issue, error)
 	GetValidValues(projectKey string) (*models.ValidValues, error)
+	// GetIssueMetadata returns issue types and priorities only (no assignee lookup).
+	GetIssueMetadata(projectKey string) (*models.ValidValues, error)
 	GetBoardColumns(boardID int) ([]models.BoardColumn, error)
 	GetActiveSprint(boardID int) ([]models.Issue, error)
 	GetSprintGroups(boardID int) ([]models.SprintGroup, error)
@@ -369,6 +371,70 @@ func (c *jiraClient) GetValidValues(projectKey string) (*models.ValidValues, err
 		Statuses []struct {
 			Name string `json:"name"`
 		} `json:"statuses"`
+	}
+	if body, err := io.ReadAll(resp.Body); err == nil {
+		if err2 := json.Unmarshal(body, &statusList); err2 == nil {
+			seen := make(map[string]bool)
+			for _, t := range statusList {
+				if !seen[t.Name] {
+					valid.IssueTypes = append(valid.IssueTypes, t.Name)
+					seen[t.Name] = true
+				}
+			}
+		}
+	}
+
+	// Priorities
+	prioURL := fmt.Sprintf("%s/rest/api/3/priority", c.baseURL)
+	if prioResp, err := c.http.Get(prioURL); err == nil {
+		defer prioResp.Body.Close()
+		var priorities []struct {
+			Name string `json:"name"`
+		}
+		if body, err := io.ReadAll(prioResp.Body); err == nil {
+			if err2 := json.Unmarshal(body, &priorities); err2 == nil {
+				for _, p := range priorities {
+					valid.Priorities = append(valid.Priorities, p.Name)
+				}
+			}
+		}
+	}
+
+	// Assignees
+	assigneeURL := fmt.Sprintf("%s/rest/api/3/user/assignable/search?project=%s&maxResults=50", c.baseURL, projectKey)
+	if aResp, err := c.http.Get(assigneeURL); err == nil {
+		defer aResp.Body.Close()
+		var assignees []struct {
+			DisplayName string `json:"displayName"`
+			AccountID   string `json:"accountId"`
+		}
+		if body, err := io.ReadAll(aResp.Body); err == nil {
+			if err2 := json.Unmarshal(body, &assignees); err2 == nil {
+				for _, a := range assignees {
+					valid.Assignees = append(valid.Assignees, models.Assignee{
+						DisplayName: a.DisplayName,
+						AccountID:   a.AccountID,
+					})
+				}
+			}
+		}
+	}
+
+	return valid, nil
+}
+
+func (c *jiraClient) GetIssueMetadata(projectKey string) (*models.ValidValues, error) {
+	valid := &models.ValidValues{}
+
+	// Issue types
+	url := fmt.Sprintf("%s/rest/api/3/project/%s/statuses", c.baseURL, projectKey)
+	resp, err := c.http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var statusList []struct {
+		Name string `json:"name"`
 	}
 	if body, err := io.ReadAll(resp.Body); err == nil {
 		if err2 := json.Unmarshal(body, &statusList); err2 == nil {
