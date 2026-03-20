@@ -18,8 +18,8 @@ import (
 type blState int
 
 const (
-	blList         blState = iota
-	blLoading              // fetching full issue for detail view
+	blList    blState = iota
+	blLoading         // fetching full issue for detail view
 	blDetail
 	blFilter
 	blParentPicker // floating parent/epic picker

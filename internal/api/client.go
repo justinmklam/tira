@@ -99,7 +99,7 @@ func (c *jiraClient) fetchFullIssue(key string) (*models.Issue, error) {
 	if err != nil {
 		return nil, fmt.Errorf("fetching issue %s: %w", key, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -123,8 +123,8 @@ func (c *jiraClient) fetchFullIssue(key string) (*models.Issue, error) {
 
 	// Structured standard fields.
 	var sf struct {
-		Summary   string `json:"summary"`
-		Status    struct {
+		Summary string `json:"summary"`
+		Status  struct {
 			Name string `json:"name"`
 		} `json:"status"`
 		IssueType struct {
@@ -277,7 +277,7 @@ func (c *jiraClient) fetchComments(key string) ([]models.Comment, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
@@ -288,9 +288,11 @@ func (c *jiraClient) fetchComments(key string) ([]models.Comment, error) {
 
 	var result struct {
 		Comments []struct {
-			Author  struct{ DisplayName string `json:"displayName"` } `json:"author"`
-			Body    json.RawMessage                                    `json:"body"`
-			Created string                                             `json:"created"`
+			Author struct {
+				DisplayName string `json:"displayName"`
+			} `json:"author"`
+			Body    json.RawMessage `json:"body"`
+			Created string          `json:"created"`
 		} `json:"comments"`
 	}
 	if err := json.Unmarshal(body, &result); err != nil {
@@ -426,7 +428,7 @@ func (c *jiraClient) UpdateIssue(key string, fields models.IssueFields) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 300 {
 		b, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("update issue %s: HTTP %d: %s", key, resp.StatusCode, string(b))
@@ -440,7 +442,7 @@ func (c *jiraClient) fetchFieldIDs(key string) (map[string]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
@@ -546,7 +548,7 @@ func (c *jiraClient) CreateIssue(projectKey string, fields models.IssueFields) (
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respBody, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode >= 300 {
@@ -569,7 +571,7 @@ func (c *jiraClient) fetchAllFieldIDs() (map[string]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
@@ -599,7 +601,7 @@ func (c *jiraClient) GetValidValues(projectKey string) (*models.ValidValues, err
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	var statusList []struct {
 		Name     string `json:"name"`
 		Subtask  bool   `json:"subtask"`
@@ -622,7 +624,7 @@ func (c *jiraClient) GetValidValues(projectKey string) (*models.ValidValues, err
 	// Priorities
 	prioURL := fmt.Sprintf("%s/rest/api/3/priority", c.baseURL)
 	if prioResp, err := c.http.Get(prioURL); err == nil {
-		defer prioResp.Body.Close()
+		defer func() { _ = prioResp.Body.Close() }()
 		var priorities []struct {
 			Name string `json:"name"`
 		}
@@ -638,7 +640,7 @@ func (c *jiraClient) GetValidValues(projectKey string) (*models.ValidValues, err
 	// Assignees
 	assigneeURL := fmt.Sprintf("%s/rest/api/3/user/assignable/search?project=%s&maxResults=50", c.baseURL, projectKey)
 	if aResp, err := c.http.Get(assigneeURL); err == nil {
-		defer aResp.Body.Close()
+		defer func() { _ = aResp.Body.Close() }()
 		var assignees []struct {
 			DisplayName string `json:"displayName"`
 			AccountID   string `json:"accountId"`
@@ -667,7 +669,7 @@ func (c *jiraClient) GetIssueMetadata(projectKey string) (*models.ValidValues, e
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	var statusList []struct {
 		Name string `json:"name"`
 	}
@@ -686,7 +688,7 @@ func (c *jiraClient) GetIssueMetadata(projectKey string) (*models.ValidValues, e
 	// Priorities
 	prioURL := fmt.Sprintf("%s/rest/api/3/priority", c.baseURL)
 	if prioResp, err := c.http.Get(prioURL); err == nil {
-		defer prioResp.Body.Close()
+		defer func() { _ = prioResp.Body.Close() }()
 		var priorities []struct {
 			Name string `json:"name"`
 		}
@@ -702,7 +704,7 @@ func (c *jiraClient) GetIssueMetadata(projectKey string) (*models.ValidValues, e
 	// Assignees
 	assigneeURL := fmt.Sprintf("%s/rest/api/3/user/assignable/search?project=%s&maxResults=50", c.baseURL, projectKey)
 	if aResp, err := c.http.Get(assigneeURL); err == nil {
-		defer aResp.Body.Close()
+		defer func() { _ = aResp.Body.Close() }()
 		var assignees []struct {
 			DisplayName string `json:"displayName"`
 			AccountID   string `json:"accountId"`
@@ -729,7 +731,7 @@ func (c *jiraClient) GetActiveSprint(boardID int) ([]models.Issue, error) {
 	if err != nil {
 		return nil, fmt.Errorf("fetching active sprint: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
@@ -761,7 +763,7 @@ func (c *jiraClient) GetActiveSprint(boardID int) ([]models.Issue, error) {
 	if err != nil {
 		return nil, fmt.Errorf("fetching sprint issues: %w", err)
 	}
-	defer issueResp.Body.Close()
+	defer func() { _ = issueResp.Body.Close() }()
 	issueBody, err := io.ReadAll(issueResp.Body)
 	if err != nil {
 		return nil, err
@@ -824,7 +826,7 @@ func (c *jiraClient) GetBoardColumns(boardID int) ([]models.BoardColumn, error) 
 	if err != nil {
 		return nil, fmt.Errorf("fetching board configuration: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
@@ -865,7 +867,7 @@ func (c *jiraClient) GetSprintGroups(boardID int) ([]models.SprintGroup, error) 
 	if err != nil {
 		return nil, fmt.Errorf("fetching sprints: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
@@ -966,7 +968,7 @@ func (c *jiraClient) fetchAgileIssues(url, sprintName string) ([]models.Issue, e
 	if err != nil {
 		return nil, fmt.Errorf("fetching issues: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
@@ -1064,7 +1066,7 @@ func (c *jiraClient) GetEpics(projectKey, query string) ([]models.Issue, error) 
 	if err != nil {
 		return nil, fmt.Errorf("fetching epics: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
@@ -1120,7 +1122,7 @@ func (c *jiraClient) SetParent(issueKey, parentKey string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 300 {
 		b, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("set parent %s: HTTP %d: %s", issueKey, resp.StatusCode, string(b))
@@ -1138,7 +1140,7 @@ func (c *jiraClient) SearchAssignees(projectKey, query string) ([]models.Assigne
 	if err != nil {
 		return nil, fmt.Errorf("searching assignees: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
@@ -1184,7 +1186,7 @@ func (c *jiraClient) SetAssignee(issueKey, accountID string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 300 {
 		b, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("set assignee %s: HTTP %d: %s", issueKey, resp.StatusCode, string(b))

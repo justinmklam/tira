@@ -107,7 +107,7 @@ func WriteTempFile(content string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("creating temp file: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	if _, err := f.WriteString(content); err != nil {
 		return "", fmt.Errorf("writing temp file: %w", err)
 	}

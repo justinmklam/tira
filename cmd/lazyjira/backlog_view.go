@@ -56,7 +56,7 @@ func (m blModel) viewDetail() string {
 	overlayW, _ := tui.OverlaySize(width, height)
 	innerW := overlayW - 2
 
-	header := tui.BoldBlue.Copy().Padding(0, 1).Width(innerW).
+	header := tui.BoldBlue.Padding(0, 1).Width(innerW).
 		Render(tui.FixedWidth(m.detailIssue.Key+"  "+m.detailIssue.Summary, innerW-2))
 	footer := tui.DimStyle.Render("  e: edit   o: open in browser   esc/q: back   j/k: scroll")
 	body := header + "\n" + m.detailView.View() + "\n" + footer
@@ -95,7 +95,7 @@ func (m blModel) viewList() string {
 	}
 
 	// Top bar.
-	topBar := tui.BoldBlue.Copy().Padding(0, 1).Render("Backlog")
+	topBar := tui.BoldBlue.Padding(0, 1).Render("Backlog")
 	if m.visualMode {
 		topBar += " " + lipgloss.NewStyle().Bold(true).Foreground(tui.ColorMagenta).Render("VISUAL")
 	} else if m.filter != "" {
@@ -274,9 +274,9 @@ func (m blModel) renderIssueRow(row blRow, isSelected bool, width int) string {
 		bg := tui.SelectedBg
 		var cursorStr string
 		if isCut {
-			cursorStr = bg.Copy().Bold(true).Foreground(tui.ColorOrange).Render("✂ ")
+			cursorStr = bg.Bold(true).Foreground(tui.ColorOrange).Render("✂ ")
 		} else {
-			cursorStr = bg.Copy().Render("  ")
+			cursorStr = bg.Render("  ")
 		}
 		keyColor := tui.ColorWhite
 		if isChecked {
@@ -284,16 +284,16 @@ func (m blModel) renderIssueRow(row blRow, isSelected bool, width int) string {
 		} else if isCut {
 			keyColor = tui.ColorOrange
 		}
-		keyPart := bg.Copy().Bold(true).Foreground(keyColor).Render(key)
-		summaryPart := bg.Copy().Foreground(tui.ColorWhite).Render("  " + summary + "  ")
-		epicStyle := bg.Copy().Foreground(tui.ColorDim)
+		keyPart := bg.Bold(true).Foreground(keyColor).Render(key)
+		summaryPart := bg.Foreground(tui.ColorWhite).Render("  " + summary + "  ")
+		epicStyle := bg.Foreground(tui.ColorDim)
 		if epicColor != "" {
-			epicStyle = bg.Copy().Foreground(epicColor)
+			epicStyle = bg.Foreground(epicColor)
 		}
 		epicPart := epicStyle.Render(epic + " ")
-		typePart := bg.Copy().Bold(true).Foreground(typeColor).Render(issueType + " ")
-		spPart := bg.Copy().Foreground(tui.ColorFg).Render(sp + " ")
-		assigneePart := bg.Copy().Foreground(tui.ColorFg).Render(assignee)
+		typePart := bg.Bold(true).Foreground(typeColor).Render(issueType + " ")
+		spPart := bg.Foreground(tui.ColorFg).Render(sp + " ")
+		assigneePart := bg.Foreground(tui.ColorFg).Render(assignee)
 		return cursorStr + keyPart + summaryPart + epicPart + typePart + spPart + assigneePart
 	}
 
@@ -347,7 +347,7 @@ func (m blModel) viewAssignPicker() string {
 		noun = "issues"
 	}
 	title := fmt.Sprintf("Set Assignee  (%d %s)", n, noun)
-	header := tui.BoldBlue.Copy().Padding(0, 1).Width(innerW).
+	header := tui.BoldBlue.Padding(0, 1).Width(innerW).
 		Render(tui.FixedWidth(title, innerW-2))
 
 	listH := height/2 - 6
@@ -396,7 +396,7 @@ func (m blModel) viewParentPicker() string {
 		noun = "issues"
 	}
 	title := fmt.Sprintf("Set Parent  (%d %s)", n, noun)
-	header := tui.BoldBlue.Copy().Padding(0, 1).Width(innerW).
+	header := tui.BoldBlue.Padding(0, 1).Width(innerW).
 		Render(tui.FixedWidth(title, innerW-2))
 
 	// List rows fit in roughly half the terminal height.
@@ -420,7 +420,6 @@ func (m blModel) viewParentPicker() string {
 
 	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, modal)
 }
-
 
 // formatSprintDate converts "YYYY-MM-DD" to "Jan 2" for compact display.
 // Returns the original string if parsing fails.

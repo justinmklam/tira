@@ -69,7 +69,7 @@ func renderNode(sb *strings.Builder, node map[string]any, listDepth int) {
 	case "orderedList":
 		for i, item := range content {
 			if m, ok := item.(map[string]any); ok {
-				sb.WriteString(fmt.Sprintf("%s%d. ", strings.Repeat("  ", listDepth), i+1))
+				fmt.Fprintf(sb, "%s%d. ", strings.Repeat("  ", listDepth), i+1)
 				renderListItem(sb, m, listDepth+1)
 			}
 		}

@@ -1,37 +1,52 @@
-run:
-  timeout: 3m
+version: "2"
 
 linters:
+  default: none
   enable:
     - errcheck
     - govet
     - staticcheck
     - unused
-    - gosimple
     - ineffassign
-    - typecheck
     - misspell
     - gocritic
     - revive
     - gosec
+  settings:
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - performance
+      disabled-checks:
+        - hugeParam # bubbletea models are value types by design
+        - rangeValCopy # copying structs in ranges is acceptable for our use case
+        - ifElseChain # if-else chains are clearer for certain conditions
+        - appendCombine # explicit appends are clearer
+        - preferFprint # not always applicable with strings.Builder
+        - preferStringWriter # not always applicable
+        - stringXbytes # string comparison is acceptable
+        - sprintfQuotedString # JQL queries are clearer with concatenation
+        - evalOrder # returning function result is idiomatic
+    revive:
+      rules:
+        - name: exported
+          disabled: true # internal packages don't need doc comments on every export
+    gosec:
+      excludes:
+        - G104 # Errors unhandled - acceptable for best-effort operations
+        - G204 # Subprocess launched with variable - expected for editor/open URL flow
+        - G304 # File inclusion via variable - expected for editor/temp file flow
+        - G306 # WriteFile permissions - test files use 0644
+        - G702 # Command injection - editor command is user-configured, not user input
+        - G703 # Path traversal - temp file path is controlled
+        - G115 # Integer overflow - terminal FD conversion is safe
+  exclusions:
+    paths:
+      - vendor
 
-linters-settings:
-  gocritic:
-    enabled-tags:
-      - diagnostic
-      - performance
-    disabled-checks:
-      - hugeParam # bubbletea models are value types by design
-  revive:
-    rules:
-      - name: exported
-        disabled: true # internal packages don't need doc comments on every export
-  gosec:
-    excludes:
-      - G304 # file path from variable — expected in editor/temp file flow
+output:
+  show-stats: true
 
-issues:
-  exclude-dirs:
-    - vendor
-  max-issues-per-linter: 50
-  max-same-issues: 5
+run:
+  timeout: 3m
+  go: "1.22"

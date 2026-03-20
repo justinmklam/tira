@@ -356,7 +356,7 @@ func (m kanbanModel) viewAssignPicker() string {
 	}
 	innerW := pickerW - 2
 
-	header := tui.BoldBlue.Copy().Padding(0, 1).Width(innerW).
+	header := tui.BoldBlue.Padding(0, 1).Width(innerW).
 		Render(tui.FixedWidth("Set Assignee", innerW-2))
 
 	listH := height/2 - 6
@@ -397,7 +397,7 @@ func (m kanbanModel) viewDetail() string {
 	overlayW, _ := tui.OverlaySize(width, height)
 	innerW := overlayW - 2
 
-	header := tui.BoldBlue.Copy().Padding(0, 1).Width(innerW).
+	header := tui.BoldBlue.Padding(0, 1).Width(innerW).
 		Render(tui.FixedWidth(m.detailIssue.Key+"  "+m.detailIssue.Summary, innerW-2))
 	footer := tui.DimStyle.Render("  e: edit   o: open in browser   esc/q: back   j/k: scroll")
 	body := header + "\n" + m.detailView.View() + "\n" + footer
@@ -490,7 +490,7 @@ func (m kanbanModel) viewBoard() string {
 
 	var header string
 	if m.sprintName != "" {
-		header = tui.BoldBlue.Copy().Padding(0, 1).
+		header = tui.BoldBlue.Padding(0, 1).
 			Render("Kanban: "+m.sprintName) + "\n"
 	}
 	hintsStr := "  hjkl: navigate   enter: view   e: edit   o: open   tab: backlog   q: quit"

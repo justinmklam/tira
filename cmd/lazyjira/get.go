@@ -107,7 +107,7 @@ func openAndValidate(content string, valid *models.ValidValues) (*models.IssueFi
 	if err != nil {
 		return nil, err
 	}
-	defer os.Remove(tmpFile)
+	defer func() { _ = os.Remove(tmpFile) }()
 
 	original, err := os.ReadFile(tmpFile)
 	if err != nil {

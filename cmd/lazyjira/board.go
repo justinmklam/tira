@@ -23,11 +23,11 @@ type boardView int
 const (
 	viewBacklog boardView = iota
 	viewKanban
-	viewEditLoading   // fetching issue + valid values
-	viewEdit          // huh form active
-	viewEditSaving    // API call in flight
-	viewCreateLoading // fetching valid values for new issue
-	viewCreate        // create form active
+	viewEditLoading    // fetching issue + valid values
+	viewEdit           // huh form active
+	viewEditSaving     // API call in flight
+	viewCreateLoading  // fetching valid values for new issue
+	viewCreate         // create form active
 	viewCreateSaving   // create API call in flight
 	viewAssigneePicker // assignee fuzzy picker (edit form or direct assignment)
 )
@@ -622,7 +622,7 @@ func (m boardModel) viewEditForm(w, h int) string {
 			titleStr = m.editIssue.Key + "  " + m.editIssue.Summary
 		}
 	}
-	header := tui.BoldBlue.Copy().Padding(0, 1).Width(innerW).
+	header := tui.BoldBlue.Padding(0, 1).Width(innerW).
 		Render(tui.FixedWidth(titleStr, innerW-2))
 
 	body := header + "\n" + m.editForm.View()
@@ -679,7 +679,7 @@ func (m boardModel) viewAssigneePickerOverlay(w, h int) string {
 	}
 	innerW := pickerW - 2
 
-	header := tui.BoldBlue.Copy().Padding(0, 1).Width(innerW).
+	header := tui.BoldBlue.Padding(0, 1).Width(innerW).
 		Render(tui.FixedWidth("Set Assignee", innerW-2))
 
 	listH := h/2 - 6
