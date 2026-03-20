@@ -17,6 +17,17 @@
 - TUI models live in `cmd/lazyjira/` (package main), internal packages are pure logic
 - `api.Client` is an interface — all API access goes through it for testability
 
+## API client conventions
+
+- For Jira API endpoints not natively supported by the go-jira library, use `c.client.NewRequest` and `c.client.Do` instead of raw `http.Client` requests. Example:
+  ```go
+  req, err := c.client.NewRequest(ctx, http.MethodPut, "rest/agile/1.0/issue/rank", payload)
+  if err != nil { return err }
+  _, err = c.client.Do(req, nil)
+  return err
+  ```
+  `NewRequest` handles JSON encoding and base URL resolution; `Do` handles response checking.
+
 ## Code conventions
 
 - Use `internal/tui` color constants (e.g. `tui.ColorBlue`) instead of raw string literals like `"12"`

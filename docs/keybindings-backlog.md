@@ -55,8 +55,9 @@ Modelled on yazi's philosophy: modal only where the modality is obvious from con
 | `s` | Set story points — inline numeric input |
 | `l` | Edit labels — inline comma-separated input |
 | `a` | Create new ticket in current sprint |
-| `A` | Create new ticket in backlog |
+| `C` | Create new ticket in backlog |
 | `P` | Set parent — fuzzy picker (works on selection or cursor ticket) |
+| `A` | Set assignee — fuzzy picker (works on selection or cursor ticket) |
 | `x` | Delete ticket — requires `y` confirmation |
 | `<Enter>` | Open ticket detail pane (press `e` from there to edit) |
 
