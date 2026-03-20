@@ -5,11 +5,11 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/justinmklam/lazyjira/internal/api"
-	"github.com/justinmklam/lazyjira/internal/debug"
-	"github.com/justinmklam/lazyjira/internal/models"
-	"github.com/justinmklam/lazyjira/internal/tui"
-	"github.com/justinmklam/lazyjira/internal/validator"
+	"github.com/justinmklam/tira/internal/api"
+	"github.com/justinmklam/tira/internal/debug"
+	"github.com/justinmklam/tira/internal/models"
+	"github.com/justinmklam/tira/internal/tui"
+	"github.com/justinmklam/tira/internal/validator"
 )
 
 // editFetchedMsg is sent when the issue + valid values have been fetched.

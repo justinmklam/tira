@@ -1,15 +1,15 @@
-# lazyjira — task list
+# tira — task list
 
 ## Phase 1 — scaffold + config
 
-- [ ] Initialise Go module (`go mod init github.com/justinmklam/lazyjira`)
+- [ ] Initialise Go module (`go mod init github.com/justinmklam/tira`)
 - [ ] Add all dependencies to `go.mod`
 - [ ] Create project directory structure
 - [ ] Implement `internal/config/config.go` — load `JIRA_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN` via viper `AutomaticEnv()`
-- [ ] Load optional `~/.config/lazyjira/config.yaml` for `default_project` and `default_board_id`
+- [ ] Load optional `~/.config/tira/config.yaml` for `default_project` and `default_board_id`
 - [ ] Fail fast with a clear error message if any required env var is missing
 - [ ] Write `config.example.yaml`
-- [ ] Set up cobra root command in `cmd/lazyjira/root.go` with `--debug` flag
+- [ ] Set up cobra root command in `cmd/tira/root.go` with `--debug` flag
 - [ ] Wire `config.Load()` into the cobra `PersistentPreRunE` so all subcommands get a config or exit early
 
 ---
@@ -46,7 +46,7 @@
 
 - [ ] Implement `editor/template.go` — `RenderTemplate(issue *models.Issue, valid *models.ValidValues) string`
 - [ ] Embed valid values as comments on the line above each field
-- [ ] Include `<!-- lazyjira: do not remove this line -->` sentinel as the first line
+- [ ] Include `<!-- tira: do not remove this line -->` sentinel as the first line
 - [ ] Use `---` separator between structured fields and free-form description
 - [ ] Write `.md` temp file to `os.TempDir()` with `.md` extension
 - [ ] Implement `editor/parse.go` — `ParseTemplate(content string) (*models.IssueFields, error)`
@@ -74,9 +74,9 @@
 
 ## Phase 6 — `get` command
 
-- [ ] Implement `cmd/lazyjira/get.go` with cobra subcommand
-- [ ] `lazyjira get <key>` — fetch and display issue using display package
-- [ ] `lazyjira get <key> --edit` — run the full editor loop:
+- [ ] Implement `cmd/tira/get.go` with cobra subcommand
+- [ ] `tira get <key>` — fetch and display issue using display package
+- [ ] `tira get <key> --edit` — run the full editor loop:
   - [ ] Fetch issue + valid values (with spinner)
   - [ ] Render template to temp file
   - [ ] Open `$EDITOR`
@@ -90,9 +90,9 @@
 
 ## Phase 7 — `list` command
 
-- [ ] Implement `cmd/lazyjira/list.go` with cobra subcommand
-- [ ] `lazyjira list` — fetch active sprint, render lipgloss table
-- [ ] `lazyjira list --backlog` — fetch all sprints, render tree grouped by sprint
+- [ ] Implement `cmd/tira/list.go` with cobra subcommand
+- [ ] `tira list` — fetch active sprint, render lipgloss table
+- [ ] `tira list --backlog` — fetch all sprints, render tree grouped by sprint
 - [ ] Collapse closed sprints by default with `[+N more]` indicator
 - [ ] Add `--project` flag to override `default_project` from config
 
@@ -100,7 +100,7 @@
 
 ## Phase 8 — `create` command
 
-- [ ] Implement `cmd/lazyjira/create.go` with cobra subcommand
+- [ ] Implement `cmd/tira/create.go` with cobra subcommand
 - [ ] Start from a blank template with placeholder values
 - [ ] Reuse the same editor + validation loop as `get --edit`
 - [ ] Call `CreateIssue` on confirmed save, print new issue key
@@ -115,5 +115,5 @@
 - [ ] Add `--no-color` / respect `NO_COLOR` env var for CI environments
 - [ ] Handle Jira API rate limit errors with a clear user-facing message
 - [ ] Handle network timeout with a configurable timeout flag (default 10s)
-- [ ] Add `lazyjira version` subcommand
+- [ ] Add `tira version` subcommand
 - [ ] Write a `README.md` covering installation, env var setup, and command reference

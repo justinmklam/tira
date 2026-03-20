@@ -1,16 +1,16 @@
-# lazyjira — architecture
+# tira — architecture
 
 ## Overview
 
-lazyjira is a terminal UI for Jira built in Go with the Charm ecosystem (Bubbletea, Bubbles, Lipgloss, Glamour). It provides two interactive views (backlog and kanban) under a unified board TUI, plus CLI commands for fetching, editing, and creating issues via `$EDITOR`.
+tira is a terminal UI for Jira built in Go with the Charm ecosystem (Bubbletea, Bubbles, Lipgloss, Glamour). It provides two interactive views (backlog and kanban) under a unified board TUI, plus CLI commands for fetching, editing, and creating issues via `$EDITOR`.
 
 ---
 
 ## Project layout
 
 ```
-lazyjira/
-├── cmd/lazyjira/
+tira/
+├── cmd/tira/
 │   ├── main.go              # Entry point → Execute()
 │   ├── root.go              # Cobra root command, --debug flag, config loading
 │   ├── get.go               # `get <key> [--edit]` — fetch/display/edit single issue
@@ -56,7 +56,7 @@ lazyjira/
 ## Package dependency graph
 
 ```
-cmd/lazyjira (commands + TUI models)
+cmd/tira (commands + TUI models)
  ├── internal/api        ← Jira REST API client
  ├── internal/config     ← Config loading
  ├── internal/models     ← Shared data types
@@ -86,7 +86,7 @@ Key invariants:
 - `internal/tui` has **zero** dependencies on other internal packages — it's a leaf.
 - `internal/editor` and `internal/validator` are pure string/struct logic — no I/O, no TUI.
 - `internal/api` depends only on `config` and `models` — no TUI or display coupling.
-- All TUI model code lives in `cmd/lazyjira/` (package main).
+- All TUI model code lives in `cmd/tira/` (package main).
 
 ---
 
@@ -171,7 +171,7 @@ RenderTemplate() → WriteTempFile() → OpenEditor() → ReadFile()
 ```
 
 - **Template format**: YAML-like front matter + markdown body, separated by `---`
-- **Sentinel line**: `<!-- lazyjira: ... -->` detects template corruption
+- **Sentinel line**: `<!-- tira: ... -->` detects template corruption
 - **Validation loop**: Errors annotated inline, user can fix and re-save
 - **Pure functions**: `ParseTemplate()` and `Validate()` take strings/structs, return values — no I/O.
 
@@ -187,7 +187,7 @@ export JIRA_EMAIL=you@example.com
 export JIRA_API_TOKEN=your_token_here
 ```
 
-Optional YAML config at `~/.config/lazyjira/config.yaml` for non-secret defaults:
+Optional YAML config at `~/.config/tira/config.yaml` for non-secret defaults:
 
 ```yaml
 default_project: MP

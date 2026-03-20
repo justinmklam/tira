@@ -11,9 +11,9 @@ import (
 	"sync"
 
 	jira "github.com/andygrunwald/go-jira/v2/cloud"
-	"github.com/justinmklam/lazyjira/internal/config"
-	"github.com/justinmklam/lazyjira/internal/debug"
-	"github.com/justinmklam/lazyjira/internal/models"
+	"github.com/justinmklam/tira/internal/config"
+	"github.com/justinmklam/tira/internal/debug"
+	"github.com/justinmklam/tira/internal/models"
 )
 
 type Client interface {

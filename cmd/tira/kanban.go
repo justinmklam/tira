@@ -10,10 +10,10 @@ import (
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/glamour/styles"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/justinmklam/lazyjira/internal/api"
-	"github.com/justinmklam/lazyjira/internal/display"
-	"github.com/justinmklam/lazyjira/internal/models"
-	"github.com/justinmklam/lazyjira/internal/tui"
+	"github.com/justinmklam/tira/internal/api"
+	"github.com/justinmklam/tira/internal/display"
+	"github.com/justinmklam/tira/internal/models"
+	"github.com/justinmklam/tira/internal/tui"
 )
 
 // --- kanban TUI model ---

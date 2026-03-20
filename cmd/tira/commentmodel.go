@@ -6,7 +6,7 @@ import (
 	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/justinmklam/lazyjira/internal/tui"
+	"github.com/justinmklam/tira/internal/tui"
 )
 
 type commentInputModel struct {

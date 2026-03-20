@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/justinmklam/lazyjira/internal/tui"
+	"github.com/justinmklam/tira/internal/tui"
 )
 
 // Column widths for backlog issue rows.

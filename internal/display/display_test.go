@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/justinmklam/lazyjira/internal/models"
+	"github.com/justinmklam/tira/internal/models"
 )
 
 func TestRenderIssue_Basic(t *testing.T) {

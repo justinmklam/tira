@@ -3,7 +3,7 @@ package editor
 import (
 	"testing"
 
-	"github.com/justinmklam/lazyjira/internal/models"
+	"github.com/justinmklam/tira/internal/models"
 )
 
 func TestRenderThenParse_RoundTrip(t *testing.T) {

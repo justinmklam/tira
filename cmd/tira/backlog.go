@@ -12,9 +12,9 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/justinmklam/lazyjira/internal/api"
-	"github.com/justinmklam/lazyjira/internal/models"
-	"github.com/justinmklam/lazyjira/internal/tui"
+	"github.com/justinmklam/tira/internal/api"
+	"github.com/justinmklam/tira/internal/models"
+	"github.com/justinmklam/tira/internal/tui"
 )
 
 // --- backlog TUI model ---

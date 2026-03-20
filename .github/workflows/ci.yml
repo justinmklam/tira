@@ -45,7 +45,7 @@ jobs:
         with:
           go-version-file: go.mod
       - name: Build
-        run: go build -o lazyjira ./cmd/lazyjira
+        run: go build -o tira ./cmd/tira
 
   security:
     name: Security

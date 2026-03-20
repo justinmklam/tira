@@ -1,4 +1,4 @@
-# lazyjira — implementation plan
+# tira — implementation plan
 
 A lazygit-style CLI for Jira, built in Go with Charm tooling. Designed to be extended into a full TUI later — the CLI is the foundation, not a throwaway.
 
@@ -7,13 +7,13 @@ A lazygit-style CLI for Jira, built in Go with Charm tooling. Designed to be ext
 ## Project layout
 
 ```
-lazyjira/
-├── cmd/lazyjira/
+tira/
+├── cmd/tira/
 │   ├── main.go
 │   ├── root.go        # cobra root, persistent flags
-│   ├── get.go         # lazyjira get <key> [--edit]
-│   ├── list.go        # lazyjira list [--backlog]
-│   └── create.go      # lazyjira create [--project] [--type]
+│   ├── get.go         # tira get <key> [--edit]
+│   ├── list.go        # tira list [--backlog]
+│   └── create.go      # tira create [--project] [--type]
 ├── internal/
 │   ├── config/
 │   │   └── config.go  # viper load, env var auth
@@ -95,9 +95,9 @@ func Load() (*Config, error) {
         )
     }
 
-    // optional: load default_project + default_board_id from ~/.config/lazyjira/config.yaml
+    // optional: load default_project + default_board_id from ~/.config/tira/config.yaml
     viper.SetConfigName("config")
-    viper.AddConfigPath("$HOME/.config/lazyjira")
+    viper.AddConfigPath("$HOME/.config/tira")
     _ = viper.ReadInConfig()  // not required — ignore error if absent
     cfg.Project = viper.GetString("default_project")
     cfg.BoardID = viper.GetInt("default_board_id")
@@ -192,15 +192,15 @@ type Client interface {
 ## Commands
 
 ```bash
-lazyjira get MP-101              # pretty-print ticket to stdout
-lazyjira get MP-101 --edit       # open in $EDITOR, save writes back to Jira
+tira get MP-101              # pretty-print ticket to stdout
+tira get MP-101 --edit       # open in $EDITOR, save writes back to Jira
 
-lazyjira list                    # active sprint issues
-lazyjira list --backlog          # all sprints, grouped
+tira list                    # active sprint issues
+tira list --backlog          # all sprints, grouped
 
-lazyjira create                  # new ticket using $EDITOR template
-lazyjira create --project OTHER  # override project
-lazyjira create --type Bug       # pre-fill type field
+tira create                  # new ticket using $EDITOR template
+tira create --project OTHER  # override project
+tira create --type Bug       # pre-fill type field
 ```
 
 ---
@@ -221,7 +221,7 @@ This is the core of the tool. The loop:
 ### Template format
 
 ```markdown
-<!-- lazyjira: do not remove this line or change field names -->
+<!-- tira: do not remove this line or change field names -->
 <!-- Valid types: Bug, Story, Task, Epic, Subtask -->
 type: Bug
 
@@ -245,7 +245,7 @@ Fix the broken back-button behaviour on the settings page.
 The issue occurs when...
 ```
 
-Key decisions in this format: fields come first so parse errors are caught before the user reads a long description; comments sit on the line above each field so they're visible when the cursor is on the field in most editors; `---` cleanly separates structured fields from free-form description; the `<!-- lazyjira: ... -->` sentinel lets you detect if the user accidentally deletes the header.
+Key decisions in this format: fields come first so parse errors are caught before the user reads a long description; comments sit on the line above each field so they're visible when the cursor is on the field in most editors; `---` cleanly separates structured fields from free-form description; the `<!-- tira: ... -->` sentinel lets you detect if the user accidentally deletes the header.
 
 ### Parsing
 
@@ -299,7 +299,7 @@ type: foobar
 
 This prevents stacked comment lines accumulating across multiple failed saves.
 
-### The loop in `cmd/lazyjira/get.go`
+### The loop in `cmd/tira/get.go`
 
 ```go
 tmpFile := writeTempFile(renderTemplate(issue, valid))
@@ -352,9 +352,9 @@ if confirm {
 
 ## `list` command
 
-`lazyjira list` fetches the active sprint and renders a lipgloss table. Columns: key, summary (truncated to terminal width), type badge, priority, assignee, story points. Issues are grouped by status with a subtle header row per group.
+`tira list` fetches the active sprint and renders a lipgloss table. Columns: key, summary (truncated to terminal width), type badge, priority, assignee, story points. Issues are grouped by status with a subtle header row per group.
 
-`lazyjira list --backlog` renders all sprints as a tree: sprint name as a bold section header, issues indented beneath. Closed sprints are collapsed by default with a `[+N more]` indicator.
+`tira list --backlog` renders all sprints as a tree: sprint name as a bold section header, issues indented beneath. Closed sprints are collapsed by default with a `[+N more]` indicator.
 
 Both commands truncate the summary column based on live terminal width via `lipgloss.Width()`.
 
@@ -365,9 +365,9 @@ Both commands truncate the summary column based on live terminal width via `lipg
 Nearly identical to `get --edit` but starts from an empty template with placeholder values. On successful save, calls `CreateIssue` and prints the new issue key.
 
 ```bash
-lazyjira create                    # uses default_project from config
-lazyjira create --project OTHERP   # override project
-lazyjira create --type Bug         # pre-fill type, saves one edit cycle
+tira create                    # uses default_project from config
+tira create --project OTHERP   # override project
+tira create --type Bug         # pre-fill type, saves one edit cycle
 ```
 
 ---

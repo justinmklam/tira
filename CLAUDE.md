@@ -14,7 +14,7 @@
 
 - See `docs/architecture.md` for the full architecture overview
 - The `internal/tui` package has NO dependencies on other internal packages — keep it that way
-- TUI models live in `cmd/lazyjira/` (package main), internal packages are pure logic
+- TUI models live in `cmd/tira/` (package main), internal packages are pure logic
 - `api.Client` is an interface — all API access goes through it for testability
 
 ## API client conventions

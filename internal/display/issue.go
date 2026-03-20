@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/justinmklam/lazyjira/internal/models"
+	"github.com/justinmklam/tira/internal/models"
 )
 
 // RenderIssue returns a pure Markdown string suitable for piping to glow.

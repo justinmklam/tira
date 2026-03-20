@@ -1,4 +1,4 @@
-module github.com/justinmklam/lazyjira
+module github.com/justinmklam/tira
 
 go 1.26.1
 

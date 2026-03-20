@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/justinmklam/lazyjira/internal/models"
+	"github.com/justinmklam/tira/internal/models"
 )
 
 func TestValidate_AllValid(t *testing.T) {
@@ -257,7 +257,7 @@ func TestIsHintComment(t *testing.T) {
 	}{
 		{"<!-- Valid types: Bug -->", true},
 		{"<!-- ERROR: bad -->", true},
-		{"<!-- lazyjira: do not remove -->", false},
+		{"<!-- tira: do not remove -->", false},
 		{"type: Bug", false},
 	}
 	for _, tt := range tests {

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/justinmklam/lazyjira/internal/models"
+	"github.com/justinmklam/tira/internal/models"
 )
 
 // ValidationError describes a single field validation failure.

@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/justinmklam/lazyjira/internal/models"
+	"github.com/justinmklam/tira/internal/models"
 )
 
 // ParseTemplate parses a template string (as written by RenderTemplate) back

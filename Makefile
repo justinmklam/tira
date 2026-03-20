@@ -1,20 +1,20 @@
-# Makefile for lazyjira
+# Makefile for tira
 
 .PHONY: build clean test fmt lint vet check
 
 # Build the binary
 build:
-	GOTOOLCHAIN=local go build -o lazyjira ./cmd/lazyjira
+	GOTOOLCHAIN=local go build -o tira ./cmd/tira
 
 run:
-	./lazyjira backlog
+	./tira backlog
 
 run-dev:
-	./lazyjira --profile dev backlog --debug
+	./tira --profile dev backlog --debug
 
 # Remove build artifacts
 clean:
-	rm -f lazyjira
+	rm -f tira
 
 # Run all tests
 test:

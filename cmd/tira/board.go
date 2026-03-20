@@ -12,10 +12,10 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/justinmklam/lazyjira/internal/api"
-	"github.com/justinmklam/lazyjira/internal/debug"
-	"github.com/justinmklam/lazyjira/internal/models"
-	"github.com/justinmklam/lazyjira/internal/tui"
+	"github.com/justinmklam/tira/internal/api"
+	"github.com/justinmklam/tira/internal/debug"
+	"github.com/justinmklam/tira/internal/models"
+	"github.com/justinmklam/tira/internal/tui"
 	"github.com/spf13/cobra"
 )
 
@@ -123,7 +123,7 @@ func init() {
 
 func runBoardCmd(startView boardView) error {
 	if cfg.BoardID == 0 {
-		return fmt.Errorf("board ID not configured: set default_board_id in ~/.config/lazyjira/config.yaml")
+		return fmt.Errorf("board ID not configured: set default_board_id in ~/.config/tira/config.yaml")
 	}
 
 	client, err := api.NewClient(cfg)

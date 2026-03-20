@@ -1,4 +1,4 @@
-# lazyjira — keybinding reference
+# tira — keybinding reference
 
 Modelled on yazi's philosophy: modal only where the modality is obvious from context, not as a first-class concept the user has to track.
 

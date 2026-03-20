@@ -72,7 +72,7 @@ func isHintComment(line string) bool {
 		return false
 	}
 	// Sentinel line is never a hint.
-	if strings.Contains(line, "lazyjira:") {
+	if strings.Contains(line, "tira:") {
 		return false
 	}
 	return true

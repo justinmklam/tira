@@ -6,8 +6,8 @@ import (
 	"runtime"
 
 	"github.com/charmbracelet/log"
-	"github.com/justinmklam/lazyjira/internal/config"
-	"github.com/justinmklam/lazyjira/internal/debug"
+	"github.com/justinmklam/tira/internal/config"
+	"github.com/justinmklam/tira/internal/debug"
 	"github.com/spf13/cobra"
 )
 
@@ -18,7 +18,7 @@ var (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "lazyjira",
+	Use:   "tira",
 	Short: "A lazygit-style CLI for Jira",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return cmd.Help()

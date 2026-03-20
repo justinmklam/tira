@@ -29,7 +29,7 @@ func Load(profileName string, searchPaths ...string) (*Config, error) {
 	} else {
 		home, err := os.UserHomeDir()
 		if err == nil {
-			v.AddConfigPath(filepath.Join(home, ".config", "lazyjira"))
+			v.AddConfigPath(filepath.Join(home, ".config", "tira"))
 		}
 		v.AddConfigPath(".") // Also look in current directory for convenience
 	}

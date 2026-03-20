@@ -1,4 +1,4 @@
-# lazyjira
+# tira
 
 A lazygit-style CLI for Jira, built in Go with Charm tooling. This project provides a fast, scriptable, and extensible interface to Jira issues, sprints, and boards.
 
@@ -22,13 +22,13 @@ A lazygit-style CLI for Jira, built in Go with Charm tooling. This project provi
 Clone the repository and build the CLI:
 
 ```sh
-git clone https://github.com/justinmklam/lazyjira.git
-cd lazyjira
-go build -o lazyjira ./cmd/lazyjira
+git clone https://github.com/justinmklam/tira.git
+cd tira
+go build -o tira ./cmd/tira
 ```
 
 ### Configuration
-Create `~/.config/lazyjira/config.yaml` and add your profile(s):
+Create `~/.config/tira/config.yaml` and add your profile(s):
 
 ```yaml
 profiles:
@@ -50,27 +50,27 @@ profiles:
 
 - Use a specific profile (defaults to `default`):
   ```sh
-  ./lazyjira --profile dev list
+  ./tira --profile dev list
   ```
 - View an issue:
   ```sh
-  ./lazyjira get MP-101
+  ./tira get MP-101
   ```
 - Edit an issue in your editor:
   ```sh
-  ./lazyjira get MP-101 --edit
+  ./tira get MP-101 --edit
   ```
 - List active sprint issues:
   ```sh
-  ./lazyjira list
+  ./tira list
   ```
 - List all sprints and backlog:
   ```sh
-  ./lazyjira list --backlog
+  ./tira list --backlog
   ```
 - Create a new issue:
   ```sh
-  ./lazyjira create
+  ./tira create
   ```
 
 ### Flags
@@ -79,7 +79,7 @@ profiles:
 - `--no-color` to disable color output
 
 ## Contributing
-Pull requests welcome! See the plan in `docs/lazyjira-plan.md` for roadmap and structure.
+Pull requests welcome! See the plan in `docs/tira-plan.md` for roadmap and structure.
 
 ## License
 MIT

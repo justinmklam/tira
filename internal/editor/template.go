@@ -6,10 +6,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/justinmklam/lazyjira/internal/models"
+	"github.com/justinmklam/tira/internal/models"
 )
 
-const sentinel = "<!-- lazyjira: do not remove this line or change field names -->"
+const sentinel = "<!-- tira: do not remove this line or change field names -->"
 
 // RenderTemplate produces a markdown template string for editing an issue.
 // valid may be nil for new issues (create flow).
@@ -103,7 +103,7 @@ func RenderTemplate(issue *models.Issue, valid *models.ValidValues) string {
 
 // WriteTempFile writes content to a temp .md file and returns its path.
 func WriteTempFile(content string) (string, error) {
-	f, err := os.CreateTemp("", "lazyjira-*.md")
+	f, err := os.CreateTemp("", "tira-*.md")
 	if err != nil {
 		return "", fmt.Errorf("creating temp file: %w", err)
 	}
