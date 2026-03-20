@@ -57,6 +57,7 @@ type blResult struct {
 
 type blMoveMultiDoneMsg struct {
 	movedKeys      []string
+	firstMovedKey  string
 	targetGroupIdx int
 	err            error
 }
@@ -399,7 +400,18 @@ func (m blModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cutKeys = make(map[string]bool)
 			m.visualMode = false
 			m.rows = blBuildRows(m.groups, m.collapsed, m.filter, m.filterEpic)
-			m.cursor = tui.Clamp(m.cursor, 0, len(m.rows)-1)
+			// Navigate cursor to the first moved issue's new position.
+			if msg.firstMovedKey != "" {
+				for i, row := range m.rows {
+					if row.kind == blRowIssue && row.groupIdx == msg.targetGroupIdx &&
+						m.groups[msg.targetGroupIdx].Issues[row.issueIdx].Key == msg.firstMovedKey {
+						m.cursor = i
+						break
+					}
+				}
+			} else {
+				m.cursor = tui.Clamp(m.cursor, 0, len(m.rows)-1)
+			}
 			return blScrollToFit(m), nil
 		}
 		return m, nil
@@ -885,7 +897,11 @@ func blMoveMultiCmd(client api.Client, keys []string, targetSprintID, targetGrou
 				err = client.RankIssues(keys, rankAfterKey, "")
 			}
 		}
-		return blMoveMultiDoneMsg{movedKeys: keys, targetGroupIdx: targetGroupIdx, err: err}
+		firstKey := ""
+		if len(keys) > 0 {
+			firstKey = keys[0]
+		}
+		return blMoveMultiDoneMsg{movedKeys: keys, firstMovedKey: firstKey, targetGroupIdx: targetGroupIdx, err: err}
 	}
 }
 
