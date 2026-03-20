@@ -31,6 +31,7 @@ const (
 	viewCreate         // create form active
 	viewCreateSaving   // create API call in flight
 	viewAssigneePicker // assignee fuzzy picker (edit form or direct assignment)
+	viewHelp           // help overlay
 )
 
 // boardInitData holds the initial fetch results needed by both views.
@@ -77,6 +78,9 @@ type boardModel struct {
 	// In-TUI assignee picker state.
 	assigneePicker  tui.PickerModel
 	assigneeForEdit bool // true = inject result into editForm; false = used externally
+
+	// Help overlay state.
+	helpModel tui.HelpModel
 }
 
 var boardCmd = &cobra.Command{
@@ -407,6 +411,19 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		return m, cmd
+
+	case viewHelp:
+		if key, ok := msg.(tea.KeyMsg); ok {
+			switch key.String() {
+			case "esc", "?":
+				m.activeView = m.prevView
+				return m, nil
+			case "ctrl+c":
+				m.activeView = m.prevView
+				return m, nil
+			}
+		}
+		return m, nil
 	}
 
 	// Open in browser (only when sub-model is in its base navigation state).
@@ -446,6 +463,10 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "2":
 			m.activeView = viewKanban
+			return m, nil
+		case "?":
+			m.prevView = m.activeView
+			m.activeView = viewHelp
 			return m, nil
 		}
 	}
@@ -594,6 +615,9 @@ func (m boardModel) View() string {
 	case viewAssigneePicker:
 		return m.viewAssigneePickerOverlay(w, h)
 
+	case viewHelp:
+		return m.viewHelpOverlay(w, h)
+
 	case viewKanban:
 		return m.kanban.View()
 
@@ -694,6 +718,28 @@ func (m boardModel) viewAssigneePickerOverlay(w, h int) string {
 		m.assigneePicker.View(innerW, listH) + "\n" +
 		tui.DimStyle.Render(strings.Repeat("─", innerW)) + "\n" +
 		footer
+
+	modal := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(tui.ColorBlue).
+		Width(innerW).
+		Render(body)
+
+	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, modal)
+}
+
+func (m boardModel) viewHelpOverlay(w, h int) string {
+	overlayW, overlayH := tui.HelpOverlaySize(w, h)
+	innerW := overlayW - 2
+	innerH := overlayH - 4 // account for border and padding
+
+	// Get the help content
+	helpContent := m.helpModel.View(innerW, innerH)
+
+	// Add footer with close instructions
+	footer := tui.DimStyle.Render("  esc / ?: close help")
+
+	body := helpContent + "\n" + footer
 
 	modal := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
