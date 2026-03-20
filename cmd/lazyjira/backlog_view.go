@@ -140,10 +140,9 @@ func (m blModel) viewList() string {
 			"  " + tui.DimStyle.Render("esc: clear  enter: apply")
 	} else {
 		hints := []string{
-			"j/k: navigate", "J/K/{/}: sprint", "z/Z: collapse",
-			"space: select", "S: story pts", "s: status", "v: visual", "enter: view", "e: edit", "o: open", "y: copy",
-			"ctrl+j/k: reorder", "x: cut", "p: paste", ">/<: adj sprint", "B: backlog",
-			"/: filter", "F: epic", "R: refresh", "tab: kanban", "q: quit",
+			"e: edit", "o: open", "y: copy", "s: status", "S: story pts",
+			"x: cut", "p: paste", ">/<: adj sprint", "B: backlog",
+			"/: filter", "F: epic", "R: refresh",
 		}
 		left := "  " + strings.Join(hints, "   ")
 		if n := len(m.allSelected()); n > 0 {
