@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/justinmklam/lazyjira/internal/api"
+	"github.com/justinmklam/lazyjira/internal/debug"
 	"github.com/justinmklam/lazyjira/internal/display"
 	"github.com/justinmklam/lazyjira/internal/editor"
 	"github.com/justinmklam/lazyjira/internal/models"
@@ -31,6 +32,7 @@ var getCmd = &cobra.Command{
 
 		client, err := api.NewClient(cfg)
 		if err != nil {
+			debug.LogError("api.NewClient", err)
 			return err
 		}
 
@@ -38,12 +40,14 @@ var getCmd = &cobra.Command{
 			return client.GetIssue(key)
 		})
 		if err != nil {
+			debug.LogError("client.GetIssue", err)
 			return err
 		}
 
 		if !editFlag {
 			output, err := display.RenderIssue(issue)
 			if err != nil {
+				debug.LogError("display.RenderIssue", err)
 				return err
 			}
 			return page(output)
@@ -68,6 +72,7 @@ func runEditLoop(client api.Client, issue *models.Issue) error {
 
 	valid, err := loadValidValues(client, projectKey)
 	if err != nil {
+		debug.LogError("loadValidValues", err)
 		return err
 	}
 
@@ -80,6 +85,7 @@ func runEditLoop(client api.Client, issue *models.Issue) error {
 	printFieldDiff(issue, fields)
 
 	if err := client.UpdateIssue(issue.Key, *fields); err != nil {
+		debug.LogError("UpdateIssue", err)
 		return fmt.Errorf("updating issue: %w", err)
 	}
 	fmt.Fprintf(os.Stderr, "✓ %s updated.\n", issue.Key)
