@@ -223,7 +223,11 @@ func (m blModel) renderSprintRow(row blRow, isSelected bool, activeGroupIdx, wid
 	line := left + " " + fill + " " + count
 
 	if isSelected {
-		return lipgloss.NewStyle().Background(tui.ColorBg).Width(width).Render(line)
+		highlight := lipgloss.NewStyle().
+			Background(tui.ColorBg).
+			Foreground(tui.ColorFgBright).
+			Bold(true)
+		return highlight.Width(width).Render(line)
 	}
 	return line
 }
@@ -273,9 +277,12 @@ func (m blModel) renderIssueRow(row blRow, isSelected bool, width int) string {
 	if isSelected {
 		bg := tui.SelectedBg
 		var cursorStr string
-		if isCut {
+		switch {
+		case isCut:
 			cursorStr = bg.Bold(true).Foreground(tui.ColorOrange).Render("✂ ")
-		} else {
+		case isChecked:
+			cursorStr = bg.Foreground(tui.ColorYellow).Render("● ")
+		default:
 			cursorStr = bg.Render("  ")
 		}
 		keyColor := tui.ColorWhite
