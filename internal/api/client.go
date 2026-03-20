@@ -36,6 +36,7 @@ type Client interface {
 	SetAssignee(issueKey, accountID string) error
 	GetStatuses(issueKey string) ([]models.Status, error)
 	TransitionStatus(issueKey, statusID string) error
+	AddComment(issueKey, text string) error
 }
 
 type jiraClient struct {
@@ -330,6 +331,19 @@ func (c *jiraClient) fetchComments(key string) ([]models.Comment, error) {
 		})
 	}
 	return comments, nil
+}
+
+func (c *jiraClient) AddComment(issueKey, text string) error {
+	payload := map[string]any{
+		"body": markdownToADF(text),
+	}
+	req, err := c.client.NewRequest(context.Background(), http.MethodPost,
+		fmt.Sprintf("rest/api/3/issue/%s/comment", issueKey), payload)
+	if err != nil {
+		return err
+	}
+	_, err = c.client.Do(req, nil)
+	return err
 }
 
 // fetchStatusChangeDate fetches the changelog for an issue and returns the date

@@ -36,3 +36,4 @@
 - Backlog rendering is split: `backlog.go` (model + update) and `backlog_view.go` (rendering)
 - The `board` command runs a unified TUI that wraps both backlog and kanban views — Tab toggles between them
 - Editor/validator packages are pure string/struct logic with no I/O — keep them testable
+- Any new keybindings should be updated in [this doc](./docs/keybindings-backlog.md) and optionally [the help window](./internal/tui/help.go) and/or the bottom persistent help

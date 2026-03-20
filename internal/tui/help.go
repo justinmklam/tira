@@ -79,6 +79,7 @@ func HelpSections() []HelpSection {
 			Title: "Editing (Backlog)",
 			Keybindings: []HelpKeybinding{
 				{Key: "e", Description: "Edit ticket in $EDITOR (full template flow)"},
+				{Key: "c", Description: "Add comment — inline text input (ctrl+s to save, esc to cancel)"},
 				{Key: "S", Description: "Set story points — inline numeric input"},
 				{Key: "s", Description: "Change status — picker"},
 				{Key: "a", Description: "Create new ticket in current sprint"},
@@ -95,6 +96,7 @@ func HelpSections() []HelpSection {
 			Title: "Editing (Kanban)",
 			Keybindings: []HelpKeybinding{
 				{Key: "e", Description: "Edit ticket in $EDITOR (full template flow)"},
+				{Key: "c", Description: "Add comment — inline text input (ctrl+s to save, esc to cancel)"},
 				{Key: "s", Description: "Change status — picker"},
 				{Key: "A", Description: "Set assignee — fuzzy picker"},
 				{Key: "o", Description: "Open ticket in browser"},

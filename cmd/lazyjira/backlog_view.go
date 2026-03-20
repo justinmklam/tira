@@ -64,7 +64,7 @@ func (m blModel) viewDetail() string {
 
 	header := tui.BoldBlue.Padding(0, 1).Width(innerW).
 		Render(tui.FixedWidth(m.detailIssue.Key+"  "+m.detailIssue.Summary, innerW-2))
-	footer := tui.DimStyle.Render("  e: edit   o: open in browser   esc/q: back   j/k: scroll")
+	footer := tui.DimStyle.Render("  e: edit   c: comment   o: open in browser   esc/q: back   j/k: scroll")
 	body := header + "\n" + m.detailView.View() + "\n" + footer
 
 	modal := lipgloss.NewStyle().
@@ -140,7 +140,7 @@ func (m blModel) viewList() string {
 			"  " + tui.DimStyle.Render("esc: clear  enter: apply")
 	} else {
 		hints := []string{
-			"e: edit", "o: open", "y: copy", "s: status", "S: story pts",
+			"e: edit", "c: comment", "o: open", "y: copy", "s: status", "S: story pts",
 			"x: cut", "p: paste", ">/<: adj sprint", "B: backlog",
 			"/: filter", "F: epic", "R: refresh",
 		}

@@ -32,6 +32,8 @@ const (
 	viewCreateSaving   // create API call in flight
 	viewAssigneePicker // assignee fuzzy picker (edit form or direct assignment)
 	viewHelp           // help overlay
+	viewComment        // comment textarea active
+	viewCommentSaving  // comment API call in flight
 )
 
 // boardInitData holds the initial fetch results needed by both views.
@@ -81,6 +83,12 @@ type boardModel struct {
 
 	// Help overlay state.
 	helpModel tui.HelpModel
+
+	// In-TUI comment state.
+	commentKey     string
+	commentSummary string
+	commentForm    *commentInputModel
+	commentErr     string
 }
 
 var boardCmd = &cobra.Command{
@@ -210,6 +218,10 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if (m.activeView == viewEdit || m.activeView == viewCreate) && m.editForm != nil {
 			overlayW, overlayH := tui.OverlaySize(m.width, m.height)
 			m.editForm.setSize(overlayW-4, overlayH-4)
+		}
+		if m.activeView == viewComment && m.commentForm != nil {
+			overlayW, overlayH := tui.OverlaySize(m.width, m.height)
+			m.commentForm.setSize(overlayW-4, overlayH-4)
 		}
 		return m, nil
 	}
@@ -428,6 +440,58 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		innerH := overlayH - 2 // account for border only
 		m.helpModel = m.helpModel.Update(msg, innerH)
 		return m, nil
+
+	case viewComment:
+		if m.commentForm == nil {
+			return m, nil
+		}
+		if key, ok := msg.(tea.KeyMsg); ok && key.String() == "ctrl+c" {
+			m.activeView = m.prevView
+			m.commentForm = nil
+			return m, nil
+		}
+		updated, cmd := m.commentForm.Update(msg)
+		m.commentForm = updated.(*commentInputModel)
+		if m.commentForm.completed {
+			text := strings.TrimSpace(m.commentForm.ta.Value())
+			m.activeView = viewCommentSaving
+			m.commentErr = ""
+			return m, tea.Batch(m.editSpinner.Tick, saveCommentCmd(m.client, m.commentKey, text))
+		}
+		if m.commentForm.aborted {
+			m.activeView = m.prevView
+			m.commentForm = nil
+		}
+		return m, cmd
+
+	case viewCommentSaving:
+		switch msg := msg.(type) {
+		case spinner.TickMsg:
+			var cmd tea.Cmd
+			m.editSpinner, cmd = m.editSpinner.Update(msg)
+			return m, cmd
+		case commentSaveDoneMsg:
+			m.commentForm = nil
+			m.activeView = m.prevView
+			if msg.err != nil {
+				m.commentErr = fmt.Sprintf("Comment failed: %v", msg.err)
+				return m, nil
+			}
+			// Refresh the detail view if we're returning to one.
+			vpW, _ := tui.OverlayViewportSize(m.width, m.height)
+			if m.prevView == viewBacklog && m.backlog.state == blDetail && m.backlog.detailIssue != nil {
+				key := m.backlog.detailIssue.Key
+				m.backlog.state = blLoading
+				return m, tea.Batch(m.backlog.loadSpinner.Tick, fetchIssueCmd(m.client, key, vpW))
+			}
+			if m.prevView == viewKanban && m.kanban.state == stateDetail && m.kanban.detailIssue != nil {
+				key := m.kanban.detailIssue.Key
+				m.kanban.state = stateLoading
+				return m, tea.Batch(m.kanban.loadSpinner.Tick, fetchIssueCmd(m.client, key, vpW))
+			}
+			return m, nil
+		}
+		return m, nil
 	}
 
 	// Open in browser (only when sub-model is in its base navigation state).
@@ -497,6 +561,18 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.activeView = viewEditLoading
 			return m, tea.Batch(m.editSpinner.Tick, fetchEditDataCmd(m.client, key))
 		}
+		if m.backlog.result.commentKey != "" {
+			key := m.backlog.result.commentKey
+			m.commentSummary = m.backlog.result.commentSummary
+			m.backlog.result.commentKey = ""
+			m.backlog.result.commentSummary = ""
+			m.prevView = viewBacklog
+			m.commentKey = key
+			overlayW, overlayH := tui.OverlaySize(m.width, m.height)
+			m.commentForm = newCommentInputModel(overlayW-4, overlayH-4)
+			m.activeView = viewComment
+			return m, m.commentForm.Init()
+		}
 		if m.backlog.result.refresh {
 			m.backlog.result.refresh = false
 			return m, m.refreshCmd()
@@ -529,6 +605,18 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.editKey = key
 			m.activeView = viewEditLoading
 			return m, tea.Batch(m.editSpinner.Tick, fetchEditDataCmd(m.client, key))
+		}
+		if m.kanban.result.commentKey != "" {
+			key := m.kanban.result.commentKey
+			m.commentSummary = m.kanban.result.commentSummary
+			m.kanban.result.commentKey = ""
+			m.kanban.result.commentSummary = ""
+			m.prevView = viewKanban
+			m.commentKey = key
+			overlayW, overlayH := tui.OverlaySize(m.width, m.height)
+			m.commentForm = newCommentInputModel(overlayW-4, overlayH-4)
+			m.activeView = viewComment
+			return m, m.commentForm.Init()
 		}
 		if m.kanban.result.refresh {
 			m.kanban.result.refresh = false
@@ -622,6 +710,13 @@ func (m boardModel) View() string {
 	case viewHelp:
 		return m.viewHelpOverlay(w, h)
 
+	case viewComment:
+		return m.viewCommentForm(w, h)
+
+	case viewCommentSaving:
+		msg := m.editSpinner.View() + tui.DimStyle.Render(" Saving comment…")
+		return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, msg)
+
 	case viewKanban:
 		return m.kanban.View()
 
@@ -681,6 +776,15 @@ func (m boardModel) issueURL(key string) string {
 		return fmt.Sprintf("%s/jira/software/%s/%s/boards/%d?selectedIssue=%s", base, projectPath, m.project, m.boardID, key)
 	default:
 		return fmt.Sprintf("%s/browse/%s", base, key)
+	}
+}
+
+type commentSaveDoneMsg struct{ err error }
+
+func saveCommentCmd(client api.Client, key, text string) tea.Cmd {
+	return func() tea.Msg {
+		err := client.AddComment(key, text)
+		return commentSaveDoneMsg{err: err}
 	}
 }
 
@@ -745,6 +849,31 @@ func (m boardModel) viewHelpOverlay(w, h int) string {
 		BorderForeground(tui.ColorBlue).
 		Width(innerW).
 		Render(helpContent)
+
+	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, modal)
+}
+
+func (m boardModel) viewCommentForm(w, h int) string {
+	if m.commentForm == nil {
+		return ""
+	}
+	overlayW, _ := tui.OverlaySize(w, h)
+	innerW := overlayW - 2
+
+	titleStr := "Add Comment → " + m.commentKey + "  " + m.commentSummary
+	header := tui.BoldBlue.Padding(0, 1).Width(innerW).
+		Render(tui.FixedWidth(titleStr, innerW-2))
+
+	body := header + "\n" + m.commentForm.View()
+	if m.commentErr != "" {
+		body += "\n" + lipgloss.NewStyle().Foreground(tui.ColorRed).Render("  "+m.commentErr)
+	}
+
+	modal := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(tui.ColorBlue).
+		Width(innerW).
+		Render(body)
 
 	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, modal)
 }

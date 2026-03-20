@@ -40,8 +40,10 @@ type issueFetchedMsg struct {
 }
 
 type kanbanResult struct {
-	editKey string // non-empty when the user pressed e
-	refresh bool
+	editKey        string // non-empty when the user pressed e
+	commentKey     string // non-empty when the user pressed c
+	commentSummary string
+	refresh        bool
 }
 
 type kanbanAssignDoneMsg struct{ err error }
@@ -241,6 +243,11 @@ func (m kanbanModel) updateBoard(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.result = kanbanResult{editKey: issue.Key}
 			return m, nil
 		}
+	case "c":
+		if issue := m.currentIssue(); issue != nil {
+			m.result = kanbanResult{commentKey: issue.Key, commentSummary: issue.Summary}
+			return m, nil
+		}
 	case "A":
 		if issue := m.currentIssue(); issue != nil {
 			projectKey := m.project
@@ -275,6 +282,11 @@ func (m kanbanModel) updateDetail(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "e":
 			if m.detailIssue != nil {
 				m.result = kanbanResult{editKey: m.detailIssue.Key}
+				return m, nil
+			}
+		case "c":
+			if m.detailIssue != nil {
+				m.result = kanbanResult{commentKey: m.detailIssue.Key, commentSummary: m.detailIssue.Summary}
 				return m, nil
 			}
 		case "ctrl+c":
@@ -503,7 +515,7 @@ func (m kanbanModel) viewDetail() string {
 
 	header := tui.BoldBlue.Padding(0, 1).Width(innerW).
 		Render(tui.FixedWidth(m.detailIssue.Key+"  "+m.detailIssue.Summary, innerW-2))
-	footer := tui.DimStyle.Render("  e: edit   o: open in browser   esc/q: back   j/k: scroll")
+	footer := tui.DimStyle.Render("  e: edit   c: comment   o: open in browser   esc/q: back   j/k: scroll")
 	body := header + "\n" + m.detailView.View() + "\n" + footer
 
 	modal := lipgloss.NewStyle().
@@ -637,7 +649,7 @@ func (m kanbanModel) viewBoard() string {
 			Render("Kanban: "+m.sprintName) + "\n"
 	}
 
-	hintsStr := "  hjkl: navigate   enter: view   e: edit   s: status   o: open   tab: backlog   q: quit"
+	hintsStr := "  hjkl: navigate   enter: view   e: edit   c: comment   s: status   o: open   tab: backlog   q: quit"
 	var footerStr string
 	if m.state == stateLoading {
 		spinnerStr := m.loadSpinner.View() + tui.DimStyle.Render(" Loading…")

@@ -49,6 +49,8 @@ type blRow struct {
 
 type blResult struct {
 	editKey        string
+	commentKey     string
+	commentSummary string
 	refresh        bool
 	create         bool
 	createSprintID int
@@ -826,6 +828,12 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.epicFilterPicker = blNewEpicFilterPicker(m.client, projectKey, m.filterEpic)
 		m.state = blEpicFilterPicker
 		return m, m.epicFilterPicker.Init()
+
+	case "c":
+		if issue := m.currentIssue(); issue != nil {
+			m.result = blResult{commentKey: issue.Key, commentSummary: issue.Summary}
+			return m, nil
+		}
 	}
 
 	return m, nil
@@ -872,6 +880,11 @@ func (m blModel) updateDetail(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "e":
 			if m.detailIssue != nil {
 				m.result = blResult{editKey: m.detailIssue.Key}
+				return m, nil
+			}
+		case "c":
+			if m.detailIssue != nil {
+				m.result = blResult{commentKey: m.detailIssue.Key, commentSummary: m.detailIssue.Summary}
 				return m, nil
 			}
 		case "ctrl+c":
