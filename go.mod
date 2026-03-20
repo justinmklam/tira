@@ -1,6 +1,6 @@
 module github.com/justinmklam/lazyjira
 
-go 1.24.7
+go 1.26.1
 
 require (
 	github.com/alecthomas/chroma/v2 v2.20.0 // indirect
