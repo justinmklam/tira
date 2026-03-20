@@ -390,7 +390,7 @@ func fetchIssueCmd(client api.Client, key string, vpW int) tea.Cmd {
 		content := md
 		if rerr == nil {
 			if rendered, rerr2 := renderer.Render(md); rerr2 == nil {
-				content = rendered
+				content = strings.TrimLeft(rendered, "\n")
 			}
 		}
 		return issueFetchedMsg{issue: issue, content: content}

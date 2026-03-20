@@ -21,15 +21,17 @@ func TestRenderIssue_Basic(t *testing.T) {
 		t.Fatalf("RenderIssue error: %v", err)
 	}
 
-	checks := []string{
-		"# PROJ-1: Test issue",
-		"| **Status** | In Progress |",
-		"| **Type** | Bug |",
-		"| **Priority** | High |",
+	checks := [][2]string{
+		{"**Status:**", "In Progress"},
+		{"**Type:**", "Bug"},
+		{"**Priority:**", "High"},
 	}
-	for _, want := range checks {
-		if !strings.Contains(got, want) {
-			t.Errorf("expected %q in output", want)
+	for _, pair := range checks {
+		if !strings.Contains(got, pair[0]) {
+			t.Errorf("expected key %q in output", pair[0])
+		}
+		if !strings.Contains(got, pair[1]) {
+			t.Errorf("expected value %q in output", pair[1])
 		}
 	}
 }
@@ -53,16 +55,19 @@ func TestRenderIssue_OptionalFields(t *testing.T) {
 		t.Fatalf("RenderIssue error: %v", err)
 	}
 
-	checks := []string{
-		"| **Reporter** | Alice |",
-		"| **Assignee** | Bob |",
-		"| **Story Points** | 8 |",
-		"| **Sprint** | Sprint 5 |",
-		"| **Labels** | frontend, urgent |",
+	checks := [][2]string{
+		{"**Reporter:**", "Alice"},
+		{"**Assignee:**", "Bob"},
+		{"**Story Points:**", "8"},
+		{"**Sprint:**", "Sprint 5"},
+		{"**Labels:**", "frontend, urgent"},
 	}
-	for _, want := range checks {
-		if !strings.Contains(got, want) {
-			t.Errorf("expected %q in output", want)
+	for _, pair := range checks {
+		if !strings.Contains(got, pair[0]) {
+			t.Errorf("expected key %q in output", pair[0])
+		}
+		if !strings.Contains(got, pair[1]) {
+			t.Errorf("expected value %q in output", pair[1])
 		}
 	}
 }
@@ -81,7 +86,7 @@ func TestRenderIssue_OmitsEmptyOptional(t *testing.T) {
 		t.Fatalf("RenderIssue error: %v", err)
 	}
 
-	omitted := []string{"Reporter", "Assignee", "Story Points", "Sprint", "Labels"}
+	omitted := []string{"Reporter", "Story Points", "Sprint", "Labels"}
 	for _, field := range omitted {
 		if strings.Contains(got, "**"+field+"**") {
 			t.Errorf("expected %q to be omitted", field)
@@ -103,7 +108,7 @@ func TestRenderIssue_WithDescription(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RenderIssue error: %v", err)
 	}
-	if !strings.Contains(got, "## Description") {
+	if !strings.Contains(got, "# Description") {
 		t.Error("expected Description section")
 	}
 	if !strings.Contains(got, "This is the description.") {
@@ -127,7 +132,7 @@ func TestRenderIssue_WithLinkedIssues(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RenderIssue error: %v", err)
 	}
-	if !strings.Contains(got, "## Linked Work Items") {
+	if !strings.Contains(got, "# Linked Work Items") {
 		t.Error("expected Linked Work Items section")
 	}
 	if !strings.Contains(got, "**blocks** PROJ-6") {

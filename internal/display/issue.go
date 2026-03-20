@@ -12,54 +12,65 @@ import (
 func RenderIssue(issue *models.Issue) (string, error) {
 	var sb strings.Builder
 
-	// Title
-	fmt.Fprintf(&sb, "# %s: %s\n\n", issue.Key, issue.Summary)
-
-	// Meta table
-	fmt.Fprintf(&sb, "| | |\n|---|---|\n")
-	fmt.Fprintf(&sb, "| **Status** | %s |\n", issue.Status)
-	fmt.Fprintf(&sb, "| **Type** | %s |\n", issue.IssueType)
-	fmt.Fprintf(&sb, "| **Priority** | %s |\n", issue.Priority)
-	if issue.Reporter != "" {
-		fmt.Fprintf(&sb, "| **Reporter** | %s |\n", issue.Reporter)
+	// Metadata list — build rows first so we can align values.
+	type metaRow struct{ key, val string }
+	assignee := issue.Assignee
+	if assignee == "" {
+		assignee = "—"
 	}
-	if issue.Assignee != "" {
-		fmt.Fprintf(&sb, "| **Assignee** | %s |\n", issue.Assignee)
-	}
+	rows := []metaRow{{"Assignee", assignee}, {"Status", issue.Status}}
 	if issue.StoryPoints > 0 {
-		fmt.Fprintf(&sb, "| **Story Points** | %.0f |\n", issue.StoryPoints)
+		rows = append(rows, metaRow{"Story Points", fmt.Sprintf("%.0f", issue.StoryPoints)})
+	}
+	rows = append(rows, metaRow{"Type", issue.IssueType}, metaRow{"Priority", issue.Priority})
+	if issue.Reporter != "" {
+		rows = append(rows, metaRow{"Reporter", issue.Reporter})
 	}
 	if issue.SprintName != "" {
-		fmt.Fprintf(&sb, "| **Sprint** | %s |\n", issue.SprintName)
+		rows = append(rows, metaRow{"Sprint", issue.SprintName})
 	}
 	if issue.ParentKey != "" {
 		parent := issue.ParentKey
 		if issue.ParentSummary != "" {
 			parent = fmt.Sprintf("%s: %s", issue.ParentKey, issue.ParentSummary)
 		}
-		fmt.Fprintf(&sb, "| **Parent** | %s |\n", parent)
+		rows = append(rows, metaRow{"Parent", parent})
 	}
 	if len(issue.Labels) > 0 {
-		fmt.Fprintf(&sb, "| **Labels** | %s |\n", strings.Join(issue.Labels, ", "))
+		rows = append(rows, metaRow{"Labels", strings.Join(issue.Labels, ", ")})
+	}
+
+	maxKeyLen := 0
+	for _, r := range rows {
+		if len(r.key) > maxKeyLen {
+			maxKeyLen = len(r.key)
+		}
+	}
+	for _, r := range rows {
+		// Use non-breaking spaces so goldmark doesn't collapse the padding.
+		pad := strings.Repeat("\u00a0", maxKeyLen-len(r.key)+1)
+		fmt.Fprintf(&sb, "- **%s:** %s%s\n", r.key, pad, r.val)
 	}
 
 	// Description
+	fmt.Fprintf(&sb, "\n# Description\n\n")
 	if issue.Description != "" {
-		fmt.Fprintf(&sb, "\n## Description\n\n")
 		sb.WriteString(issue.Description)
 		sb.WriteString("\n")
+	} else {
+		fmt.Fprintf(&sb, "*No description*")
 	}
 
 	// Acceptance Criteria
 	if issue.AcceptanceCriteria != "" {
-		fmt.Fprintf(&sb, "\n## Acceptance Criteria\n\n")
+		fmt.Fprintf(&sb, "\n# Acceptance Criteria\n\n")
 		sb.WriteString(issue.AcceptanceCriteria)
 		sb.WriteString("\n")
 	}
 
 	// Linked Work Items
 	if len(issue.LinkedIssues) > 0 {
-		fmt.Fprintf(&sb, "\n## Linked Work Items\n\n")
+		fmt.Fprintf(&sb, "\n# Linked Work Items\n\n")
 		for _, li := range issue.LinkedIssues {
 			status := ""
 			if li.Status != "" {
@@ -75,13 +86,15 @@ func RenderIssue(issue *models.Issue) (string, error) {
 	}
 
 	// Comments
+	fmt.Fprintf(&sb, "\n# Comments\n\n")
 	if len(issue.Comments) > 0 {
-		fmt.Fprintf(&sb, "\n## Comments\n\n")
 		for _, c := range issue.Comments {
 			fmt.Fprintf(&sb, "**%s** _%s_\n\n", c.Author, formatCommentTime(c.Created))
 			sb.WriteString(c.Body)
 			sb.WriteString("\n\n---\n\n")
 		}
+	} else {
+		fmt.Fprintf(&sb, "*No comments*")
 	}
 
 	return sb.String(), nil
