@@ -524,6 +524,11 @@ func (m kanbanModel) viewBoard() string {
 	if width == 0 {
 		width = 120
 	}
+	height := m.height
+	if height == 0 {
+		height = 40
+	}
+
 	numCols := len(m.columns)
 	colWidth := width / numCols
 	if colWidth < 24 {
@@ -631,17 +636,45 @@ func (m kanbanModel) viewBoard() string {
 		header = tui.BoldBlue.Padding(0, 1).
 			Render("Kanban: "+m.sprintName) + "\n"
 	}
+
 	hintsStr := "  hjkl: navigate   enter: view   e: edit   s: status   o: open   tab: backlog   q: quit"
-	var footer string
+	var footerStr string
 	if m.state == stateLoading {
 		spinnerStr := m.loadSpinner.View() + tui.DimStyle.Render(" Loading…")
 		padded := tui.FixedWidth(hintsStr, width-lipgloss.Width(spinnerStr)-2)
-		footer = "\n" + tui.DimStyle.Render(padded) + "  " + spinnerStr
+		footerStr = tui.DimStyle.Render(padded) + "  " + spinnerStr
 	} else {
-		footer = "\n" + tui.DimStyle.Render(hintsStr)
+		footerStr = tui.DimStyle.Render(hintsStr)
 	}
 
-	return header + board + footer
+	// Build board content (header + board)
+	var boardContent string
+	if header != "" {
+		boardContent = header + board
+	} else {
+		boardContent = board
+	}
+
+	// Create footer line at full width
+	footerLine := lipgloss.NewStyle().Width(width).Render(footerStr)
+
+	// Place board at top, footer at bottom using vertical join with spacing
+	// Calculate how many blank lines between board and footer
+	boardHeight := lipgloss.Height(boardContent)
+	spacing := height - boardHeight - 1
+	if spacing < 0 {
+		spacing = 0
+	}
+
+	var result string
+	if spacing > 0 {
+		blankLines := strings.Repeat("\n", spacing)
+		result = boardContent + blankLines + "\n" + footerLine
+	} else {
+		result = boardContent + "\n" + footerLine
+	}
+
+	return result
 }
 
 // kanbanNewStatusPicker creates a PickerModel whose search function returns
