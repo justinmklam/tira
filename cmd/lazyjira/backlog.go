@@ -198,6 +198,13 @@ func newBacklogModel(client api.Client, groups []models.SprintGroup, project, ji
 		cutKeys:         make(map[string]bool),
 	}
 	m.rows = blBuildRows(groups, collapsed, "", "")
+	// Start cursor on the first issue row, skipping sprint headers.
+	for i, row := range m.rows {
+		if row.kind == blRowIssue {
+			m.cursor = i
+			break
+		}
+	}
 	return m
 }
 
