@@ -34,6 +34,8 @@ func (m blModel) View() string {
 		return m.viewParentPicker()
 	case blAssignPicker:
 		return m.viewAssignPicker()
+	case blStoryPointInput:
+		return m.viewStoryPointInput()
 	default:
 		return m.viewList()
 	}
@@ -131,7 +133,7 @@ func (m blModel) viewList() string {
 	} else {
 		hints := []string{
 			"j/k: navigate", "J/K/{/}: sprint", "z/Z: collapse",
-			"space/S: select", "v: visual", "enter: view", "e: edit", "o: open",
+			"space: select", "S: story pts", "v: visual", "enter: view", "e: edit", "o: open",
 			"ctrl+j/k: reorder", "x: cut", "p: paste", ">/<: adj sprint", "B: backlog",
 			"/: filter", "R: refresh", "tab: kanban", "q: quit",
 		}
@@ -416,6 +418,52 @@ func (m blModel) viewParentPicker() string {
 
 	body := header + "\n" +
 		m.parentPicker.View(innerW, listH) + "\n" +
+		tui.DimStyle.Render(strings.Repeat("─", innerW)) + "\n" +
+		footer
+
+	modal := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(tui.ColorBlue).
+		Width(innerW).
+		Render(body)
+
+	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, modal)
+}
+
+func (m blModel) viewStoryPointInput() string {
+	width := m.width
+	if width == 0 {
+		width = 120
+	}
+	height := m.height
+	if height == 0 {
+		height = 40
+	}
+
+	pickerW := width * 2 / 3
+	if pickerW < 52 {
+		pickerW = 52
+	}
+	if pickerW > 90 {
+		pickerW = 90
+	}
+	innerW := pickerW - 2
+
+	n := len(m.storyPointTargetKeys)
+	noun := "issue"
+	if n != 1 {
+		noun = "issues"
+	}
+	title := fmt.Sprintf("Set Story Points  (%d %s)", n, noun)
+	header := tui.BoldBlue.Padding(0, 1).Width(innerW).
+		Render(tui.FixedWidth(title, innerW-2))
+
+	inputLine := "  " + m.storyPointInput.View()
+
+	footer := tui.DimStyle.Render("  enter: set   esc: cancel")
+
+	body := header + "\n" +
+		inputLine + "\n" +
 		tui.DimStyle.Render(strings.Repeat("─", innerW)) + "\n" +
 		footer
 

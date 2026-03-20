@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/spinner"
@@ -22,8 +23,9 @@ const (
 	blLoading         // fetching full issue for detail view
 	blDetail
 	blFilter
-	blParentPicker // floating parent/epic picker
-	blAssignPicker // floating assignee picker
+	blParentPicker    // floating parent/epic picker
+	blAssignPicker    // floating assignee picker
+	blStoryPointInput // floating story point input
 )
 
 type blRowKind int
@@ -60,6 +62,8 @@ type blParentAssignDoneMsg struct{ err error }
 
 type blAssignDoneMsg struct{ err error }
 
+type blStoryPointDoneMsg struct{ err error }
+
 type blModel struct {
 	state   blState
 	client  api.Client
@@ -94,6 +98,10 @@ type blModel struct {
 	// assignee picker state
 	assignPicker     tui.PickerModel
 	assignTargetKeys []string
+
+	// story point input state
+	storyPointInput      textinput.Model
+	storyPointTargetKeys []string
 
 	result   blResult
 	quitting bool
@@ -130,20 +138,25 @@ func newBacklogModel(client api.Client, groups []models.SprintGroup, project str
 	ti.Placeholder = "type to filter…"
 	ti.CharLimit = 60
 
+	spTi := textinput.New()
+	spTi.Placeholder = "story points (e.g. 1, 2, 3, 5, 8)"
+	spTi.CharLimit = 10
+
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	s.Style = lipgloss.NewStyle().Foreground(tui.SpinnerColor)
 
 	m := blModel{
-		state:       blList,
-		client:      client,
-		project:     project,
-		groups:      groups,
-		collapsed:   collapsed,
-		filterInput: ti,
-		loadSpinner: s,
-		selected:    make(map[string]bool),
-		cutKeys:     make(map[string]bool),
+		state:           blList,
+		client:          client,
+		project:         project,
+		groups:          groups,
+		collapsed:       collapsed,
+		filterInput:     ti,
+		storyPointInput: spTi,
+		loadSpinner:     s,
+		selected:        make(map[string]bool),
+		cutKeys:         make(map[string]bool),
 	}
 	m.rows = blBuildRows(groups, collapsed, "")
 	return m
@@ -370,6 +383,12 @@ func (m blModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.result.refresh = true
 		}
 		return m, nil
+
+	case blStoryPointDoneMsg:
+		if msg.err == nil {
+			m.result.refresh = true
+		}
+		return m, nil
 	}
 
 	switch m.state {
@@ -383,6 +402,8 @@ func (m blModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateParentPicker(msg)
 	case blAssignPicker:
 		return m.updateAssignPicker(msg)
+	case blStoryPointInput:
+		return m.updateStoryPointInput(msg)
 	}
 	return m, nil
 }
@@ -545,20 +566,14 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "S":
-		if issue := m.currentIssue(); issue != nil {
-			if m.selected[issue.Key] {
-				delete(m.selected, issue.Key)
-			} else {
-				m.selected[issue.Key] = true
-			}
-			prev := tui.Clamp(m.cursor-1, 0, len(m.rows)-1)
-			if prev >= 0 && m.rows[prev].kind == blRowSpacer {
-				prev = tui.Clamp(prev-1, 0, len(m.rows)-1)
-			}
-			m.cursor = prev
-			return blScrollToFit(m), nil
+		keys := m.moveKeys()
+		if len(keys) == 0 {
+			return m, nil
 		}
-		return m, nil
+		m.storyPointTargetKeys = keys
+		m.storyPointInput.SetValue("")
+		m.state = blStoryPointInput
+		return m, m.storyPointInput.Focus()
 
 	case "x":
 		keys := m.moveKeys()
@@ -1069,4 +1084,62 @@ func blAssignParentCmd(client api.Client, keys []string, parentKey string) tea.C
 		}
 		return blParentAssignDoneMsg{}
 	}
+}
+
+func (m blModel) updateStoryPointInput(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if key, ok := msg.(tea.KeyMsg); ok && key.String() == "ctrl+c" {
+		m.quitting = true
+		return m, nil
+	}
+
+	if key, ok := msg.(tea.KeyMsg); ok {
+		switch key.String() {
+		case "esc":
+			m.state = blList
+			m.storyPointTargetKeys = nil
+			return m, nil
+
+		case "enter":
+			val := m.storyPointInput.Value()
+			var sp float64
+			if val != "" {
+				var err error
+				sp, err = parseFloat(val)
+				if err != nil {
+					m.storyPointInput.Placeholder = "invalid number, try again"
+					return m, nil
+				}
+				if sp < 0 {
+					m.storyPointInput.Placeholder = "must be >= 0"
+					return m, nil
+				}
+			}
+			keys := m.storyPointTargetKeys
+			m.state = blList
+			m.storyPointTargetKeys = nil
+			return m, blSetStoryPointCmd(m.client, keys, sp)
+		}
+	}
+
+	var cmd tea.Cmd
+	m.storyPointInput, cmd = m.storyPointInput.Update(msg)
+	return m, cmd
+}
+
+func blSetStoryPointCmd(client api.Client, keys []string, storyPoints float64) tea.Cmd {
+	return func() tea.Msg {
+		for _, k := range keys {
+			fields := models.IssueFields{StoryPoints: storyPoints}
+			if err := client.UpdateIssue(k, fields); err != nil {
+				return blStoryPointDoneMsg{err: err}
+			}
+		}
+		return blStoryPointDoneMsg{}
+	}
+}
+
+func parseFloat(s string) (float64, error) {
+	var result float64
+	_, err := fmt.Sscanf(s, "%f", &result)
+	return result, err
 }
