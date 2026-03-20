@@ -33,6 +33,8 @@ type Client interface {
 	SetParent(issueKey, parentKey string) error
 	SearchAssignees(projectKey, query string) ([]models.Assignee, error)
 	SetAssignee(issueKey, accountID string) error
+	GetStatuses(issueKey string) ([]models.Status, error)
+	TransitionStatus(issueKey, statusID string) error
 }
 
 type jiraClient struct {
@@ -1319,6 +1321,73 @@ func (c *jiraClient) MoveIssuesToBacklog(keys []string) error {
 	}
 	_, err = c.client.Do(req, nil)
 	return err
+}
+
+// GetStatuses returns all available statuses for an issue.
+func (c *jiraClient) GetStatuses(issueKey string) ([]models.Status, error) {
+	url := fmt.Sprintf("%s/rest/api/3/issue/%s/transitions?expand=transitions", c.baseURL, issueKey)
+	resp, err := c.http.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("fetching statuses for %s: %w", issueKey, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("statuses for %s: HTTP %d: %s", issueKey, resp.StatusCode, string(body))
+	}
+
+	var result struct {
+		Transitions []struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+			To   struct {
+				Name string `json:"name"`
+			} `json:"to"`
+		} `json:"transitions"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("parsing statuses for %s: %w", issueKey, err)
+	}
+
+	statuses := make([]models.Status, 0, len(result.Transitions))
+	for _, t := range result.Transitions {
+		name := t.To.Name
+		if name == "" {
+			name = t.Name
+		}
+		statuses = append(statuses, models.Status{ID: t.ID, Name: name})
+	}
+	return statuses, nil
+}
+
+// TransitionStatus transitions an issue to a new status using the transition ID.
+func (c *jiraClient) TransitionStatus(issueKey, transitionID string) error {
+	payload := map[string]any{
+		"transition": map[string]any{"id": transitionID},
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	url := fmt.Sprintf("%s/rest/api/3/issue/%s/transitions", c.baseURL, issueKey)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, url, strings.NewReader(string(body)))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode >= 300 {
+		b, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("transition %s: HTTP %d: %s", issueKey, resp.StatusCode, string(b))
+	}
+	return nil
 }
 
 // trimDateStr trims a Jira date/datetime string to just the YYYY-MM-DD part.

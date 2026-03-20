@@ -29,6 +29,7 @@ const (
 	blParentPicker    // floating parent/epic picker
 	blAssignPicker    // floating assignee picker
 	blStoryPointInput // floating story point input
+	blStatusPicker    // floating status picker
 )
 
 type blRowKind int
@@ -66,6 +67,8 @@ type blParentAssignDoneMsg struct{ err error }
 type blAssignDoneMsg struct{ err error }
 
 type blStoryPointDoneMsg struct{ err error }
+
+type blStatusDoneMsg struct{ err error }
 
 type yankMsg struct{}
 
@@ -110,6 +113,10 @@ type blModel struct {
 	// story point input state
 	storyPointInput      textinput.Model
 	storyPointTargetKeys []string
+
+	// status picker state
+	statusPicker     tui.PickerModel
+	statusTargetKeys []string
 
 	// yank indicator state
 	yankMessage string
@@ -403,6 +410,12 @@ func (m blModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case blStatusDoneMsg:
+		if msg.err == nil {
+			m.result.refresh = true
+		}
+		return m, nil
+
 	case yankMsg:
 		m.yankMessage = "YANKED"
 		if m.yankTimer != nil {
@@ -433,6 +446,8 @@ func (m blModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateAssignPicker(msg)
 	case blStoryPointInput:
 		return m.updateStoryPointInput(msg)
+	case blStatusPicker:
+		return m.updateStatusPicker(msg)
 	}
 	return m, nil
 }
@@ -623,6 +638,16 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.storyPointInput.SetValue("")
 		m.state = blStoryPointInput
 		return m, m.storyPointInput.Focus()
+
+	case "s":
+		keys := m.moveKeys()
+		if len(keys) == 0 {
+			return m, nil
+		}
+		m.statusTargetKeys = keys
+		m.statusPicker = blNewStatusPicker(m.client, keys[0])
+		m.state = blStatusPicker
+		return m, m.statusPicker.Init()
 
 	case "x":
 		keys := m.moveKeys()
@@ -1213,4 +1238,70 @@ func copyToClipboardCmd(text string) tea.Cmd {
 func (m blModel) issueURL(key string) string {
 	baseURL := strings.TrimRight(m.jiraURL, "/")
 	return fmt.Sprintf("%s/browse/%s", baseURL, key)
+}
+
+func (m blModel) updateStatusPicker(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if key, ok := msg.(tea.KeyMsg); ok && key.String() == "ctrl+c" {
+		m.quitting = true
+		return m, nil
+	}
+	updated, cmd := m.statusPicker.Update(msg)
+	m.statusPicker = updated
+	if m.statusPicker.Aborted {
+		m.state = blList
+		m.statusTargetKeys = nil
+		return m, nil
+	}
+	if m.statusPicker.Completed {
+		item := m.statusPicker.SelectedItem()
+		var transitionID string
+		if item != nil {
+			transitionID = item.Value
+		}
+		keys := m.statusTargetKeys
+		m.state = blList
+		m.statusTargetKeys = nil
+		return m, blTransitionStatusCmd(m.client, keys, transitionID)
+	}
+	return m, cmd
+}
+
+// blNewStatusPicker creates a PickerModel whose search function returns
+// available status transitions for the given issue.
+func blNewStatusPicker(client api.Client, issueKey string) tui.PickerModel {
+	search := func(query string) ([]tui.PickerItem, error) {
+		statuses, err := client.GetStatuses(issueKey)
+		if err != nil {
+			return nil, err
+		}
+		items := make([]tui.PickerItem, len(statuses))
+		for i, s := range statuses {
+			items[i] = tui.PickerItem{Label: s.Name, SubLabel: "", Value: s.ID}
+		}
+		// Filter by query if provided.
+		if query != "" {
+			q := strings.ToLower(query)
+			filtered := items[:0]
+			for _, item := range items {
+				if strings.Contains(strings.ToLower(item.Label), q) {
+					filtered = append(filtered, item)
+				}
+			}
+			items = filtered
+		}
+		return items, nil
+	}
+	m := tui.NewPickerModel(search)
+	return m
+}
+
+func blTransitionStatusCmd(client api.Client, keys []string, transitionID string) tea.Cmd {
+	return func() tea.Msg {
+		for _, k := range keys {
+			if err := client.TransitionStatus(k, transitionID); err != nil {
+				return blStatusDoneMsg{err: err}
+			}
+		}
+		return blStatusDoneMsg{}
+	}
 }

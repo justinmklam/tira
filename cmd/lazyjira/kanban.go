@@ -25,6 +25,7 @@ const (
 	stateLoading             // fetching full issue for detail view
 	stateDetail
 	stateAssignPicker
+	stateStatusPicker
 )
 
 type kanbanColumn struct {
@@ -44,6 +45,8 @@ type kanbanResult struct {
 }
 
 type kanbanAssignDoneMsg struct{ err error }
+
+type kanbanStatusDoneMsg struct{ err error }
 
 type kanbanModel struct {
 	state    kanbanState
@@ -70,6 +73,10 @@ type kanbanModel struct {
 	// Assignee picker state
 	assignPicker     tui.PickerModel
 	assignTargetKeys []string
+
+	// Status picker state
+	statusPicker     tui.PickerModel
+	statusTargetKeys []string
 }
 
 // buildColumns maps sprint issues into the board's fixed column order.
@@ -176,6 +183,12 @@ func (m kanbanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.result.refresh = true
 		}
 		return m, nil
+
+	case kanbanStatusDoneMsg:
+		if msg.err == nil {
+			m.result.refresh = true
+		}
+		return m, nil
 	}
 
 	switch m.state {
@@ -185,6 +198,8 @@ func (m kanbanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateDetail(msg)
 	case stateAssignPicker:
 		return m.updateAssignPicker(msg)
+	case stateStatusPicker:
+		return m.updateStatusPicker(msg)
 	}
 	return m, nil
 }
@@ -239,6 +254,13 @@ func (m kanbanModel) updateBoard(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.state = stateAssignPicker
 			return m, m.assignPicker.Init()
 		}
+	case "s":
+		if issue := m.currentIssue(); issue != nil {
+			m.statusTargetKeys = []string{issue.Key}
+			m.statusPicker = kanbanNewStatusPicker(m.client, issue.Key)
+			m.state = stateStatusPicker
+			return m, m.statusPicker.Init()
+		}
 	}
 	return m, nil
 }
@@ -291,6 +313,32 @@ func (m kanbanModel) updateAssignPicker(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+func (m kanbanModel) updateStatusPicker(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if key, ok := msg.(tea.KeyMsg); ok && key.String() == "ctrl+c" {
+		m.quitting = true
+		return m, nil
+	}
+	updated, cmd := m.statusPicker.Update(msg)
+	m.statusPicker = updated
+	if m.statusPicker.Aborted {
+		m.state = stateBoard
+		m.statusTargetKeys = nil
+		return m, nil
+	}
+	if m.statusPicker.Completed {
+		item := m.statusPicker.SelectedItem()
+		var transitionID string
+		if item != nil {
+			transitionID = item.Value
+		}
+		keys := m.statusTargetKeys
+		m.state = stateBoard
+		m.statusTargetKeys = nil
+		return m, kanbanTransitionStatusCmd(m.client, keys, transitionID)
+	}
+	return m, cmd
+}
+
 func kanbanAssignCmd(client api.Client, keys []string, accountID string) tea.Cmd {
 	return func() tea.Msg {
 		for _, k := range keys {
@@ -299,6 +347,17 @@ func kanbanAssignCmd(client api.Client, keys []string, accountID string) tea.Cmd
 			}
 		}
 		return kanbanAssignDoneMsg{}
+	}
+}
+
+func kanbanTransitionStatusCmd(client api.Client, keys []string, transitionID string) tea.Cmd {
+	return func() tea.Msg {
+		for _, k := range keys {
+			if err := client.TransitionStatus(k, transitionID); err != nil {
+				return kanbanStatusDoneMsg{err: err}
+			}
+		}
+		return kanbanStatusDoneMsg{}
 	}
 }
 
@@ -332,6 +391,8 @@ func (m kanbanModel) View() string {
 		return m.viewDetail()
 	case stateAssignPicker:
 		return m.viewAssignPicker()
+	case stateStatusPicker:
+		return m.viewStatusPicker()
 	default:
 		return m.viewBoard()
 	}
@@ -368,6 +429,49 @@ func (m kanbanModel) viewAssignPicker() string {
 
 	body := header + "\n" +
 		m.assignPicker.View(innerW, listH) + "\n" +
+		tui.DimStyle.Render(strings.Repeat("─", innerW)) + "\n" +
+		footer
+
+	modal := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(tui.ColorBlue).
+		Width(innerW).
+		Render(body)
+
+	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, modal)
+}
+
+func (m kanbanModel) viewStatusPicker() string {
+	width := m.width
+	if width == 0 {
+		width = 120
+	}
+	height := m.height
+	if height == 0 {
+		height = 40
+	}
+
+	pickerW := width * 2 / 3
+	if pickerW < 52 {
+		pickerW = 52
+	}
+	if pickerW > 90 {
+		pickerW = 90
+	}
+	innerW := pickerW - 2
+
+	header := tui.BoldBlue.Padding(0, 1).Width(innerW).
+		Render(tui.FixedWidth("Transition Status", innerW-2))
+
+	listH := height/2 - 6
+	if listH < 4 {
+		listH = 4
+	}
+
+	footer := tui.DimStyle.Render("  ↑/↓ ctrl+p/n: navigate   enter: select   esc: cancel")
+
+	body := header + "\n" +
+		m.statusPicker.View(innerW, listH) + "\n" +
 		tui.DimStyle.Render(strings.Repeat("─", innerW)) + "\n" +
 		footer
 
@@ -527,7 +631,7 @@ func (m kanbanModel) viewBoard() string {
 		header = tui.BoldBlue.Padding(0, 1).
 			Render("Kanban: "+m.sprintName) + "\n"
 	}
-	hintsStr := "  hjkl: navigate   enter: view   e: edit   o: open   tab: backlog   q: quit"
+	hintsStr := "  hjkl: navigate   enter: view   e: edit   s: status   o: open   tab: backlog   q: quit"
 	var footer string
 	if m.state == stateLoading {
 		spinnerStr := m.loadSpinner.View() + tui.DimStyle.Render(" Loading…")
@@ -538,4 +642,33 @@ func (m kanbanModel) viewBoard() string {
 	}
 
 	return header + board + footer
+}
+
+// kanbanNewStatusPicker creates a PickerModel whose search function returns
+// available status transitions for the given issue.
+func kanbanNewStatusPicker(client api.Client, issueKey string) tui.PickerModel {
+	search := func(query string) ([]tui.PickerItem, error) {
+		statuses, err := client.GetStatuses(issueKey)
+		if err != nil {
+			return nil, err
+		}
+		items := make([]tui.PickerItem, len(statuses))
+		for i, s := range statuses {
+			items[i] = tui.PickerItem{Label: s.Name, SubLabel: "", Value: s.ID}
+		}
+		// Filter by query if provided.
+		if query != "" {
+			q := strings.ToLower(query)
+			filtered := items[:0]
+			for _, item := range items {
+				if strings.Contains(strings.ToLower(item.Label), q) {
+					filtered = append(filtered, item)
+				}
+			}
+			items = filtered
+		}
+		return items, nil
+	}
+	m := tui.NewPickerModel(search)
+	return m
 }

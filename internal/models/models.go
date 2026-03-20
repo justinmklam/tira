@@ -79,3 +79,8 @@ type SprintGroup struct {
 	Sprint Sprint
 	Issues []Issue
 }
+
+type Status struct {
+	ID   string
+	Name string
+}
