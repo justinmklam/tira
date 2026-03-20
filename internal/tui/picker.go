@@ -49,6 +49,10 @@ type PickerModel struct {
 	// Selecting it returns nil from SelectedItem(), signalling "clear the value".
 	NoneItem *PickerItem
 
+	// InitialValue, when non-empty, positions the cursor on the first item
+	// whose Value matches when search results are loaded.
+	InitialValue string
+
 	Completed bool
 	Aborted   bool
 
@@ -130,7 +134,19 @@ func (m PickerModel) Update(msg tea.Msg) (PickerModel, tea.Cmd) {
 			return m, nil
 		}
 		m.Items = msg.items
-		if m.Cursor >= m.totalRows() {
+		// Position cursor on InitialValue match if set.
+		if m.InitialValue != "" {
+			offset := 0
+			if m.noneVisible() {
+				offset = 1
+			}
+			for i, item := range msg.items {
+				if item.Value == m.InitialValue {
+					m.Cursor = offset + i
+					break
+				}
+			}
+		} else if m.Cursor >= m.totalRows() {
 			m.Cursor = 0
 		}
 		return m, nil

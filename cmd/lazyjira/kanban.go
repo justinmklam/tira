@@ -257,7 +257,7 @@ func (m kanbanModel) updateBoard(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case "s":
 		if issue := m.currentIssue(); issue != nil {
 			m.statusTargetKeys = []string{issue.Key}
-			m.statusPicker = kanbanNewStatusPicker(m.client, issue.Key)
+			m.statusPicker = kanbanNewStatusPicker(m.client, issue.Key, issue.Status)
 			m.state = stateStatusPicker
 			return m, m.statusPicker.Init()
 		}
@@ -646,7 +646,22 @@ func (m kanbanModel) viewBoard() string {
 
 // kanbanNewStatusPicker creates a PickerModel whose search function returns
 // available status transitions for the given issue.
-func kanbanNewStatusPicker(client api.Client, issueKey string) tui.PickerModel {
+// If currentStatus is non-empty, the picker will initially select the item
+// whose label matches the current status.
+func kanbanNewStatusPicker(client api.Client, issueKey, currentStatus string) tui.PickerModel {
+	// Pre-fetch statuses to find the transition ID for the current status.
+	var initialValue string
+	if currentStatus != "" {
+		if statuses, err := client.GetStatuses(issueKey); err == nil {
+			for _, s := range statuses {
+				if s.Name == currentStatus {
+					initialValue = s.ID
+					break
+				}
+			}
+		}
+	}
+
 	search := func(query string) ([]tui.PickerItem, error) {
 		statuses, err := client.GetStatuses(issueKey)
 		if err != nil {
@@ -670,5 +685,6 @@ func kanbanNewStatusPicker(client api.Client, issueKey string) tui.PickerModel {
 		return items, nil
 	}
 	m := tui.NewPickerModel(search)
+	m.InitialValue = initialValue
 	return m
 }

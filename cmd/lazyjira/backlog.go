@@ -645,7 +645,12 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.statusTargetKeys = keys
-		m.statusPicker = blNewStatusPicker(m.client, keys[0])
+		// Get current status from the first selected issue for initial cursor position.
+		var currentStatus string
+		if issue := m.currentIssue(); issue != nil {
+			currentStatus = issue.Status
+		}
+		m.statusPicker = blNewStatusPicker(m.client, keys[0], currentStatus)
 		m.state = blStatusPicker
 		return m, m.statusPicker.Init()
 
@@ -1268,7 +1273,22 @@ func (m blModel) updateStatusPicker(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // blNewStatusPicker creates a PickerModel whose search function returns
 // available status transitions for the given issue.
-func blNewStatusPicker(client api.Client, issueKey string) tui.PickerModel {
+// If currentStatus is non-empty, the picker will initially select the item
+// whose label matches the current status.
+func blNewStatusPicker(client api.Client, issueKey, currentStatus string) tui.PickerModel {
+	// Pre-fetch statuses to find the transition ID for the current status.
+	var initialValue string
+	if currentStatus != "" {
+		if statuses, err := client.GetStatuses(issueKey); err == nil {
+			for _, s := range statuses {
+				if s.Name == currentStatus {
+					initialValue = s.ID
+					break
+				}
+			}
+		}
+	}
+
 	search := func(query string) ([]tui.PickerItem, error) {
 		statuses, err := client.GetStatuses(issueKey)
 		if err != nil {
@@ -1292,6 +1312,7 @@ func blNewStatusPicker(client api.Client, issueKey string) tui.PickerModel {
 		return items, nil
 	}
 	m := tui.NewPickerModel(search)
+	m.InitialValue = initialValue
 	return m
 }
 
