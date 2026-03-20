@@ -26,10 +26,11 @@ const (
 	blLoading         // fetching full issue for detail view
 	blDetail
 	blFilter
-	blParentPicker    // floating parent/epic picker
-	blAssignPicker    // floating assignee picker
-	blStoryPointInput // floating story point input
-	blStatusPicker    // floating status picker
+	blParentPicker     // floating parent/epic picker
+	blAssignPicker     // floating assignee picker
+	blStoryPointInput  // floating story point input
+	blStatusPicker     // floating status picker
+	blEpicFilterPicker // floating epic filter picker
 )
 
 type blRowKind int
@@ -118,6 +119,10 @@ type blModel struct {
 	statusPicker     tui.PickerModel
 	statusTargetKeys []string
 
+	// epic filter state
+	filterEpic       string // empty means no filter
+	epicFilterPicker tui.PickerModel
+
 	// yank indicator state
 	yankMessage string
 	yankTimer   *time.Timer
@@ -126,7 +131,7 @@ type blModel struct {
 	quitting bool
 }
 
-func blBuildRows(groups []models.SprintGroup, collapsed map[int]bool, filter string) []blRow {
+func blBuildRows(groups []models.SprintGroup, collapsed map[int]bool, filter string, filterEpic string) []blRow {
 	var rows []blRow
 	for i, g := range groups {
 		if i > 0 {
@@ -135,7 +140,7 @@ func blBuildRows(groups []models.SprintGroup, collapsed map[int]bool, filter str
 		rows = append(rows, blRow{kind: blRowSprint, groupIdx: i, issueIdx: -1})
 		if !collapsed[i] {
 			for j, issue := range g.Issues {
-				if filter == "" || blMatchesFilter(issue, filter) {
+				if blMatchesFilter(issue, filter, filterEpic) {
 					rows = append(rows, blRow{kind: blRowIssue, groupIdx: i, issueIdx: j})
 				}
 			}
@@ -144,10 +149,21 @@ func blBuildRows(groups []models.SprintGroup, collapsed map[int]bool, filter str
 	return rows
 }
 
-func blMatchesFilter(issue models.Issue, filter string) bool {
+func blMatchesFilter(issue models.Issue, filter string, filterEpic string) bool {
 	f := strings.ToLower(filter)
-	return strings.Contains(strings.ToLower(issue.Key), f) ||
+	matchesText := strings.Contains(strings.ToLower(issue.Key), f) ||
 		strings.Contains(strings.ToLower(issue.Summary), f)
+	if !matchesText {
+		return false
+	}
+	if filterEpic == "" {
+		return true
+	}
+	// Check if issue matches the epic filter
+	if issue.EpicKey == filterEpic || issue.EpicName == filterEpic {
+		return true
+	}
+	return false
 }
 
 func newBacklogModel(client api.Client, groups []models.SprintGroup, project, jiraURL string) blModel {
@@ -178,14 +194,14 @@ func newBacklogModel(client api.Client, groups []models.SprintGroup, project, ji
 		selected:        make(map[string]bool),
 		cutKeys:         make(map[string]bool),
 	}
-	m.rows = blBuildRows(groups, collapsed, "")
+	m.rows = blBuildRows(groups, collapsed, "", "")
 	return m
 }
 
 // refreshData replaces the sprint groups and rebuilds the row list.
 func (m *blModel) refreshData(groups []models.SprintGroup) {
 	m.groups = groups
-	m.rows = blBuildRows(groups, m.collapsed, m.filter)
+	m.rows = blBuildRows(groups, m.collapsed, m.filter, m.filterEpic)
 	m.cursor = tui.Clamp(m.cursor, 0, max(len(m.rows)-1, 0))
 }
 
@@ -382,7 +398,7 @@ func (m blModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.selected = make(map[string]bool)
 			m.cutKeys = make(map[string]bool)
 			m.visualMode = false
-			m.rows = blBuildRows(m.groups, m.collapsed, m.filter)
+			m.rows = blBuildRows(m.groups, m.collapsed, m.filter, m.filterEpic)
 			m.cursor = tui.Clamp(m.cursor, 0, len(m.rows)-1)
 			return blScrollToFit(m), nil
 		}
@@ -448,6 +464,8 @@ func (m blModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateStoryPointInput(msg)
 	case blStatusPicker:
 		return m.updateStatusPicker(msg)
+	case blEpicFilterPicker:
+		return m.updateEpicFilterPicker(msg)
 	}
 	return m, nil
 }
@@ -524,7 +542,7 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		row := m.rows[m.cursor]
 		gIdx := row.groupIdx
 		m.collapsed[gIdx] = !m.collapsed[gIdx]
-		m.rows = blBuildRows(m.groups, m.collapsed, m.filter)
+		m.rows = blBuildRows(m.groups, m.collapsed, m.filter, m.filterEpic)
 		m.cursor = tui.Clamp(m.cursor, 0, len(m.rows)-1)
 		return blScrollToFit(m), nil
 
@@ -539,7 +557,7 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		for i := range m.groups {
 			m.collapsed[i] = anyExpanded
 		}
-		m.rows = blBuildRows(m.groups, m.collapsed, m.filter)
+		m.rows = blBuildRows(m.groups, m.collapsed, m.filter, m.filterEpic)
 		m.cursor = tui.Clamp(m.cursor, 0, len(m.rows)-1)
 		return blScrollToFit(m), nil
 
@@ -547,7 +565,7 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.filter != "" {
 			m.filter = ""
 			m.filterInput.SetValue("")
-			m.rows = blBuildRows(m.groups, m.collapsed, "")
+			m.rows = blBuildRows(m.groups, m.collapsed, "", m.filterEpic)
 			m.cursor = tui.Clamp(m.cursor, 0, len(m.rows)-1)
 		} else if m.visualMode {
 			m.commitVisualSelection()
@@ -571,7 +589,7 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if row.kind == blRowSprint {
 			m.collapsed[row.groupIdx] = !m.collapsed[row.groupIdx]
-			m.rows = blBuildRows(m.groups, m.collapsed, m.filter)
+			m.rows = blBuildRows(m.groups, m.collapsed, m.filter, m.filterEpic)
 			m.cursor = tui.Clamp(m.cursor, 0, len(m.rows)-1)
 			return blScrollToFit(m), nil
 		}
@@ -783,6 +801,19 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.assignPicker = newAssigneePicker(m.client, projectKey)
 		m.state = blAssignPicker
 		return m, m.assignPicker.Init()
+
+	case "F":
+		projectKey := m.project
+		if projectKey == "" {
+			if issue := m.currentIssue(); issue != nil {
+				if idx := strings.Index(issue.Key, "-"); idx > 0 {
+					projectKey = issue.Key[:idx]
+				}
+			}
+		}
+		m.epicFilterPicker = blNewEpicFilterPicker(m.client, projectKey, m.filterEpic)
+		m.state = blEpicFilterPicker
+		return m, m.epicFilterPicker.Init()
 	}
 
 	return m, nil
@@ -796,14 +827,14 @@ func (m blModel) updateFilter(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.filterInput.SetValue("")
 			m.filterInput.Blur()
 			m.state = blList
-			m.rows = blBuildRows(m.groups, m.collapsed, "")
+			m.rows = blBuildRows(m.groups, m.collapsed, "", m.filterEpic)
 			m.cursor = tui.Clamp(m.cursor, 0, len(m.rows)-1)
 			return m, nil
 		case "enter":
 			m.filter = m.filterInput.Value()
 			m.filterInput.Blur()
 			m.state = blList
-			m.rows = blBuildRows(m.groups, m.collapsed, m.filter)
+			m.rows = blBuildRows(m.groups, m.collapsed, m.filter, m.filterEpic)
 			m.cursor = tui.Clamp(m.cursor, 0, len(m.rows)-1)
 			return m, nil
 		case "ctrl+c":
@@ -814,7 +845,7 @@ func (m blModel) updateFilter(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	m.filterInput, cmd = m.filterInput.Update(msg)
 	m.filter = m.filterInput.Value()
-	m.rows = blBuildRows(m.groups, m.collapsed, m.filter)
+	m.rows = blBuildRows(m.groups, m.collapsed, m.filter, m.filterEpic)
 	m.cursor = tui.Clamp(m.cursor, 0, len(m.rows)-1)
 	return m, cmd
 }
@@ -945,7 +976,7 @@ func (m blModel) moveSelectionDown() (tea.Model, tea.Cmd) {
 
 	blockerKey := issues[blockerIdx].Key
 	m.groups[groupIdx].Issues = blReorderDown(issues, moveSet, blockerKey)
-	m.rows = blBuildRows(m.groups, m.collapsed, m.filter)
+	m.rows = blBuildRows(m.groups, m.collapsed, m.filter, m.filterEpic)
 	m.cursor = m.findIssueRow(groupIdx, cursorKey)
 	return blScrollToFit(m), blRankCmd(m.client, moveKeys, blockerKey, "")
 }
@@ -988,7 +1019,7 @@ func (m blModel) moveSelectionUp() (tea.Model, tea.Cmd) {
 
 	blockerKey := issues[blockerIdx].Key
 	m.groups[groupIdx].Issues = blReorderUp(issues, moveSet, blockerKey)
-	m.rows = blBuildRows(m.groups, m.collapsed, m.filter)
+	m.rows = blBuildRows(m.groups, m.collapsed, m.filter, m.filterEpic)
 	m.cursor = m.findIssueRow(groupIdx, cursorKey)
 	return blScrollToFit(m), blRankCmd(m.client, moveKeys, "", blockerKey)
 }
@@ -1115,6 +1146,52 @@ func blNewParentPicker(client api.Client, projectKey string) tui.PickerModel {
 	m := tui.NewPickerModel(search)
 	m.NoneItem = &tui.PickerItem{Label: "(none)", SubLabel: "clear parent"}
 	return m
+}
+
+// blNewEpicFilterPicker creates a PickerModel for filtering issues by epic.
+func blNewEpicFilterPicker(client api.Client, projectKey, currentFilter string) tui.PickerModel {
+	search := func(query string) ([]tui.PickerItem, error) {
+		epics, err := client.GetEpics(projectKey, query)
+		if err != nil {
+			return nil, err
+		}
+		items := make([]tui.PickerItem, len(epics))
+		for i, e := range epics {
+			items[i] = tui.PickerItem{Label: e.Key, SubLabel: e.Summary, Value: e.Key}
+		}
+		return items, nil
+	}
+	m := tui.NewPickerModel(search)
+	m.NoneItem = &tui.PickerItem{Label: "(none)", SubLabel: "clear epic filter"}
+	return m
+}
+
+func (m blModel) updateEpicFilterPicker(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if key, ok := msg.(tea.KeyMsg); ok && key.String() == "ctrl+c" {
+		m.quitting = true
+		return m, nil
+	}
+
+	updated, cmd := m.epicFilterPicker.Update(msg)
+	m.epicFilterPicker = updated
+
+	if m.epicFilterPicker.Aborted {
+		m.state = blList
+		return m, nil
+	}
+	if m.epicFilterPicker.Completed {
+		item := m.epicFilterPicker.SelectedItem()
+		if item != nil {
+			m.filterEpic = item.Value
+		} else {
+			m.filterEpic = ""
+		}
+		m.state = blList
+		m.rows = blBuildRows(m.groups, m.collapsed, m.filter, m.filterEpic)
+		m.cursor = tui.Clamp(m.cursor, 0, len(m.rows)-1)
+		return blScrollToFit(m), nil
+	}
+	return m, cmd
 }
 
 func (m blModel) updateAssignPicker(msg tea.Msg) (tea.Model, tea.Cmd) {

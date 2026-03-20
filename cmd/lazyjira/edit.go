@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/justinmklam/lazyjira/internal/api"
+	"github.com/justinmklam/lazyjira/internal/debug"
 	"github.com/justinmklam/lazyjira/internal/models"
 	"github.com/justinmklam/lazyjira/internal/tui"
 	"github.com/justinmklam/lazyjira/internal/validator"
@@ -77,10 +78,12 @@ func fetchEditDataCmd(client api.Client, key string) tea.Cmd {
 	return func() tea.Msg {
 		issue, err := client.GetIssue(key)
 		if err != nil {
+			debug.LogError("client.GetIssue", err)
 			return editFetchedMsg{err: err}
 		}
 		valid, err := client.GetIssueMetadata(projectKey)
 		if err != nil {
+			debug.LogWarning("client.GetIssueMetadata", err.Error())
 			valid = &models.ValidValues{} // fall back: no fuzzy options
 		}
 		return editFetchedMsg{issue: issue, valid: valid}
@@ -90,7 +93,11 @@ func fetchEditDataCmd(client api.Client, key string) tea.Cmd {
 // saveEditCmd calls UpdateIssue and returns the result.
 func saveEditCmd(client api.Client, key string, fields models.IssueFields) tea.Cmd {
 	return func() tea.Msg {
-		return editSaveDoneMsg{err: client.UpdateIssue(key, fields)}
+		err := client.UpdateIssue(key, fields)
+		if err != nil {
+			debug.LogError("client.UpdateIssue", err)
+		}
+		return editSaveDoneMsg{err: err}
 	}
 }
 
@@ -111,6 +118,7 @@ func fetchCreateDataCmd(client api.Client, projectKey string) tea.Cmd {
 	return func() tea.Msg {
 		valid, err := client.GetIssueMetadata(projectKey)
 		if err != nil {
+			debug.LogWarning("client.GetIssueMetadata", err.Error())
 			return createFetchedMsg{valid: &models.ValidValues{}}
 		}
 		return createFetchedMsg{valid: valid}
@@ -122,10 +130,14 @@ func saveCreateCmd(client api.Client, projectKey string, fields models.IssueFiel
 	return func() tea.Msg {
 		issue, err := client.CreateIssue(projectKey, fields)
 		if err != nil {
+			debug.LogError("client.CreateIssue", err)
 			return createSaveDoneMsg{err: err}
 		}
 		if sprintID != 0 {
 			err = client.MoveIssuesToSprint(sprintID, []string{issue.Key})
+			if err != nil {
+				debug.LogError("client.MoveIssuesToSprint", err)
+			}
 		}
 		return createSaveDoneMsg{issue: issue, err: err}
 	}
@@ -137,6 +149,7 @@ func newAssigneePicker(client api.Client, projectKey string) tui.PickerModel {
 	search := func(query string) ([]tui.PickerItem, error) {
 		assignees, err := client.SearchAssignees(projectKey, query)
 		if err != nil {
+			debug.LogError("client.SearchAssignees", err)
 			return nil, err
 		}
 		items := make([]tui.PickerItem, len(assignees))

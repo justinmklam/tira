@@ -12,6 +12,7 @@ import (
 
 	jira "github.com/andygrunwald/go-jira/v2/cloud"
 	"github.com/justinmklam/lazyjira/internal/config"
+	"github.com/justinmklam/lazyjira/internal/debug"
 	"github.com/justinmklam/lazyjira/internal/models"
 )
 
@@ -49,6 +50,12 @@ func NewClient(cfg *config.Config) (Client, error) {
 		APIToken: cfg.Token,
 	}
 	httpClient := tp.Client()
+
+	// Wrap with debug transport if debug mode is enabled
+	if debug.IsEnabled() {
+		httpClient.Transport = &debug.Transport{Base: httpClient.Transport}
+	}
+
 	c, err := jira.NewClient(cfg.JiraURL, httpClient)
 	if err != nil {
 		return nil, fmt.Errorf("creating jira client: %w", err)

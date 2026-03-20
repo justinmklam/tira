@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/justinmklam/lazyjira/internal/api"
+	"github.com/justinmklam/lazyjira/internal/debug"
 	"github.com/justinmklam/lazyjira/internal/editor"
 	"github.com/justinmklam/lazyjira/internal/models"
 	"github.com/justinmklam/lazyjira/internal/tui"
@@ -29,6 +30,7 @@ comments inside the template.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		client, err := api.NewClient(cfg)
 		if err != nil {
+			debug.LogError("api.NewClient", err)
 			return err
 		}
 
@@ -42,6 +44,7 @@ comments inside the template.`,
 
 		valid, err := loadValidValues(client, projectKey)
 		if err != nil {
+			debug.LogError("loadValidValues", err)
 			return err
 		}
 
@@ -79,6 +82,7 @@ comments inside the template.`,
 
 		issue, err := client.CreateIssue(projectKey, *fields)
 		if err != nil {
+			debug.LogError("client.CreateIssue", err)
 			return fmt.Errorf("creating issue: %w", err)
 		}
 		fmt.Fprintf(os.Stderr, "✓ Created %s.\n", issue.Key)

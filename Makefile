@@ -10,7 +10,7 @@ run:
 	./lazyjira backlog
 
 run-dev:
-	./lazyjira --profile dev backlog
+	./lazyjira --profile dev backlog --debug
 
 # Remove build artifacts
 clean:

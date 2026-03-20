@@ -13,6 +13,7 @@ import (
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/justinmklam/lazyjira/internal/api"
+	"github.com/justinmklam/lazyjira/internal/debug"
 	"github.com/justinmklam/lazyjira/internal/models"
 	"github.com/justinmklam/lazyjira/internal/tui"
 	"github.com/spf13/cobra"
@@ -716,6 +717,7 @@ func runBoardTUI(client api.Client, boardID int, data boardInitData, startView b
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	_, err := p.Run()
 	if err != nil {
+		debug.LogError("board.Run", err)
 		return fmt.Errorf("board: %w", err)
 	}
 	return nil
