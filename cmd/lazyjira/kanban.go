@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/glamour"
+	"github.com/charmbracelet/glamour/styles"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/justinmklam/lazyjira/internal/api"
 	"github.com/justinmklam/lazyjira/internal/display"
@@ -308,8 +309,11 @@ func fetchIssueCmd(client api.Client, key string, vpW int) tea.Cmd {
 			return issueFetchedMsg{err: err}
 		}
 		md, _ := display.RenderIssue(issue)
+		// Use a fixed dark style to avoid terminal detection in the goroutine.
+		// The pre-detection in runBoardTUI caches termenv's sync.Once, but
+		// using a fixed style here is more reliable and avoids any blocking.
 		renderer, rerr := glamour.NewTermRenderer(
-			glamour.WithAutoStyle(),
+			glamour.WithStyles(styles.DarkStyleConfig),
 			glamour.WithWordWrap(vpW),
 		)
 		content := md
