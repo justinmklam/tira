@@ -423,6 +423,10 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 		}
+		// Update help model for scrolling
+		_, overlayH := tui.HelpOverlaySize(m.width, m.height)
+		innerH := overlayH - 2 // account for border only
+		m.helpModel = m.helpModel.Update(msg, innerH)
 		return m, nil
 	}
 
@@ -731,21 +735,16 @@ func (m boardModel) viewAssigneePickerOverlay(w, h int) string {
 func (m boardModel) viewHelpOverlay(w, h int) string {
 	overlayW, overlayH := tui.HelpOverlaySize(w, h)
 	innerW := overlayW - 2
-	innerH := overlayH - 4 // account for border and padding
+	innerH := overlayH - 2 // account for border only
 
 	// Get the help content
 	helpContent := m.helpModel.View(innerW, innerH)
-
-	// Add footer with close instructions
-	footer := tui.DimStyle.Render("  esc / ?: close help")
-
-	body := helpContent + "\n" + footer
 
 	modal := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(tui.ColorBlue).
 		Width(innerW).
-		Render(body)
+		Render(helpContent)
 
 	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, modal)
 }

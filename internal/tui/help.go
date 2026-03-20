@@ -3,6 +3,7 @@ package tui
 import (
 	"strings"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -20,8 +21,9 @@ type HelpKeybinding struct {
 
 // HelpModel holds the state for the help overlay.
 type HelpModel struct {
-	Width  int
-	Height int
+	Width        int
+	Height       int
+	ScrollOffset int // Current scroll position
 }
 
 // NewHelpModel creates a new help model.
@@ -33,57 +35,69 @@ func NewHelpModel() HelpModel {
 func HelpSections() []HelpSection {
 	return []HelpSection{
 		{
-			Title: "Navigation",
+			Title: "Navigation (Backlog)",
 			Keybindings: []HelpKeybinding{
 				{Key: "j / k", Description: "Move down / up within a sprint"},
-				{Key: "J / K", Description: "Jump to next / previous sprint header"},
+				{Key: "J / }", Description: "Jump to next sprint header"},
+				{Key: "K / {", Description: "Jump to previous sprint header"},
 				{Key: "g / G", Description: "Jump to first / last ticket in the list"},
-				{Key: "{ / }", Description: "Previous / next sprint"},
 				{Key: "C-d / C-u", Description: "Half-page down / up"},
 				{Key: "z", Description: "Toggle collapse current sprint"},
 				{Key: "Z", Description: "Toggle collapse all sprints"},
-				{Key: "/", Description: "Filter tickets (fuzzy search)"},
-				{Key: "n / N", Description: "Next / previous filter match"},
-				{Key: "Esc", Description: "Clear filter / cancel current action"},
+				{Key: "/", Description: "Filter tickets (fuzzy search by summary or key)"},
+				{Key: "Enter", Description: "Toggle expand/collapse sprint or open ticket detail"},
+				{Key: "Esc", Description: "Clear filter / cancel current action / clear selection"},
 			},
 		},
 		{
-			Title: "Selection",
+			Title: "Navigation (Kanban)",
+			Keybindings: []HelpKeybinding{
+				{Key: "h / j / k / l", Description: "Move left / down / up / right between columns and issues"},
+				{Key: "Enter", Description: "Open ticket detail pane"},
+				{Key: "Esc", Description: "Close detail pane / cancel action"},
+			},
+		},
+		{
+			Title: "Selection (Backlog)",
 			Keybindings: []HelpKeybinding{
 				{Key: "Space", Description: "Toggle select ticket under cursor"},
 				{Key: "v", Description: "Enter visual mode — extend with j/k, confirm with Enter"},
-				{Key: "V", Description: "Select all tickets in current sprint"},
-				{Key: "*", Description: "Invert selection across all sprints"},
-				{Key: "Esc", Description: "Clear all selections"},
+				{Key: "Esc", Description: "Clear all selections (when not in visual mode)"},
 			},
 		},
 		{
-			Title: "Moving Tickets",
+			Title: "Moving Tickets (Backlog)",
 			Keybindings: []HelpKeybinding{
-				{Key: "m", Description: "Move selected ticket(s) to sprint"},
-				{Key: "C-j / C-k", Description: "Move ticket one position down / up"},
-				{Key: "> / <", Description: "Move ticket to next / previous sprint"},
+				{Key: "C-j / C-k", Description: "Move ticket one position down / up within its sprint"},
+				{Key: "> / <", Description: "Move ticket to next / previous sprint directly"},
 				{Key: "B", Description: "Move ticket to backlog (no sprint)"},
+				{Key: "x", Description: "Cut selected ticket(s) for move"},
+				{Key: "p", Description: "Paste cut ticket(s) to current sprint"},
 			},
 		},
 		{
-			Title: "Editing",
+			Title: "Editing (Backlog)",
 			Keybindings: []HelpKeybinding{
 				{Key: "e", Description: "Edit ticket in $EDITOR (full template flow)"},
-				{Key: "r", Description: "Rename — inline edit of summary only"},
-				{Key: "t", Description: "Change type — picker"},
-				{Key: "p", Description: "Change priority — picker"},
-				{Key: "s", Description: "Set story points — inline numeric input"},
-				{Key: "l", Description: "Edit labels — inline comma-separated input"},
+				{Key: "S", Description: "Set story points — inline numeric input"},
+				{Key: "s", Description: "Change status — picker"},
 				{Key: "a", Description: "Create new ticket in current sprint"},
 				{Key: "C", Description: "Create new ticket in backlog"},
-				{Key: "P", Description: "Set parent — fuzzy picker"},
-				{Key: "A", Description: "Set assignee — fuzzy picker"},
-				{Key: "x", Description: "Delete ticket — requires y confirmation"},
-				{Key: "Enter", Description: "Open ticket detail pane"},
+				{Key: "P", Description: "Set parent — fuzzy picker (works on selection or cursor ticket)"},
+				{Key: "A", Description: "Set assignee — fuzzy picker (works on selection or cursor ticket)"},
+				{Key: "F", Description: "Filter by epic — fuzzy picker"},
 				{Key: "o", Description: "Open ticket in browser"},
-				{Key: "O", Description: "Open ticket in browser (canonical URL)"},
-				{Key: "y", Description: "Copy ticket URL to clipboard"},
+				{Key: "O", Description: "Open all selected tickets in browser"},
+				{Key: "y", Description: "Copy ticket URL to clipboard (cursor issue)"},
+			},
+		},
+		{
+			Title: "Editing (Kanban)",
+			Keybindings: []HelpKeybinding{
+				{Key: "e", Description: "Edit ticket in $EDITOR (full template flow)"},
+				{Key: "s", Description: "Change status — picker"},
+				{Key: "A", Description: "Set assignee — fuzzy picker"},
+				{Key: "o", Description: "Open ticket in browser"},
 			},
 		},
 		{
@@ -92,8 +106,6 @@ func HelpSections() []HelpSection {
 				{Key: "1", Description: "Switch to backlog view"},
 				{Key: "2", Description: "Switch to kanban board view"},
 				{Key: "Tab", Description: "Toggle between backlog and board"},
-				{Key: "f", Description: "Cycle filter presets: all → mine → unassigned"},
-				{Key: "S", Description: "Cycle sort: default → priority → points → assignee"},
 				{Key: "R", Description: "Refresh from Jira API"},
 				{Key: "?", Description: "Show this help overlay"},
 				{Key: "q", Description: "Quit"},
@@ -102,8 +114,8 @@ func HelpSections() []HelpSection {
 	}
 }
 
-// View renders the help overlay content (without border).
-func (m HelpModel) View(innerW, innerH int) string {
+// getContentLines returns the help content as a slice of lines.
+func (m HelpModel) getContentLines(innerW int) []string {
 	sections := HelpSections()
 	var lines []string
 
@@ -136,23 +148,96 @@ func (m HelpModel) View(innerW, innerH int) string {
 		lines = append(lines, "")
 	}
 
-	content := strings.Join(lines, "\n")
+	return lines
+}
 
-	// Handle scrolling if content is taller than available height
-	contentLines := strings.Split(content, "\n")
-	if len(contentLines) > innerH {
-		// Show as much as fits
-		if len(contentLines) > innerH {
-			contentLines = contentLines[:innerH]
+// Init initializes the help model.
+func (m HelpModel) Init() tea.Cmd {
+	return nil
+}
+
+// Update handles scrolling within the help overlay.
+func (m HelpModel) Update(msg tea.Msg, innerH int) HelpModel {
+	key, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return m
+	}
+
+	// Get total content height
+	lines := m.getContentLines(m.Width)
+	totalLines := len(lines)
+
+	switch key.String() {
+	case "j", "down":
+		if m.ScrollOffset < totalLines-innerH {
+			m.ScrollOffset++
+		}
+	case "k", "up":
+		if m.ScrollOffset > 0 {
+			m.ScrollOffset--
+		}
+	case "ctrl+d":
+		halfPage := innerH / 2
+		if halfPage < 1 {
+			halfPage = 1
+		}
+		m.ScrollOffset += halfPage
+		if m.ScrollOffset > totalLines-innerH {
+			m.ScrollOffset = totalLines - innerH
+		}
+	case "ctrl+u":
+		halfPage := innerH / 2
+		if halfPage < 1 {
+			halfPage = 1
+		}
+		m.ScrollOffset -= halfPage
+		if m.ScrollOffset < 0 {
+			m.ScrollOffset = 0
+		}
+	case "g":
+		m.ScrollOffset = 0
+	case "G":
+		m.ScrollOffset = totalLines - innerH
+		if m.ScrollOffset < 0 {
+			m.ScrollOffset = 0
 		}
 	}
 
-	return strings.Join(contentLines, "\n")
+	// Clamp scroll offset
+	if m.ScrollOffset < 0 {
+		m.ScrollOffset = 0
+	}
+	if m.ScrollOffset > totalLines-innerH {
+		m.ScrollOffset = totalLines - innerH
+	}
+
+	return m
+}
+
+// View renders the help overlay content (without border).
+func (m HelpModel) View(innerW, innerH int) string {
+	lines := m.getContentLines(innerW)
+	totalLines := len(lines)
+
+	// Apply scroll offset
+	start := m.ScrollOffset
+	if start < 0 {
+		start = 0
+	}
+	end := start + innerH
+	if end > totalLines {
+		end = totalLines
+	}
+
+	// Get visible lines
+	visibleLines := lines[start:end]
+
+	return strings.Join(visibleLines, "\n")
 }
 
 // HelpOverlaySize returns the dimensions for the floating help overlay.
 func HelpOverlaySize(totalWidth, totalHeight int) (w, h int) {
-	// Use ~70% of screen width, ~80% of height
+	// Use ~70% of screen width, ~90% of height for more vertical space
 	w = totalWidth * 70 / 100
 	if w > 100 {
 		w = 100
@@ -161,12 +246,12 @@ func HelpOverlaySize(totalWidth, totalHeight int) (w, h int) {
 		w = 60
 	}
 
-	h = totalHeight * 80 / 100
-	if h > 40 {
-		h = 40
+	h = totalHeight * 90 / 100
+	if h > 50 {
+		h = 50
 	}
-	if h < 20 {
-		h = 20
+	if h < 25 {
+		h = 25
 	}
 
 	return w, h
