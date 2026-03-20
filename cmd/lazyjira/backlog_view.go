@@ -36,6 +36,8 @@ func (m blModel) View() string {
 		return m.viewAssignPicker()
 	case blStoryPointInput:
 		return m.viewStoryPointInput()
+	case blEpicFilterPicker:
+		return m.viewEpicFilterPicker()
 	default:
 		return m.viewList()
 	}
@@ -102,6 +104,8 @@ func (m blModel) viewList() string {
 		topBar += " " + lipgloss.NewStyle().Bold(true).Foreground(tui.ColorGreen).Render(m.yankMessage)
 	} else if m.visualMode {
 		topBar += " " + lipgloss.NewStyle().Bold(true).Foreground(tui.ColorMagenta).Render("VISUAL")
+	} else if m.filterEpic != "" {
+		topBar += " " + lipgloss.NewStyle().Foreground(tui.ColorMagenta).Render("epic: "+m.filterEpic)
 	} else if m.filter != "" {
 		topBar += " " + lipgloss.NewStyle().Foreground(tui.ColorYellow).Render("/ "+m.filter)
 	}
@@ -137,7 +141,7 @@ func (m blModel) viewList() string {
 			"j/k: navigate", "J/K/{/}: sprint", "z/Z: collapse",
 			"space: select", "S: story pts", "v: visual", "enter: view", "e: edit", "o: open", "y: copy",
 			"ctrl+j/k: reorder", "x: cut", "p: paste", ">/<: adj sprint", "B: backlog",
-			"/: filter", "R: refresh", "tab: kanban", "q: quit",
+			"/: filter", "F: epic", "R: refresh", "tab: kanban", "q: quit",
 		}
 		left := "  " + strings.Join(hints, "   ")
 		if n := len(m.allSelected()); n > 0 {
@@ -466,6 +470,53 @@ func (m blModel) viewStoryPointInput() string {
 
 	body := header + "\n" +
 		inputLine + "\n" +
+		tui.DimStyle.Render(strings.Repeat("─", innerW)) + "\n" +
+		footer
+
+	modal := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(tui.ColorBlue).
+		Width(innerW).
+		Render(body)
+
+	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, modal)
+}
+
+func (m blModel) viewEpicFilterPicker() string {
+	width := m.width
+	if width == 0 {
+		width = 120
+	}
+	height := m.height
+	if height == 0 {
+		height = 40
+	}
+
+	pickerW := width * 2 / 3
+	if pickerW < 52 {
+		pickerW = 52
+	}
+	if pickerW > 90 {
+		pickerW = 90
+	}
+	innerW := pickerW - 2
+
+	title := "Filter by Epic"
+	if m.filterEpic != "" {
+		title = "Filter by Epic  (current: " + m.filterEpic + ")"
+	}
+	header := tui.BoldBlue.Padding(0, 1).Width(innerW).
+		Render(tui.FixedWidth(title, innerW-2))
+
+	listH := height/2 - 6
+	if listH < 4 {
+		listH = 4
+	}
+
+	footer := tui.DimStyle.Render("  ↑/↓ ctrl+p/n: navigate   enter: select   esc: cancel")
+
+	body := header + "\n" +
+		m.epicFilterPicker.View(innerW, listH) + "\n" +
 		tui.DimStyle.Render(strings.Repeat("─", innerW)) + "\n" +
 		footer
 
