@@ -98,7 +98,9 @@ func (m blModel) viewList() string {
 
 	// Top bar.
 	topBar := tui.BoldBlue.Padding(0, 1).Render("Backlog")
-	if m.visualMode {
+	if m.yankMessage != "" {
+		topBar += " " + lipgloss.NewStyle().Bold(true).Foreground(tui.ColorGreen).Render(m.yankMessage)
+	} else if m.visualMode {
 		topBar += " " + lipgloss.NewStyle().Bold(true).Foreground(tui.ColorMagenta).Render("VISUAL")
 	} else if m.filter != "" {
 		topBar += " " + lipgloss.NewStyle().Foreground(tui.ColorYellow).Render("/ "+m.filter)
@@ -133,7 +135,7 @@ func (m blModel) viewList() string {
 	} else {
 		hints := []string{
 			"j/k: navigate", "J/K/{/}: sprint", "z/Z: collapse",
-			"space: select", "S: story pts", "v: visual", "enter: view", "e: edit", "o: open",
+			"space: select", "S: story pts", "v: visual", "enter: view", "e: edit", "o: open", "y: copy",
 			"ctrl+j/k: reorder", "x: cut", "p: paste", ">/<: adj sprint", "B: backlog",
 			"/: filter", "R: refresh", "tab: kanban", "q: quit",
 		}

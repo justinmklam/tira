@@ -14,6 +14,9 @@ A lazygit-style CLI for Jira, built in Go with Charm tooling. This project provi
 ### Prerequisites
 - Go 1.21+
 - A Jira Cloud account with API access
+- Clipboard support (optional):
+  - **macOS**: `pbcopy` (built-in)
+  - **Linux**: `xclip` (`sudo apt install xclip` or `sudo dnf install xclip`)
 
 ### Installation
 Clone the repository and build the CLI:

@@ -2,7 +2,10 @@ package main
 
 import (
 	"fmt"
+	"os/exec"
+	"runtime"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -64,10 +67,15 @@ type blAssignDoneMsg struct{ err error }
 
 type blStoryPointDoneMsg struct{ err error }
 
+type yankMsg struct{}
+
+type yankDoneMsg struct{}
+
 type blModel struct {
 	state   blState
 	client  api.Client
 	project string
+	jiraURL string
 
 	groups    []models.SprintGroup
 	rows      []blRow
@@ -103,6 +111,10 @@ type blModel struct {
 	storyPointInput      textinput.Model
 	storyPointTargetKeys []string
 
+	// yank indicator state
+	yankMessage string
+	yankTimer   *time.Timer
+
 	result   blResult
 	quitting bool
 }
@@ -131,7 +143,7 @@ func blMatchesFilter(issue models.Issue, filter string) bool {
 		strings.Contains(strings.ToLower(issue.Summary), f)
 }
 
-func newBacklogModel(client api.Client, groups []models.SprintGroup, project string) blModel {
+func newBacklogModel(client api.Client, groups []models.SprintGroup, project, jiraURL string) blModel {
 	collapsed := make(map[int]bool)
 
 	ti := textinput.New()
@@ -150,6 +162,7 @@ func newBacklogModel(client api.Client, groups []models.SprintGroup, project str
 		state:           blList,
 		client:          client,
 		project:         project,
+		jiraURL:         jiraURL,
 		groups:          groups,
 		collapsed:       collapsed,
 		filterInput:     ti,
@@ -389,6 +402,22 @@ func (m blModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.result.refresh = true
 		}
 		return m, nil
+
+	case yankMsg:
+		m.yankMessage = "YANKED"
+		if m.yankTimer != nil {
+			m.yankTimer.Stop()
+		}
+		m.yankTimer = time.AfterFunc(2*time.Second, func() {
+			// This will be called after 2 seconds to clear the message
+		})
+		return m, tea.Tick(2*time.Second, func(time.Time) tea.Msg {
+			return yankDoneMsg{}
+		})
+
+	case yankDoneMsg:
+		m.yankMessage = ""
+		return m, nil
 	}
 
 	switch m.state {
@@ -540,6 +569,26 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if issue := m.currentIssue(); issue != nil {
 			m.result = blResult{editKey: issue.Key}
 			return m, nil
+		}
+
+	case "o":
+		if issue := m.currentIssue(); issue != nil {
+			return m, openInBrowserCmd(m.issueURL(issue.Key))
+		}
+
+	case "O":
+		keys := m.moveKeys()
+		if len(keys) == 0 {
+			return m, nil
+		}
+		for _, key := range keys {
+			_ = openInBrowserCmd(m.issueURL(key))()
+		}
+		return m, nil
+
+	case "y":
+		if issue := m.currentIssue(); issue != nil {
+			return m, copyToClipboardCmd(m.issueURL(issue.Key))
 		}
 
 	case "R":
@@ -1142,4 +1191,26 @@ func parseFloat(s string) (float64, error) {
 	var result float64
 	_, err := fmt.Sscanf(s, "%f", &result)
 	return result, err
+}
+
+// copyToClipboardCmd copies the given text to the system clipboard and sends yankMsg on completion.
+func copyToClipboardCmd(text string) tea.Cmd {
+	return func() tea.Msg {
+		var cmd *exec.Cmd
+		switch runtime.GOOS {
+		case "darwin":
+			cmd = exec.Command("pbcopy")
+		default:
+			cmd = exec.Command("xclip", "-selection", "clipboard")
+		}
+		cmd.Stdin = strings.NewReader(text)
+		_ = cmd.Run()
+		return yankMsg{}
+	}
+}
+
+// issueURL returns the absolute URL for an issue key.
+func (m blModel) issueURL(key string) string {
+	baseURL := strings.TrimRight(m.jiraURL, "/")
+	return fmt.Sprintf("%s/browse/%s", baseURL, key)
 }

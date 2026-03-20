@@ -179,7 +179,7 @@ func newBoardModel(client api.Client, boardID int, jiraURL, project string, clas
 
 	return boardModel{
 		activeView:     startView,
-		backlog:        newBacklogModel(client, data.groups, project),
+		backlog:        newBacklogModel(client, data.groups, project, jiraURL),
 		kanban:         newKanbanModel(client, data.boardCols, issues, sprintName, project),
 		client:         client,
 		boardID:        boardID,

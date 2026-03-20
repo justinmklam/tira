@@ -60,6 +60,9 @@ Modelled on yazi's philosophy: modal only where the modality is obvious from con
 | `A` | Set assignee — fuzzy picker (works on selection or cursor ticket) |
 | `x` | Delete ticket — requires `y` confirmation |
 | `<Enter>` | Open ticket detail pane (press `e` from there to edit) |
+| `o` | Open ticket in browser |
+| `O` | Open ticket in browser using canonical URL |
+| `y` | Copy ticket URL to clipboard (cursor issue) |
 
 Quick pickers (`t`, `p`, `a`) open a small overlay, navigate with `j`/`k`, confirm with `<Enter>`, cancel with `<Esc>`.
 
