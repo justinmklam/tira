@@ -59,38 +59,141 @@ func NewClient(cfg *config.Config) (Client, error) {
 }
 
 func (c *jiraClient) GetIssue(key string) (*models.Issue, error) {
-	// Use go-jira for structured fields.
-	issue, _, err := c.client.Issue.Get(context.Background(), key, nil)
+	// Fetch structured+ADF fields and comments concurrently.
+	// fetchFullIssue replaces the previous two-step approach (go-jira Issue.Get
+	// followed by a separate fetchRawFields call to the same endpoint) with a
+	// single raw HTTP request, halving the number of serial API calls.
+	var (
+		result   *models.Issue
+		comments []models.Comment
+		fetchErr error
+		wg       sync.WaitGroup
+	)
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		result, fetchErr = c.fetchFullIssue(key)
+	}()
+	go func() {
+		defer wg.Done()
+		if c, err := c.fetchComments(key); err == nil {
+			comments = c
+		}
+	}()
+	wg.Wait()
+	if fetchErr != nil {
+		return nil, fetchErr
+	}
+	result.Comments = comments
+	return result, nil
+}
+
+// fetchFullIssue fetches a single issue using one raw HTTP request to
+// /rest/api/3/issue/{key}?expand=names and parses both structured fields and
+// ADF custom fields from it.  This replaces the previous two-step approach
+// that called go-jira Issue.Get and then made a second request to the same
+// endpoint to obtain field names and ADF content.
+func (c *jiraClient) fetchFullIssue(key string) (*models.Issue, error) {
+	rawURL := fmt.Sprintf("%s/rest/api/3/issue/%s?expand=names", c.baseURL, key)
+	resp, err := c.http.Get(rawURL)
 	if err != nil {
 		return nil, fmt.Errorf("fetching issue %s: %w", key, err)
 	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("fetching issue %s: HTTP %d", key, resp.StatusCode)
+	}
+
+	// Outer envelope: keep Fields as raw bytes so we can unmarshal it twice —
+	// once into a typed struct for standard fields, once into a raw map for
+	// custom/ADF fields.
+	var envelope struct {
+		Key    string            `json:"key"`
+		Fields json.RawMessage   `json:"fields"`
+		Names  map[string]string `json:"names"`
+	}
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		return nil, err
+	}
+
+	// Structured standard fields.
+	var sf struct {
+		Summary   string `json:"summary"`
+		Status    struct {
+			Name string `json:"name"`
+		} `json:"status"`
+		IssueType struct {
+			Name string `json:"name"`
+		} `json:"issuetype"`
+		Priority *struct {
+			Name string `json:"name"`
+		} `json:"priority"`
+		Assignee *struct {
+			DisplayName string `json:"displayName"`
+			AccountID   string `json:"accountId"`
+		} `json:"assignee"`
+		Reporter *struct {
+			DisplayName string `json:"displayName"`
+		} `json:"reporter"`
+		Parent *struct {
+			Key string `json:"key"`
+		} `json:"parent"`
+		Labels     []string `json:"labels"`
+		IssueLinks []struct {
+			Type struct {
+				Outward string `json:"outward"`
+				Inward  string `json:"inward"`
+			} `json:"type"`
+			OutwardIssue *struct {
+				Key    string `json:"key"`
+				Fields *struct {
+					Summary string `json:"summary"`
+					Status  struct {
+						Name string `json:"name"`
+					} `json:"status"`
+				} `json:"fields"`
+			} `json:"outwardIssue"`
+			InwardIssue *struct {
+				Key    string `json:"key"`
+				Fields *struct {
+					Summary string `json:"summary"`
+					Status  struct {
+						Name string `json:"name"`
+					} `json:"status"`
+				} `json:"fields"`
+			} `json:"inwardIssue"`
+		} `json:"issuelinks"`
+	}
+	if err := json.Unmarshal(envelope.Fields, &sf); err != nil {
+		return nil, err
+	}
 
 	result := &models.Issue{
-		Key:       issue.Key,
-		Summary:   issue.Fields.Summary,
-		Status:    issue.Fields.Status.Name,
-		IssueType: issue.Fields.Type.Name,
+		Key:       envelope.Key,
+		Summary:   sf.Summary,
+		Status:    sf.Status.Name,
+		IssueType: sf.IssueType.Name,
+		Labels:    sf.Labels,
 	}
-	if issue.Fields.Priority != nil {
-		result.Priority = issue.Fields.Priority.Name
+	if sf.Priority != nil {
+		result.Priority = sf.Priority.Name
 	}
-
-	if issue.Fields.Assignee != nil {
-		result.Assignee = issue.Fields.Assignee.DisplayName
-		result.AssigneeID = issue.Fields.Assignee.AccountID
+	if sf.Assignee != nil {
+		result.Assignee = sf.Assignee.DisplayName
+		result.AssigneeID = sf.Assignee.AccountID
 	}
-	if issue.Fields.Reporter != nil {
-		result.Reporter = issue.Fields.Reporter.DisplayName
+	if sf.Reporter != nil {
+		result.Reporter = sf.Reporter.DisplayName
 	}
-	if issue.Fields.Parent != nil {
-		result.ParentKey = issue.Fields.Parent.Key
+	if sf.Parent != nil {
+		result.ParentKey = sf.Parent.Key
 	}
-
-	for _, l := range issue.Fields.Labels {
-		result.Labels = append(result.Labels, l)
-	}
-
-	for _, link := range issue.Fields.IssueLinks {
+	for _, link := range sf.IssueLinks {
 		if link.OutwardIssue != nil {
 			li := models.LinkedIssue{
 				Relationship: link.Type.Outward,
@@ -115,84 +218,57 @@ func (c *jiraClient) GetIssue(key string) (*models.Issue, error) {
 		}
 	}
 
-	// Fetch ADF fields and comments concurrently (both non-fatal).
-	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		c.fetchRawFields(key, result) //nolint:errcheck
-	}()
-	go func() {
-		defer wg.Done()
-		if comments, err := c.fetchComments(key); err == nil {
-			result.Comments = comments
-		}
-	}()
-	wg.Wait()
+	// Raw field map for custom/ADF fields.
+	var rawFields map[string]json.RawMessage
+	json.Unmarshal(envelope.Fields, &rawFields) //nolint:errcheck // best effort
 
-	return result, nil
-}
-
-// rawIssueResponse is the minimal shape we need from /rest/api/3/issue/{key}?expand=names.
-type rawIssueResponse struct {
-	Fields map[string]json.RawMessage `json:"fields"`
-	Names  map[string]string          `json:"names"`
-}
-
-// fetchRawFields populates ADF-based fields (description, acceptance criteria)
-// and the sprint name by parsing the raw Jira API response.
-func (c *jiraClient) fetchRawFields(key string, result *models.Issue) error {
-	url := fmt.Sprintf("%s/rest/api/3/issue/%s?expand=names", c.baseURL, key)
-	resp, err := c.http.Get(url)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return err
-	}
-
-	var raw rawIssueResponse
-	if err := json.Unmarshal(body, &raw); err != nil {
-		return err
-	}
-
-	// Build a reverse map: lowercase display name → field ID.
-	nameToID := make(map[string]string, len(raw.Names))
-	for id, name := range raw.Names {
+	// Build name → field ID map.
+	nameToID := make(map[string]string, len(envelope.Names))
+	for id, name := range envelope.Names {
 		nameToID[strings.ToLower(name)] = id
 	}
 
-	// Description
+	// Description (ADF).
 	if fieldID, ok := nameToID["description"]; ok {
-		result.Description = c.extractADF(raw.Fields, fieldID)
+		result.Description = c.extractADF(rawFields, fieldID)
 	} else {
-		result.Description = c.extractADF(raw.Fields, "description")
+		result.Description = c.extractADF(rawFields, "description")
 	}
 
-	// Acceptance Criteria (field name varies by instance)
+	// Acceptance Criteria (field name varies by Jira instance).
 	for _, candidate := range []string{"acceptance criteria", "acceptance criterion"} {
 		if fieldID, ok := nameToID[candidate]; ok {
-			result.AcceptanceCriteria = c.extractADF(raw.Fields, fieldID)
+			result.AcceptanceCriteria = c.extractADF(rawFields, fieldID)
 			break
 		}
 	}
 
-	// Sprint — stored as an array of sprint objects in a custom field
+	// Sprint name.
 	if fieldID, ok := nameToID["sprint"]; ok {
-		result.SprintName = c.extractSprintName(raw.Fields, fieldID)
+		result.SprintName = c.extractSprintName(rawFields, fieldID)
 	}
 
-	// Parent summary (go-jira only gives us the key)
-	if result.ParentKey != "" {
-		if fieldID, ok := nameToID["parent"]; ok {
-			result.ParentSummary = c.extractParentSummary(raw.Fields, fieldID)
+	// Story points.
+	for _, candidate := range []string{"story points", "story point estimate"} {
+		if fieldID, ok := nameToID[candidate]; ok {
+			if raw, ok := rawFields[fieldID]; ok {
+				var sp float64
+				if json.Unmarshal(raw, &sp) == nil {
+					result.StoryPoints = sp
+				}
+			}
+			break
 		}
 	}
 
-	return nil
+	// Parent summary.
+	if result.ParentKey != "" {
+		if fieldID, ok := nameToID["parent"]; ok {
+			result.ParentSummary = c.extractParentSummary(rawFields, fieldID)
+		}
+	}
+
+	return result, nil
 }
 
 func (c *jiraClient) fetchComments(key string) ([]models.Comment, error) {

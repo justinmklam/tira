@@ -32,8 +32,9 @@ type kanbanColumn struct {
 }
 
 type issueFetchedMsg struct {
-	issue *models.Issue
-	err   error
+	issue   *models.Issue
+	content string // pre-rendered glamour content
+	err     error
 }
 
 type kanbanResult struct {
@@ -155,19 +156,8 @@ func (m kanbanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.detailIssue = msg.issue
 		vpW, vpH := tui.OverlayViewportSize(m.width, m.height)
-		md, _ := display.RenderIssue(msg.issue)
-		renderer, err := glamour.NewTermRenderer(
-			glamour.WithAutoStyle(),
-			glamour.WithWordWrap(vpW),
-		)
-		content := md
-		if err == nil {
-			if rendered, err := renderer.Render(md); err == nil {
-				content = rendered
-			}
-		}
 		vp := viewport.New(vpW, vpH)
-		vp.SetContent(content)
+		vp.SetContent(msg.content)
 		m.detailView = vp
 		m.state = stateDetail
 		return m, nil
@@ -227,7 +217,8 @@ func (m kanbanModel) updateBoard(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case "enter":
 		if issue := m.currentIssue(); issue != nil {
 			m.state = stateLoading
-			return m, tea.Batch(m.loadSpinner.Tick, fetchIssueCmd(m.client, issue.Key))
+			vpW, _ := tui.OverlayViewportSize(m.width, m.height)
+			return m, tea.Batch(m.loadSpinner.Tick, fetchIssueCmd(m.client, issue.Key, vpW))
 		}
 	case "e":
 		if issue := m.currentIssue(); issue != nil {
@@ -310,10 +301,24 @@ func kanbanAssignCmd(client api.Client, keys []string, accountID string) tea.Cmd
 	}
 }
 
-func fetchIssueCmd(client api.Client, key string) tea.Cmd {
+func fetchIssueCmd(client api.Client, key string, vpW int) tea.Cmd {
 	return func() tea.Msg {
 		issue, err := client.GetIssue(key)
-		return issueFetchedMsg{issue: issue, err: err}
+		if err != nil {
+			return issueFetchedMsg{err: err}
+		}
+		md, _ := display.RenderIssue(issue)
+		renderer, rerr := glamour.NewTermRenderer(
+			glamour.WithAutoStyle(),
+			glamour.WithWordWrap(vpW),
+		)
+		content := md
+		if rerr == nil {
+			if rendered, rerr2 := renderer.Render(md); rerr2 == nil {
+				content = rendered
+			}
+		}
+		return issueFetchedMsg{issue: issue, content: content}
 	}
 }
 

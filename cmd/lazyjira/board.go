@@ -10,6 +10,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/justinmklam/lazyjira/internal/api"
 	"github.com/justinmklam/lazyjira/internal/models"
@@ -703,6 +704,14 @@ func (m boardModel) viewAssigneePickerOverlay(w, h int) string {
 }
 
 func runBoardTUI(client api.Client, boardID int, data boardInitData, startView boardView) error {
+	// Detect glamour style before handing the TTY to BubbleTea.
+	// glamour.WithAutoStyle() queries the terminal for its background color,
+	// which conflicts with BubbleTea's terminal reader when called from a
+	// background goroutine. Detecting once here (while we still own the TTY)
+	// caches the result in termenv's package-level sync.Once, so goroutines
+	// can call WithAutoStyle() without blocking.
+	_, _ = glamour.NewTermRenderer(glamour.WithAutoStyle())
+
 	m := newBoardModel(client, boardID, cfg.JiraURL, cfg.Project, cfg.ClassicProject, data, startView)
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	_, err := p.Run()

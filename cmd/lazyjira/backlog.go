@@ -7,10 +7,8 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/justinmklam/lazyjira/internal/api"
-	"github.com/justinmklam/lazyjira/internal/display"
 	"github.com/justinmklam/lazyjira/internal/models"
 	"github.com/justinmklam/lazyjira/internal/tui"
 )
@@ -313,19 +311,8 @@ func (m blModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.detailIssue = msg.issue
 		vpW, vpH := tui.OverlayViewportSize(m.width, m.height)
-		md, _ := display.RenderIssue(msg.issue)
-		renderer, err := glamour.NewTermRenderer(
-			glamour.WithAutoStyle(),
-			glamour.WithWordWrap(vpW),
-		)
-		content := md
-		if err == nil {
-			if rendered, err2 := renderer.Render(md); err2 == nil {
-				content = rendered
-			}
-		}
 		vp := viewport.New(vpW, vpH)
-		vp.SetContent(content)
+		vp.SetContent(msg.content)
 		m.detailView = vp
 		m.state = blDetail
 		return m, nil
@@ -525,7 +512,8 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		issue := m.groups[row.groupIdx].Issues[row.issueIdx]
 		m.state = blLoading
-		return m, tea.Batch(m.loadSpinner.Tick, fetchIssueCmd(m.client, issue.Key))
+		vpW, _ := tui.OverlayViewportSize(m.width, m.height)
+		return m, tea.Batch(m.loadSpinner.Tick, fetchIssueCmd(m.client, issue.Key, vpW))
 
 	case "e":
 		if issue := m.currentIssue(); issue != nil {
