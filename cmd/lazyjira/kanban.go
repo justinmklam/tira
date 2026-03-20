@@ -442,6 +442,8 @@ func (m kanbanModel) viewBoard() string {
 	keyStyle := lipgloss.NewStyle().Bold(true).Foreground(tui.ColorBlue)
 	selKeyStyle := lipgloss.NewStyle().Bold(true).Foreground(tui.ColorWhite).Background(tui.ColorBg)
 	selSumStyle := lipgloss.NewStyle().Foreground(tui.ColorFg).Background(tui.ColorBg)
+	assigneeStyle := lipgloss.NewStyle().Foreground(tui.ColorDim)
+	daysStyle := lipgloss.NewStyle().Bold(true)
 
 	var renderedCols []string
 	for ci, col := range m.columns {
@@ -466,16 +468,48 @@ func (m kanbanModel) viewBoard() string {
 			if len(runes) > maxSummary {
 				summary = string(runes[:maxSummary-1]) + "…"
 			}
+
+			// Calculate days in column and get color
+			days := tui.DaysInColumn(issue.StatusChangedDate)
+			daysColor := tui.DaysColor(days)
+			daysStr := fmt.Sprintf("%dd", days)
+
+			// Format assignee
+			assigneeStr := ""
+			if issue.Assignee != "" {
+				assigneeStr = issue.Assignee
+			}
+
 			if isSelected {
 				lines = append(lines,
 					selKeyStyle.Render("▶ "+issue.Key),
 					selSumStyle.Render("  "+summary),
 				)
+				if assigneeStr != "" || days > 0 {
+					var metaParts []string
+					if assigneeStr != "" {
+						metaParts = append(metaParts, assigneeStyle.Render(assigneeStr))
+					}
+					if days > 0 {
+						metaParts = append(metaParts, daysStyle.Foreground(daysColor).Render(daysStr))
+					}
+					lines = append(lines, selSumStyle.Render("  "+strings.Join(metaParts, " • ")))
+				}
 			} else {
 				lines = append(lines,
 					"  "+keyStyle.Render(issue.Key),
 					"  "+tui.DimStyle.Render(summary),
 				)
+				if assigneeStr != "" || days > 0 {
+					var metaParts []string
+					if assigneeStr != "" {
+						metaParts = append(metaParts, assigneeStyle.Render(assigneeStr))
+					}
+					if days > 0 {
+						metaParts = append(metaParts, daysStyle.Foreground(daysColor).Render(daysStr))
+					}
+					lines = append(lines, "  "+tui.DimStyle.Render(strings.Join(metaParts, " • ")))
+				}
 			}
 		}
 

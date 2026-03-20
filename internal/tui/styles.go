@@ -2,6 +2,7 @@ package tui
 
 import (
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -61,4 +62,50 @@ func EpicColor(epicKey string) lipgloss.Color {
 		sum += int(r)
 	}
 	return palette[sum%len(palette)]
+}
+
+// DaysInColumn calculates the number of days an issue has been in its current status.
+// Returns 0 if the date string is empty or invalid.
+func DaysInColumn(statusChangedDate string) int {
+	if statusChangedDate == "" {
+		return 0
+	}
+	parsed, err := parseDate(statusChangedDate)
+	if err != nil {
+		return 0
+	}
+	now := parseDateOrNow("")
+	return int(now.Sub(parsed).Hours() / 24)
+}
+
+// DaysColor returns a color based on the number of days in column.
+// Green: 0-2 days, Yellow: 3-5 days, Orange: 6-9 days, Red: 10+ days
+func DaysColor(days int) lipgloss.Color {
+	switch {
+	case days <= 2:
+		return ColorGreen
+	case days <= 5:
+		return ColorYellow
+	case days <= 9:
+		return ColorOrange
+	default:
+		return ColorRed
+	}
+}
+
+// parseDate parses an ISO date string (YYYY-MM-DD) to time.Time.
+func parseDate(dateStr string) (time.Time, error) {
+	return time.Parse("2006-01-02", dateStr)
+}
+
+// parseDateOrNow parses an ISO date string or returns time.Now() if empty.
+func parseDateOrNow(dateStr string) time.Time {
+	if dateStr == "" {
+		return time.Now()
+	}
+	t, err := parseDate(dateStr)
+	if err != nil {
+		return time.Now()
+	}
+	return t
 }

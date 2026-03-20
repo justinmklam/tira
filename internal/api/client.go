@@ -69,7 +69,7 @@ func (c *jiraClient) GetIssue(key string) (*models.Issue, error) {
 		fetchErr error
 		wg       sync.WaitGroup
 	)
-	wg.Add(2)
+	wg.Add(3)
 	go func() {
 		defer wg.Done()
 		result, fetchErr = c.fetchFullIssue(key)
@@ -78,6 +78,14 @@ func (c *jiraClient) GetIssue(key string) (*models.Issue, error) {
 		defer wg.Done()
 		if c, err := c.fetchComments(key); err == nil {
 			comments = c
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		if date, err := c.fetchStatusChangeDate(key); err == nil {
+			if result != nil {
+				result.StatusChangedDate = date
+			}
 		}
 	}()
 	wg.Wait()
@@ -313,6 +321,74 @@ func (c *jiraClient) fetchComments(key string) ([]models.Comment, error) {
 		})
 	}
 	return comments, nil
+}
+
+// fetchStatusChangeDate fetches the changelog for an issue and returns the date
+// when the status last changed. Returns empty string if no status change found.
+func (c *jiraClient) fetchStatusChangeDate(key string) (string, error) {
+	url := fmt.Sprintf("%s/rest/api/3/issue/%s/changelog?maxResults=100", c.baseURL, key)
+	resp, err := c.http.Get(url)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+	if resp.StatusCode >= 300 {
+		return "", fmt.Errorf("changelog: HTTP %d", resp.StatusCode)
+	}
+
+	var result struct {
+		Values []struct {
+			Created string `json:"created"`
+			Items   []struct {
+				Field      string `json:"field"`
+				FromString string `json:"fromString"`
+				ToString   string `json:"toString"`
+			} `json:"items"`
+		} `json:"values"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return "", err
+	}
+
+	// Find the most recent status change (last entry in changelog that changed status).
+	for _, v := range result.Values {
+		for _, item := range v.Items {
+			if item.Field == "status" {
+				// Extract date portion (ISO 8601 format: "2026-03-01T10:30:00.000+0000")
+				if len(v.Created) >= 10 {
+					return v.Created[:10], nil
+				}
+				return v.Created, nil
+			}
+		}
+	}
+	return "", nil
+}
+
+// fetchBatchStatusChangeDates fetches changelogs for multiple issues in
+// parallel and returns a map of issue key to status change date.
+func (c *jiraClient) fetchBatchStatusChangeDates(keys []string) map[string]string {
+	result := make(map[string]string, len(keys))
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+
+	for _, key := range keys {
+		wg.Add(1)
+		go func(k string) {
+			defer wg.Done()
+			if date, err := c.fetchStatusChangeDate(k); err == nil && date != "" {
+				mu.Lock()
+				result[k] = date
+				mu.Unlock()
+			}
+		}(key)
+	}
+	wg.Wait()
+	return result
 }
 
 func (c *jiraClient) extractADF(fields map[string]json.RawMessage, fieldID string) string {
@@ -1018,6 +1094,15 @@ func (c *jiraClient) fetchAgileIssues(url, sprintName string) ([]models.Issue, e
 		return nil, fmt.Errorf("parsing issues: %w", err)
 	}
 
+	// Extract issue keys for batch status change fetch.
+	keys := make([]string, 0, len(data.Issues))
+	for _, raw := range data.Issues {
+		keys = append(keys, raw.Key)
+	}
+
+	// Fetch status change dates in parallel.
+	statusDates := c.fetchBatchStatusChangeDates(keys)
+
 	issues := make([]models.Issue, 0, len(data.Issues))
 	for _, raw := range data.Issues {
 		issue := models.Issue{
@@ -1033,6 +1118,9 @@ func (c *jiraClient) fetchAgileIssues(url, sprintName string) ([]models.Issue, e
 		if raw.Fields.Assignee != nil {
 			issue.Assignee = raw.Fields.Assignee.DisplayName
 			issue.AssigneeID = raw.Fields.Assignee.AccountID
+		}
+		if date, ok := statusDates[raw.Key]; ok {
+			issue.StatusChangedDate = date
 		}
 		// Epic: parent issue when the parent type is "Epic".
 		if p := raw.Fields.Parent; p != nil && p.Fields.Issuetype.Name == "Epic" {
