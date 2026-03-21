@@ -431,6 +431,9 @@ func (m blModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Bulk operations completed. Refresh to show successful changes.
 		// Errors are logged but don't prevent refresh (partial success is possible).
 		m.result.refresh = true
+		// Clear selection and disable visual mode after bulk actions.
+		m.selected = make(map[string]bool)
+		m.visualMode = false
 		// TODO: Display error count in UI if msg.Errors contains failures
 		return m, nil
 
