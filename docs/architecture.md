@@ -10,40 +10,48 @@ tira is a terminal UI for Jira built in Go with the Charm ecosystem (Bubbletea, 
 
 ```
 tira/
-├── cmd/tira/
-│   ├── main.go              # Entry point → Execute()
-│   ├── root.go              # Cobra root command, --debug flag, config loading
-│   ├── get.go               # `get <key> [--edit]` — fetch/display/edit single issue
-│   ├── create.go            # `create` — new issue via $EDITOR template
-│   ├── board.go             # `board` — unified TUI (backlog + kanban views)
-│   ├── backlog.go           # Backlog model + update logic (blModel)
-│   ├── backlog_view.go      # Backlog rendering (View, renderRow, column header)
-│   └── kanban.go            # Kanban model + update + rendering (kanbanModel)
+├── cmd/tira/                  # Thin CLI layer — Cobra commands + config
+│   ├── main.go                # Entry point → Execute()
+│   ├── root.go                # Cobra root command, --debug flag, config loading
+│   ├── board.go               # board/backlog/kanban Cobra commands (calls into internal/app)
+│   ├── get.go                 # `get <key> [--edit]` — fetch/display/edit single issue
+│   └── create.go              # `create` — new issue via $EDITOR template
 │
 ├── internal/
+│   ├── app/                   # All Bubbletea TUI models
+│   │   ├── board.go           # boardModel type + Init + Update + FetchBoardData + RunBoardTUI
+│   │   ├── board_overlays.go  # boardModel overlay rendering (edit form, assignee, help, comment)
+│   │   ├── backlog.go         # blModel type + Init + Update dispatch + helpers
+│   │   ├── backlog_update.go  # blModel sub-update handlers (list, filter, detail, pickers, move/rank)
+│   │   ├── backlog_view.go    # blModel View + render helpers
+│   │   ├── kanban.go          # kanbanModel type + Init + Update
+│   │   ├── kanban_view.go     # kanbanModel View + render helpers
+│   │   ├── edit_form.go       # editModel (TUI form widget)
+│   │   ├── edit_cmds.go       # editFormState, msg types, tea.Cmd funcs, pickers
+│   │   └── comment_form.go    # commentInputModel
 │   ├── api/
-│   │   ├── client.go        # Jira API client (interface + jiraClient impl)
-│   │   └── adf.go           # Atlassian Document Format → Markdown converter
+│   │   ├── client.go          # Jira API client (interface + jiraClient impl)
+│   │   └── adf.go             # Atlassian Document Format → Markdown converter
 │   ├── config/
-│   │   └── config.go        # Config loading (env vars + optional YAML)
+│   │   └── config.go          # Config loading (env vars + optional YAML)
 │   ├── models/
-│   │   └── models.go        # Shared data types (Issue, IssueFields, Sprint, etc.)
+│   │   └── models.go          # Shared data types (Issue, IssueFields, Sprint, etc.)
 │   ├── tui/
-│   │   ├── spinner.go       # Generic RunWithSpinner[T] for async operations
-│   │   ├── styles.go        # Centralized color constants and reusable styles
-│   │   └── helpers.go       # Shared TUI utilities (FixedWidth, Clamp, SplitPanes)
+│   │   ├── spinner.go         # Generic RunWithSpinner[T] for async operations
+│   │   ├── styles.go          # Centralized color constants and reusable styles
+│   │   └── helpers.go         # Shared TUI utilities (FixedWidth, Clamp, SplitPanes)
 │   ├── display/
-│   │   └── issue.go         # Issue → Markdown renderer (for detail pane + pager)
+│   │   └── issue.go           # Issue → Markdown renderer (for detail pane + pager)
 │   ├── editor/
-│   │   ├── template.go      # Issue → editable markdown template
-│   │   ├── parse.go         # Parse edited template → IssueFields
-│   │   └── open.go          # Open $EDITOR and block until exit
+│   │   ├── template.go        # Issue → editable markdown template
+│   │   ├── parse.go           # Parse edited template → IssueFields
+│   │   └── open.go            # Open $EDITOR and block until exit
 │   └── validator/
-│       ├── validate.go      # Field validation against valid values
-│       └── annotate.go      # Inline error annotation in template files
+│       ├── validate.go        # Field validation against valid values
+│       └── annotate.go        # Inline error annotation in template files
 │
 ├── docs/
-│   ├── architecture.md      # This file
+│   ├── architecture.md        # This file
 │   └── keybindings-backlog.md
 ├── go.mod
 ├── Makefile
@@ -56,20 +64,24 @@ tira/
 ## Package dependency graph
 
 ```
-cmd/tira (commands + TUI models)
- ├── internal/api        ← Jira REST API client
- ├── internal/config     ← Config loading
- ├── internal/models     ← Shared data types
- ├── internal/tui        ← Shared TUI infrastructure
- ├── internal/display    ← Issue rendering
- ├── internal/editor     ← Template render/parse + editor invocation
- └── internal/validator  ← Field validation + error annotation
+cmd/tira (thin CLI layer — Cobra commands + config)
+ ├── internal/app         ← TUI models (board, backlog, kanban, edit form, comment)
+ ├── internal/api         ← Jira REST API client
+ ├── internal/config      ← Config loading
+ └── internal/tui         ← RunWithSpinner used directly by CLI commands
+
+internal/app
+ ├── internal/api
+ ├── internal/models
+ ├── internal/tui          ← styles, helpers, picker (still zero internal deps)
+ ├── internal/display
+ └── internal/debug
 
 internal/api
  ├── internal/config
  └── internal/models
 
-internal/tui             ← NO dependencies on other internal packages
+internal/tui              ← NO dependencies on other internal packages
  └── (only charmbracelet/bubbles, lipgloss)
 
 internal/display
@@ -78,7 +90,7 @@ internal/display
 internal/editor
  └── internal/models
 
-internal/validator       ← Pure logic, no TUI dependency
+internal/validator        ← Pure logic, no TUI dependency
  └── internal/models
 ```
 
@@ -86,7 +98,7 @@ Key invariants:
 - `internal/tui` has **zero** dependencies on other internal packages — it's a leaf.
 - `internal/editor` and `internal/validator` are pure string/struct logic — no I/O, no TUI.
 - `internal/api` depends only on `config` and `models` — no TUI or display coupling.
-- All TUI model code lives in `cmd/tira/` (package main).
+- All TUI model code lives in `internal/app/` — `cmd/tira/` is a thin CLI layer (Cobra commands + config).
 
 ---
 

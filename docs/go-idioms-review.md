@@ -111,144 +111,9 @@ These two methods share ~95% of their code. `GetIssueMetadata`'s doc says it "re
 
 ---
 
-## Priority 2.5 — Project Structure & Separation of Concerns
+## ~~Priority 2.5 — Project Structure & Separation of Concerns~~ ✅ DONE
 
-### Current layout
-
-| File | Contents | Lines |
-|------|----------|-------|
-| `cmd/tira/backlog.go` | `blModel` type + `Init` + `Update` + all update sub-handlers + helper funcs + Cmd funcs | 1412 |
-| `cmd/tira/backlog_view.go` | `blModel.View()` + all render methods | 593 |
-| `cmd/tira/kanban.go` | `kanbanModel` type + Init + Update + View — everything in one file | 727 |
-| `cmd/tira/board.go` | Cobra commands + `boardModel` type + Init + Update + View | 898 |
-| `cmd/tira/editmodel.go` | `editModel` struct + Init + Update + View (the TUI form widget) | 454 |
-| `cmd/tira/edit.go` | `editFormState`, msg types, tea.Cmd functions, `newAssigneePicker` | 180 |
-| `cmd/tira/commentmodel.go` | `commentInputModel` struct + Init + Update + View | 103 |
-| `cmd/tira/get.go` | `getCmd` Cobra command + `runEditLoop` + `openAndValidate` + `page` | 245 |
-| `cmd/tira/create.go` | `createCmd` Cobra command | 98 |
-| `cmd/tira/root.go` | Root Cobra command + config loading | 65 |
-| `cmd/tira/main.go` | Entry point | 5 |
-
-### Problems
-
-**1. TUI models live in `package main`.** All 4,300+ lines of TUI model logic (board, backlog, kanban, edit form, comment form) are in `cmd/tira/`, which is `package main`. This means none of this code can be imported or unit tested independently. In idiomatic Go, `cmd/` is a thin CLI entry point — business logic and application models belong in `internal/`.
-
-**2. Inconsistent splitting strategy.** Backlog splits model+update from view, but kanban and board don't. If the pattern is worth doing for backlog, it should be applied consistently — or not at all.
-
-**3. `edit.go` naming is misleading.** It sounds like a Cobra command file (matching the `get.go` / `create.go` pattern), but it actually contains shared TUI infrastructure: msg types, tea.Cmd functions, `editFormState`, `newAssigneePicker`, and `blankIssueFromValid`. Meanwhile the actual `--edit` CLI flow lives in `get.go`. A reader looking for the edit command finds the wrong file.
-
-**4. `board.go` mixes three concerns.** It contains Cobra command definitions (`boardCmd`, `backlogCmd`, `kanbanCmd`), the top-level `boardModel` with its ~400-line `Update` method, AND multiple View helper methods. In idiomatic Go, Cobra command wiring and TUI model logic belong in separate files.
-
-**5. `backlog.go` is still 1400 lines after the view split.** The Update method alone is ~130 lines, plus 6 sub-update handlers, plus move/rank logic, plus picker builders, plus clipboard/URL helpers. Too many concerns for one file.
-
-**6. Not a standard Go pattern.** Go projects typically split files by *concern* or *type*, not by MVC layers. The `_view.go` suffix is borrowed from Elm architecture but isn't a recognized Go convention. Bubbletea projects in the ecosystem (e.g. `charm` tools, `glow`, `soft-serve`) typically use one file per model or one file per feature — not model/view splits.
-
-### Why one package, not separate packages per model?
-
-The coupling between `boardModel`, `blModel`, and `kanbanModel` is **one-directional and inherent to Bubbletea's composite model pattern** — it's not worth breaking.
-
-- `blModel` and `kanbanModel` **never reference each other or `boardModel`** — zero coupling in that direction.
-- `boardModel` → children coupling is limited to: calling `Update()`, reading `result` struct fields (how children signal "open an overlay"), calling `refreshData()`, and reading state for rendering decisions.
-- The `result` struct pattern is already a clean decoupling: children don't call parent methods, they set flags that the parent reads after `Update()`.
-- Two shared msg types (`editFetchedMsg`, `issueFetchedMsg`) are handled identically by both children.
-
-Splitting into `internal/backlog/`, `internal/kanban/`, `internal/board/` would require exporting all internal state fields, adding getter methods for everything `boardModel` reads directly, and moving shared msg types to a fourth package. All ceremony, no benefit — the dependency direction doesn't change. A parent Bubbletea model *must* inspect child state to coordinate overlays, refresh, and view switching.
-
-### Recommended structure
-
-Move all TUI models out of `cmd/tira/` into a new `internal/app/` package. Keep them together — the one-directional parent→child dependency is the natural pattern for composite Bubbletea models.
-
-`cmd/tira/` becomes a thin CLI layer: just Cobra command wiring, `main()`, and config loading.
-
-```
-cmd/tira/
-├── main.go              # Entry point (unchanged)
-├── root.go              # Root Cobra command + config loading
-├── board.go             # board/backlog/kanban Cobra command defs + RunE (thin — calls into internal/app)
-├── get.go               # get Cobra command + runEditLoop + page
-├── create.go            # create Cobra command
-
-internal/app/
-├── board.go             # BoardModel type + Init + Update + View
-├── board_overlays.go    # BoardModel overlay/form rendering helpers (edit, comment, assignee, help)
-│
-├── backlog.go           # BlModel type + Init + Update dispatch
-├── backlog_update.go    # BlModel sub-update handlers (list, filter, detail, pickers, move/rank)
-├── backlog_view.go      # BlModel View + render helpers
-│
-├── kanban.go            # KanbanModel type + Init + Update
-├── kanban_view.go       # KanbanModel View + render helpers
-│
-├── edit_form.go         # EditModel (the TUI form widget — was editmodel.go)
-├── edit_cmds.go         # EditFormState, msg types, tea.Cmd funcs, pickers (was edit.go)
-├── comment_form.go      # CommentInputModel (was commentmodel.go)
-│
-├── messages.go          # Shared msg types used across models (optional — only if extraction cleans up imports)
-
-internal/tui/            # (unchanged — stays as a zero-dep leaf)
-├── spinner.go
-├── styles.go
-├── helpers.go
-├── picker.go
-├── help.go
-```
-
-**Updated dependency graph:**
-
-```
-cmd/tira (thin CLI layer)
- ├── internal/app         ← TUI models (board, backlog, kanban, edit form, comment)
- ├── internal/config
- └── internal/tui         ← RunWithSpinner used directly by CLI commands
-
-internal/app
- ├── internal/api
- ├── internal/models
- ├── internal/tui          ← styles, helpers, picker (still zero internal deps)
- ├── internal/display
- └── internal/debug
-
-internal/tui               ← NO dependencies on other internal packages (unchanged)
-```
-
-### Implementation phases
-
-#### Phase 1: Extract `internal/app/` package
-
-The foundational change. Move all TUI model code from `cmd/tira/` to `internal/app/`, exporting the types and constructors that `cmd/tira/` needs to call.
-
-1. Create `internal/app/` directory
-2. Move model files: `backlog.go`, `backlog_view.go`, `kanban.go`, `board.go` (model parts only), `editmodel.go`, `edit.go`, `commentmodel.go`
-3. Export types that `cmd/tira/` needs: `BoardModel`, `BlModel`, `NewBoardModel`, `FetchBoardData`, `RunBoardTUI`, etc.
-4. Keep unexported types/helpers that are internal to the package (msg types, sub-update handlers, render helpers)
-5. Strip Cobra command definitions out of `board.go` — leave them in `cmd/tira/board.go`
-6. Verify: `make check` passes, no logic changes
-
-#### Phase 2: Rename and split files consistently
-
-Now that everything is in `internal/app/`, apply consistent file organization.
-
-1. Rename `editmodel.go` → `edit_form.go`
-2. Rename `edit.go` → `edit_cmds.go`
-3. Rename `commentmodel.go` → `comment_form.go`
-4. Split `kanban.go` → `kanban.go` (model + update) + `kanban_view.go` (View + render helpers)
-5. Split `board.go` → `board.go` (model + update) + `board_overlays.go` (overlay rendering)
-6. Split `backlog.go` → `backlog.go` (type + Init + Update dispatch) + `backlog_update.go` (sub-handlers)
-7. Verify: `make check` passes, no logic changes
-
-#### Phase 3: Update documentation and CLAUDE.md
-
-Update all references to reflect the new structure.
-
-1. Update `CLAUDE.md`:
-   - Change "TUI models live in `cmd/tira/` (package main)" → "TUI models live in `internal/app/`, `cmd/tira/` is a thin CLI layer"
-   - Update the backlog rendering note: "`backlog.go` (model + update dispatch), `backlog_update.go` (sub-handlers), and `backlog_view.go` (rendering)"
-   - Add: "`internal/app` contains all Bubbletea models — keep Cobra command wiring in `cmd/tira/`"
-2. Update `docs/architecture.md`:
-   - Add `internal/app/` to the project layout tree
-   - Update the dependency graph
-   - Update "All TUI model code lives in `cmd/tira/` (package main)" under key invariants
-3. Remove this section from the idioms review (it's done)
+All TUI models have been moved from `cmd/tira/` (package main) to `internal/app/` with consistent file splitting. `cmd/tira/board.go` is now a thin Cobra wrapper that calls `app.FetchBoardData` and `app.RunBoardTUI`. Files were renamed for clarity (`editmodel.go` → `edit_form.go`, `edit.go` → `edit_cmds.go`, `commentmodel.go` → `comment_form.go`) and split consistently (kanban and board now have separate view/overlay files matching the backlog pattern). See `docs/architecture.md` for the updated project layout.
 
 ---
 
@@ -301,15 +166,15 @@ Each worker scans the full `keys` slice to find its index.
 ### 3.5 Duplicated picker overlay rendering
 
 These three functions are nearly identical (same width calc, border style, layout):
-- `boardModel.viewAssigneePickerOverlay` (cmd/tira/board.go:805–837)
-- `kanbanModel.viewAssignPicker` (cmd/tira/kanban.go:405–446)
-- `kanbanModel.viewStatusPicker` (cmd/tira/kanban.go:448–489)
+- `boardModel.viewAssigneePickerOverlay` (internal/app/board_overlays.go)
+- `kanbanModel.viewAssignPicker` (internal/app/kanban_view.go)
+- `kanbanModel.viewStatusPicker` (internal/app/kanban_view.go)
 
 **Fix:** Extract a shared `renderPickerOverlay(title string, picker PickerModel, w, h int) string` helper in `internal/tui`.
 
 ### 3.6 Duplicated parallel board data fetch
 
-`fetchBoardData` (cmd/tira/board.go:146–174) and `refreshCmd` (cmd/tira/board.go:643–673) contain the same WaitGroup + two-goroutine fetch logic.
+`FetchBoardData` (internal/app/board.go) and `refreshCmd` (internal/app/board.go) contain the same WaitGroup + two-goroutine fetch logic.
 
 **Fix:** Have `refreshCmd` reuse the fetch logic from `fetchBoardData` (just call a shared function and wrap the result in a `boardRefreshDoneMsg`).
 
@@ -350,7 +215,7 @@ func TestBulkOperation_PartialFailure(t *testing.T) { ... }
 func TestBulkOperation_EmptyKeys(t *testing.T) { ... }
 ```
 
-#### T3. `editFormState.toIssueFields` roundtrip (`cmd/tira/edit.go`)
+#### T3. `editFormState.toIssueFields` roundtrip (`internal/app/edit_cmds.go`)
 This is the bridge between the TUI form and the API — test that form values serialize correctly:
 
 ```go
@@ -361,7 +226,7 @@ func TestToIssueFields_EmptyStoryPoints(t *testing.T) { ... }
 func TestToIssueFields_LabelsCommaSeparated(t *testing.T) { ... }
 ```
 
-#### T4. `buildColumns` kanban mapping (`cmd/tira/kanban.go`)
+#### T4. `buildColumns` kanban mapping (`internal/app/kanban.go`)
 Test that issues land in the correct column based on status ID, and that unmapped statuses fall to the last column:
 
 ```go
@@ -370,7 +235,7 @@ func TestBuildColumns_UnmappedStatusFallsToLast(t *testing.T) { ... }
 func TestBuildColumns_EmptyInput(t *testing.T) { ... }
 ```
 
-#### T5. `blBuildRows` and `blMatchesFilter` (`cmd/tira/backlog.go`)
+#### T5. `blBuildRows` and `blMatchesFilter` (`internal/app/backlog.go`)
 Test row construction from sprint groups, collapsed state, text filtering, and epic filtering:
 
 ```go
@@ -420,6 +285,6 @@ func TestOverlayViewportSize_MinValues(t *testing.T) { ... }
 |----------|-------|-------|
 | P1 — Correctness | 4 | Data races, wrong results, dead code |
 | P2 — API Hygiene | 5 | Context propagation, consistency, error handling |
-| P2.5 — Project Structure | 6 | Models in package main, inconsistent splits, misleading names, mixed concerns |
+| ~~P2.5 — Project Structure~~ | ~~6~~ | ~~Models in package main, inconsistent splits, misleading names, mixed concerns~~ ✅ Done |
 | P3 — Code Quality | 7 | Duplication, unnecessary allocations, idioms |
 | Tests | 8+ | API parsing, concurrency, form logic, kanban mapping |
