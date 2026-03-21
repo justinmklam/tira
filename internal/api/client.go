@@ -551,26 +551,13 @@ func (c *jiraClient) UpdateIssue(key string, fields models.IssueFields) error {
 		f["labels"] = fields.Labels
 	}
 
-	url := fmt.Sprintf("%s/rest/api/3/issue/%s", c.baseURL, key)
-	body, err := json.Marshal(payload)
+	req, err := c.client.NewRequest(context.Background(), http.MethodPut,
+		fmt.Sprintf("rest/api/3/issue/%s", key), payload)
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodPut, url, strings.NewReader(string(body)))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode >= 300 {
-		b, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("update issue %s: HTTP %d: %s", key, resp.StatusCode, string(b))
-	}
-	return nil
+	_, err = c.client.Do(req, nil)
+	return err
 }
 
 func (c *jiraClient) fetchFieldIDs(key string) (map[string]string, error) {
@@ -669,34 +656,18 @@ func (c *jiraClient) CreateIssue(projectKey string, fields models.IssueFields) (
 	}
 
 	payload := map[string]any{"fields": f}
-	body, err := json.Marshal(payload)
+	req, err := c.client.NewRequest(context.Background(), http.MethodPost,
+		"rest/api/3/issue", payload)
 	if err != nil {
 		return nil, err
-	}
-
-	url := fmt.Sprintf("%s/rest/api/3/issue", c.baseURL)
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, url, strings.NewReader(string(body)))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	respBody, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("create issue: HTTP %d: %s", resp.StatusCode, string(respBody))
 	}
 
 	var created struct {
 		Key string `json:"key"`
 	}
-	if err := json.Unmarshal(respBody, &created); err != nil {
-		return nil, fmt.Errorf("parsing create response: %w", err)
+	_, err = c.client.Do(req, &created)
+	if err != nil {
+		return nil, err
 	}
 
 	return &models.Issue{Key: created.Key}, nil
@@ -739,6 +710,11 @@ func (c *jiraClient) GetValidValues(projectKey string) (*models.ValidValues, err
 		return nil, err
 	}
 	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		debug.LogError("reading issue types response", err)
+		return nil, err
+	}
 	var statusList []struct {
 		Name     string `json:"name"`
 		Subtask  bool   `json:"subtask"`
@@ -746,27 +722,35 @@ func (c *jiraClient) GetValidValues(projectKey string) (*models.ValidValues, err
 			Name string `json:"name"`
 		} `json:"statuses"`
 	}
-	if body, err := io.ReadAll(resp.Body); err == nil {
-		if err2 := json.Unmarshal(body, &statusList); err2 == nil {
-			seen := make(map[string]bool)
-			for _, t := range statusList {
-				if !seen[t.Name] {
-					valid.IssueTypes = append(valid.IssueTypes, t.Name)
-					seen[t.Name] = true
-				}
-			}
+	if err := json.Unmarshal(body, &statusList); err != nil {
+		debug.LogError("unmarshaling issue types", err)
+		return nil, err
+	}
+	seen := make(map[string]bool)
+	for _, t := range statusList {
+		if !seen[t.Name] {
+			valid.IssueTypes = append(valid.IssueTypes, t.Name)
+			seen[t.Name] = true
 		}
 	}
 
 	// Priorities
 	prioURL := fmt.Sprintf("%s/rest/api/3/priority", c.baseURL)
-	if prioResp, err := c.http.Get(prioURL); err == nil {
+	prioResp, err := c.http.Get(prioURL)
+	if err != nil {
+		debug.LogError("fetching priorities", err)
+	} else {
 		defer func() { _ = prioResp.Body.Close() }()
-		var priorities []struct {
-			Name string `json:"name"`
-		}
-		if body, err := io.ReadAll(prioResp.Body); err == nil {
-			if err2 := json.Unmarshal(body, &priorities); err2 == nil {
+		body, err := io.ReadAll(prioResp.Body)
+		if err != nil {
+			debug.LogError("reading priorities response", err)
+		} else {
+			var priorities []struct {
+				Name string `json:"name"`
+			}
+			if err := json.Unmarshal(body, &priorities); err != nil {
+				debug.LogError("unmarshaling priorities", err)
+			} else {
 				for _, p := range priorities {
 					valid.Priorities = append(valid.Priorities, p.Name)
 				}
@@ -776,14 +760,22 @@ func (c *jiraClient) GetValidValues(projectKey string) (*models.ValidValues, err
 
 	// Assignees
 	assigneeURL := fmt.Sprintf("%s/rest/api/3/user/assignable/search?project=%s&maxResults=50", c.baseURL, projectKey)
-	if aResp, err := c.http.Get(assigneeURL); err == nil {
+	aResp, err := c.http.Get(assigneeURL)
+	if err != nil {
+		debug.LogError("fetching assignees", err)
+	} else {
 		defer func() { _ = aResp.Body.Close() }()
-		var assignees []struct {
-			DisplayName string `json:"displayName"`
-			AccountID   string `json:"accountId"`
-		}
-		if body, err := io.ReadAll(aResp.Body); err == nil {
-			if err2 := json.Unmarshal(body, &assignees); err2 == nil {
+		body, err := io.ReadAll(aResp.Body)
+		if err != nil {
+			debug.LogError("reading assignees response", err)
+		} else {
+			var assignees []struct {
+				DisplayName string `json:"displayName"`
+				AccountID   string `json:"accountId"`
+			}
+			if err := json.Unmarshal(body, &assignees); err != nil {
+				debug.LogError("unmarshaling assignees", err)
+			} else {
 				for _, a := range assignees {
 					valid.Assignees = append(valid.Assignees, models.Assignee{
 						DisplayName: a.DisplayName,
@@ -797,68 +789,10 @@ func (c *jiraClient) GetValidValues(projectKey string) (*models.ValidValues, err
 	return valid, nil
 }
 
+// GetIssueMetadata returns issue types, priorities, and assignees for a project.
+// This is an alias for GetValidValues with the same behavior.
 func (c *jiraClient) GetIssueMetadata(projectKey string) (*models.ValidValues, error) {
-	valid := &models.ValidValues{}
-
-	// Issue types
-	url := fmt.Sprintf("%s/rest/api/3/project/%s/statuses", c.baseURL, projectKey)
-	resp, err := c.http.Get(url)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	var statusList []struct {
-		Name string `json:"name"`
-	}
-	if body, err := io.ReadAll(resp.Body); err == nil {
-		if err2 := json.Unmarshal(body, &statusList); err2 == nil {
-			seen := make(map[string]bool)
-			for _, t := range statusList {
-				if !seen[t.Name] {
-					valid.IssueTypes = append(valid.IssueTypes, t.Name)
-					seen[t.Name] = true
-				}
-			}
-		}
-	}
-
-	// Priorities
-	prioURL := fmt.Sprintf("%s/rest/api/3/priority", c.baseURL)
-	if prioResp, err := c.http.Get(prioURL); err == nil {
-		defer func() { _ = prioResp.Body.Close() }()
-		var priorities []struct {
-			Name string `json:"name"`
-		}
-		if body, err := io.ReadAll(prioResp.Body); err == nil {
-			if err2 := json.Unmarshal(body, &priorities); err2 == nil {
-				for _, p := range priorities {
-					valid.Priorities = append(valid.Priorities, p.Name)
-				}
-			}
-		}
-	}
-
-	// Assignees
-	assigneeURL := fmt.Sprintf("%s/rest/api/3/user/assignable/search?project=%s&maxResults=50", c.baseURL, projectKey)
-	if aResp, err := c.http.Get(assigneeURL); err == nil {
-		defer func() { _ = aResp.Body.Close() }()
-		var assignees []struct {
-			DisplayName string `json:"displayName"`
-			AccountID   string `json:"accountId"`
-		}
-		if body, err := io.ReadAll(aResp.Body); err == nil {
-			if err2 := json.Unmarshal(body, &assignees); err2 == nil {
-				for _, a := range assignees {
-					valid.Assignees = append(valid.Assignees, models.Assignee{
-						DisplayName: a.DisplayName,
-						AccountID:   a.AccountID,
-					})
-				}
-			}
-		}
-	}
-
-	return valid, nil
+	return c.GetValidValues(projectKey)
 }
 
 func (c *jiraClient) GetActiveSprint(boardID int) ([]models.Issue, error) {
@@ -1257,26 +1191,13 @@ func (c *jiraClient) SetParent(issueKey, parentKey string) error {
 			"parent": parentField,
 		},
 	}
-	body, err := json.Marshal(payload)
+	req, err := c.client.NewRequest(context.Background(), http.MethodPut,
+		fmt.Sprintf("rest/api/3/issue/%s", issueKey), payload)
 	if err != nil {
 		return err
 	}
-	apiURL := fmt.Sprintf("%s/rest/api/3/issue/%s", c.baseURL, issueKey)
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodPut, apiURL, strings.NewReader(string(body)))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode >= 300 {
-		b, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("set parent %s: HTTP %d: %s", issueKey, resp.StatusCode, string(b))
-	}
-	return nil
+	_, err = c.client.Do(req, nil)
+	return err
 }
 
 func (c *jiraClient) SearchAssignees(projectKey, query string) ([]models.Assignee, error) {
@@ -1321,26 +1242,13 @@ func (c *jiraClient) SetAssignee(issueKey, accountID string) error {
 			"assignee": assigneeField,
 		},
 	}
-	body, err := json.Marshal(payload)
+	req, err := c.client.NewRequest(context.Background(), http.MethodPut,
+		fmt.Sprintf("rest/api/3/issue/%s", issueKey), payload)
 	if err != nil {
 		return err
 	}
-	apiURL := fmt.Sprintf("%s/rest/api/3/issue/%s", c.baseURL, issueKey)
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodPut, apiURL, strings.NewReader(string(body)))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode >= 300 {
-		b, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("set assignee %s: HTTP %d: %s", issueKey, resp.StatusCode, string(b))
-	}
-	return nil
+	_, err = c.client.Do(req, nil)
+	return err
 }
 
 func (c *jiraClient) MoveIssuesToSprint(sprintID int, keys []string) error {
@@ -1427,26 +1335,13 @@ func (c *jiraClient) TransitionStatus(issueKey, transitionID string) error {
 	payload := map[string]any{
 		"transition": map[string]any{"id": transitionID},
 	}
-	body, err := json.Marshal(payload)
+	req, err := c.client.NewRequest(context.Background(), http.MethodPost,
+		fmt.Sprintf("rest/api/3/issue/%s/transitions", issueKey), payload)
 	if err != nil {
 		return err
 	}
-	url := fmt.Sprintf("%s/rest/api/3/issue/%s/transitions", c.baseURL, issueKey)
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, url, strings.NewReader(string(body)))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode >= 300 {
-		b, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("transition %s: HTTP %d: %s", issueKey, resp.StatusCode, string(b))
-	}
-	return nil
+	_, err = c.client.Do(req, nil)
+	return err
 }
 
 // trimDateStr trims a Jira date/datetime string to just the YYYY-MM-DD part.

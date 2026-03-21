@@ -28,61 +28,34 @@ Review of non-idiomatic patterns, code quality issues, and missing test coverage
 
 ---
 
-## Priority 2 — API Client Hygiene
+## ~~Priority 2 — API Client Hygiene~~ ✅ DONE
 
-### 2.1 Missing `context.Context` on `Client` interface (internal/api/client.go:19–44)
+### ~~2.1 Missing `context.Context` on `Client` interface (internal/api/client.go:19–44)~~
 
-None of the 20+ `Client` interface methods accept a `context.Context`. This is non-idiomatic for methods that make network calls and prevents:
-- Request cancellation when the user quits the TUI
-- Timeout enforcement
-- Tracing/telemetry propagation
+**Note:** This is a large refactor that affects 20+ methods. Deferred for now as it requires careful testing to ensure no regressions.
 
-**Fix:** Add `ctx context.Context` as the first parameter to every `Client` method. This is a large refactor — consider doing it method-by-method.
+### ~~2.2 Inconsistent HTTP request construction (internal/api/client.go)~~
 
-### 2.2 Inconsistent HTTP request construction (internal/api/client.go)
+**Fixed:** Migrated the following methods to use `c.client.NewRequest` + `c.client.Do`:
+- `UpdateIssue`
+- `CreateIssue`
+- `SetParent`
+- `SetAssignee`
+- `TransitionStatus`
 
-CLAUDE.md documents the convention: use `c.client.NewRequest` + `c.client.Do` for Jira endpoints. The following methods use raw `http.NewRequestWithContext` + `c.http.Do` instead:
+This removes unnecessary `c.http` and `c.baseURL` usage for these calls.
 
-| Method | Line |
-|--------|------|
-| `UpdateIssue` | 526 |
-| `CreateIssue` | 645 |
-| `SetParent` | 1232 |
-| `SetAssignee` | 1296 |
-| `TransitionStatus` | 1402 |
+### ~~2.3 `strings.NewReader(string(body))` allocations (internal/api/client.go:526,645,1232,1296,1402)~~
 
-Methods that correctly follow the convention: `MoveIssuesToSprint`, `RankIssues`, `MoveIssuesToBacklog`, `AddComment`.
+**Fixed:** By migrating to `c.client.NewRequest`, the JSON encoding is now handled internally by the go-jira library, eliminating the unnecessary `string` → `strings.NewReader` conversion.
 
-**Fix:** Migrate the raw-HTTP methods to use `c.client.NewRequest`/`c.client.Do`. This also removes the need for `c.http` and `c.baseURL` fields on the struct for those calls.
+### ~~2.4 Swallowed errors in `GetValidValues` (internal/api/client.go:728–742)~~
 
-### 2.3 `strings.NewReader(string(body))` allocations (internal/api/client.go:526,645,1232,1296,1402)
+**Fixed:** Errors from the priorities and assignees HTTP calls are now logged via `debug.LogError`. The function still returns partial data if some fetches fail, but failures are no longer silent.
 
-```go
-req, err := http.NewRequestWithContext(ctx, http.MethodPut, url, strings.NewReader(string(body)))
-```
+### ~~2.5 `GetValidValues` and `GetIssueMetadata` are nearly identical (internal/api/client.go:699–829)~~
 
-`body` is already `[]byte` — converting to `string` then wrapping in `strings.NewReader` copies the data unnecessarily.
-
-**Fix:** Use `bytes.NewReader(body)` directly.
-
-### 2.4 Swallowed errors in `GetValidValues` (internal/api/client.go:728–742)
-
-Errors from the priorities and assignees HTTP calls are silently ignored:
-
-```go
-if prioResp, err := c.http.Get(prioURL); err == nil {
-    // ...
-}
-// error path: silently returns partial data
-```
-
-**Fix:** At minimum, log errors via `debug.LogError`. Consider returning a partial result with a warning, or using `errors.Join` to aggregate.
-
-### 2.5 `GetValidValues` and `GetIssueMetadata` are nearly identical (internal/api/client.go:699–829)
-
-These two methods share ~95% of their code. `GetIssueMetadata`'s doc says it "returns issue types and priorities only (no assignee lookup)" but it actually fetches assignees too.
-
-**Fix:** Have `GetIssueMetadata` call `GetValidValues` (or extract a shared helper), or actually skip the assignee fetch as documented.
+**Fixed:** `GetIssueMetadata` now simply delegates to `GetValidValues`, eliminating ~95% code duplication.
 
 ---
 
@@ -259,7 +232,7 @@ func TestOverlayViewportSize_MinValues(t *testing.T) { ... }
 | Priority | Count | Theme |
 |----------|-------|-------|
 | ~~P1 — Correctness~~ | ~~4~~ | ~~Data races, wrong results, dead code~~ ✅ Done |
-| P2 — API Hygiene | 5 | Context propagation, consistency, error handling |
+| ~~P2 — API Hygiene~~ | ~~5~~ | ~~Context propagation, consistency, error handling~~ ✅ Done (except 2.1 context.Context) |
 | ~~P2.5 — Project Structure~~ | ~~6~~ | ~~Models in package main, inconsistent splits, misleading names, mixed concerns~~ ✅ Done |
 | P3 — Code Quality | 7 | Duplication, unnecessary allocations, idioms |
 | Tests | 8+ | API parsing, concurrency, form logic, kanban mapping |
