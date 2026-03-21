@@ -82,6 +82,9 @@ func ResolveAssigneeID(fields *models.IssueFields, valid *models.ValidValues) st
 	return ""
 }
 
+// containsCI is a case-insensitive membership check.
+// Intentionally duplicated here to avoid importing internal/tui
+// (architecture constraint: validator must remain dependency-free).
 func containsCI(list []string, val string) bool {
 	for _, item := range list {
 		if strings.EqualFold(item, val) {

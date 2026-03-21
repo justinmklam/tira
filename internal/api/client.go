@@ -1398,6 +1398,12 @@ func (c *jiraClient) bulkOperation(keys []string, op func(string) error) []error
 		numWorkers = len(keys)
 	}
 
+	// Build a map for O(1) key-to-index lookup instead of O(n) scan.
+	keyToIdx := make(map[string]int, len(keys))
+	for i, k := range keys {
+		keyToIdx[k] = i
+	}
+
 	jobs := make(chan string, len(keys))
 	results := make(chan struct {
 		idx int
@@ -1412,16 +1418,10 @@ func (c *jiraClient) bulkOperation(keys []string, op func(string) error) []error
 			defer wg.Done()
 			for key := range jobs {
 				err := op(key)
-				// Find the index for this key
-				for i, k := range keys {
-					if k == key {
-						results <- struct {
-							idx int
-							err error
-						}{idx: i, err: err}
-						break
-					}
-				}
+				results <- struct {
+					idx int
+					err error
+				}{idx: keyToIdx[key], err: err}
 			}
 		}()
 	}

@@ -65,75 +65,38 @@ All TUI models have been moved from `cmd/tira/` (package main) to `internal/app/
 
 ---
 
-## Priority 3 — Code Quality & Idioms
+## ~~Priority 3 — Code Quality & Idioms~~ ✅ DONE
 
-### 3.1 `fmt.Errorf("%w", err)` adds no context (cmd/tira/root.go:39)
+### ~~3.1 `fmt.Errorf("%w", err)` adds no context (cmd/tira/root.go:39)~~
 
-```go
-return fmt.Errorf("%w", err)
-```
+**Fixed in Priority 1:** This was fixed alongside the `runtime.SetFinalizer` fix. The error is now returned directly without re-wrapping.
 
-Re-wrapping without added context is pointless. Either add context or return `err` directly.
+### ~~3.2 `RenderIssue` returns `(string, error)` but error is always nil (internal/display/issue.go:12)~~
 
-### 3.2 `RenderIssue` returns `(string, error)` but error is always nil (internal/display/issue.go:12)
+**Fixed:** Changed signature to `func RenderIssue(issue *models.Issue) string`. Updated all call sites in `cmd/tira/get.go`, `internal/app/kanban.go`, and `internal/display/display_test.go`.
 
-```go
-func RenderIssue(issue *models.Issue) (string, error) {
-    // ... never returns a non-nil error
-    return sb.String(), nil
-}
-```
+### ~~3.3 Duplicated `containsCI` function~~
 
-Forces every caller to handle a phantom error. All callers already check `err` unnecessarily.
+**Fixed:** Added documentation comment to `internal/validator/validate.go` explaining the intentional duplication due to architecture constraints (validator must remain dependency-free).
 
-**Fix:** Change signature to `func RenderIssue(issue *models.Issue) string`.
+### ~~3.4 O(n²) key lookup in `bulkOperation` (internal/api/client.go:1488–1493)~~
 
-### 3.3 Duplicated `containsCI` function
+**Fixed:** Built a `keyToIdx` map before the worker loop, reducing lookup from O(n) to O(1) per operation.
 
-Identical implementations exist in:
-- `internal/tui/helpers.go:107–114` (`ContainsCI`, exported)
-- `internal/validator/validate.go:85–92` (`containsCI`, unexported)
+### ~~3.5 Duplicated picker overlay rendering~~
 
-The architecture forbids `validator` from importing `tui`, so the duplication is intentional — but should be documented with a comment, or the function should be moved to a tiny shared package (e.g. `internal/stringutil`).
+**Fixed:** Extracted `tui.RenderPickerOverlay(pickerView func(innerW, listH int) string, title string, totalW, totalH int) string` helper in `internal/tui/helpers.go`. Updated all picker overlay functions in:
+- `internal/app/board_overlays.go`
+- `internal/app/kanban_view.go`
+- `internal/app/backlog_view.go`
 
-### 3.4 O(n²) key lookup in `bulkOperation` (internal/api/client.go:1488–1493)
+### ~~3.6 Duplicated parallel board data fetch~~
 
-```go
-for i, k := range keys {
-    if k == key {
-        results <- struct{idx int; err error}{idx: i, err: err}
-        break
-    }
-}
-```
+**Fixed:** Extracted `fetchBoardDataCore(client, boardID)` helper function. Both `FetchBoardData` and `refreshCmd` now reuse this shared logic.
 
-Each worker scans the full `keys` slice to find its index.
+### ~~3.7 Unnecessary `resp, err := ...; return resp, err` (internal/debug/logger.go:106–108)~~
 
-**Fix:** Send `(index, key)` pairs through the jobs channel, or build a `keyToIdx` map before the loop.
-
-### 3.5 Duplicated picker overlay rendering
-
-These three functions are nearly identical (same width calc, border style, layout):
-- `boardModel.viewAssigneePickerOverlay` (internal/app/board_overlays.go)
-- `kanbanModel.viewAssignPicker` (internal/app/kanban_view.go)
-- `kanbanModel.viewStatusPicker` (internal/app/kanban_view.go)
-
-**Fix:** Extract a shared `renderPickerOverlay(title string, picker PickerModel, w, h int) string` helper in `internal/tui`.
-
-### 3.6 Duplicated parallel board data fetch
-
-`FetchBoardData` (internal/app/board.go) and `refreshCmd` (internal/app/board.go) contain the same WaitGroup + two-goroutine fetch logic.
-
-**Fix:** Have `refreshCmd` reuse the fetch logic from `fetchBoardData` (just call a shared function and wrap the result in a `boardRefreshDoneMsg`).
-
-### 3.7 Unnecessary `resp, err := ...; return resp, err` (internal/debug/logger.go:106–108)
-
-```go
-resp, err := t.Base.RoundTrip(req)
-return resp, err
-```
-
-**Fix:** `return t.Base.RoundTrip(req)`
+**Fixed:** Changed to direct return: `return t.Base.RoundTrip(req)`.
 
 ---
 
@@ -234,5 +197,5 @@ func TestOverlayViewportSize_MinValues(t *testing.T) { ... }
 | ~~P1 — Correctness~~ | ~~4~~ | ~~Data races, wrong results, dead code~~ ✅ Done |
 | ~~P2 — API Hygiene~~ | ~~5~~ | ~~Context propagation, consistency, error handling~~ ✅ Done (except 2.1 context.Context) |
 | ~~P2.5 — Project Structure~~ | ~~6~~ | ~~Models in package main, inconsistent splits, misleading names, mixed concerns~~ ✅ Done |
-| P3 — Code Quality | 7 | Duplication, unnecessary allocations, idioms |
+| ~~P3 — Code Quality~~ | ~~7~~ | ~~Duplication, unnecessary allocations, idioms~~ ✅ Done |
 | Tests | 8+ | API parsing, concurrency, form logic, kanban mapping |

@@ -339,52 +339,19 @@ func (m blModel) renderIssueRow(row blRow, isSelected bool, width int) string {
 }
 
 func (m blModel) viewAssignPicker() string {
-	width := m.width
-	if width == 0 {
-		width = 120
-	}
-	height := m.height
-	if height == 0 {
-		height = 40
-	}
-
-	pickerW := width * 2 / 3
-	if pickerW < 52 {
-		pickerW = 52
-	}
-	if pickerW > 90 {
-		pickerW = 90
-	}
-	innerW := pickerW - 2
-
 	n := len(m.assignTargetKeys)
 	noun := "issue"
 	if n != 1 {
 		noun = "issues"
 	}
 	title := fmt.Sprintf("Set Assignee  (%d %s)", n, noun)
-	header := tui.BoldBlue.Padding(0, 1).Width(innerW).
-		Render(tui.FixedWidth(title, innerW-2))
 
-	listH := height/2 - 6
-	if listH < 4 {
-		listH = 4
-	}
-
-	footer := tui.DimStyle.Render("  ↑/↓ ctrl+p/n: navigate   enter: select   esc: cancel")
-
-	body := header + "\n" +
-		m.assignPicker.View(innerW, listH) + "\n" +
-		tui.DimStyle.Render(strings.Repeat("─", innerW)) + "\n" +
-		footer
-
-	modal := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(tui.ColorBlue).
-		Width(innerW).
-		Render(body)
-
-	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, modal)
+	return tui.RenderPickerOverlay(
+		func(innerW, listH int) string { return m.assignPicker.View(innerW, listH) },
+		title,
+		m.width,
+		m.height,
+	)
 }
 
 func (m blModel) viewParentPicker() string {
@@ -544,50 +511,17 @@ func formatSprintDate(s string) string {
 }
 
 func (m blModel) viewStatusPicker() string {
-	width := m.width
-	if width == 0 {
-		width = 120
-	}
-	height := m.height
-	if height == 0 {
-		height = 40
-	}
-
-	pickerW := width * 2 / 3
-	if pickerW < 52 {
-		pickerW = 52
-	}
-	if pickerW > 90 {
-		pickerW = 90
-	}
-	innerW := pickerW - 2
-
 	n := len(m.statusTargetKeys)
 	noun := "issue"
 	if n != 1 {
 		noun = "issues"
 	}
 	title := fmt.Sprintf("Transition Status  (%d %s)", n, noun)
-	header := tui.BoldBlue.Padding(0, 1).Width(innerW).
-		Render(tui.FixedWidth(title, innerW-2))
 
-	listH := height/2 - 6
-	if listH < 4 {
-		listH = 4
-	}
-
-	footer := tui.DimStyle.Render("  ↑/↓ ctrl+p/n: navigate   enter: select   esc: cancel")
-
-	body := header + "\n" +
-		m.statusPicker.View(innerW, listH) + "\n" +
-		tui.DimStyle.Render(strings.Repeat("─", innerW)) + "\n" +
-		footer
-
-	modal := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(tui.ColorBlue).
-		Width(innerW).
-		Render(body)
-
-	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, modal)
+	return tui.RenderPickerOverlay(
+		func(innerW, listH int) string { return m.statusPicker.View(innerW, listH) },
+		title,
+		m.width,
+		m.height,
+	)
 }
