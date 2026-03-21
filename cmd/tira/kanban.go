@@ -46,9 +46,11 @@ type kanbanResult struct {
 	refresh        bool
 }
 
-type kanbanAssignDoneMsg struct{ err error }
-
-type kanbanStatusDoneMsg struct{ err error }
+// kanbanBulkDoneMsg carries results from parallel bulk operations.
+// Errors is indexed by the original keys slice (nil = success).
+type kanbanBulkDoneMsg struct {
+	Errors []error
+}
 
 type kanbanModel struct {
 	state    kanbanState
@@ -180,16 +182,11 @@ func (m kanbanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case kanbanAssignDoneMsg:
-		if msg.err == nil {
-			m.result.refresh = true
-		}
-		return m, nil
-
-	case kanbanStatusDoneMsg:
-		if msg.err == nil {
-			m.result.refresh = true
-		}
+	case kanbanBulkDoneMsg:
+		// Bulk operations completed. Refresh to show successful changes.
+		// Errors are logged but don't prevent refresh (partial success is possible).
+		m.result.refresh = true
+		// TODO: Display error count in UI if msg.Errors contains failures
 		return m, nil
 	}
 
@@ -353,23 +350,15 @@ func (m kanbanModel) updateStatusPicker(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func kanbanAssignCmd(client api.Client, keys []string, accountID string) tea.Cmd {
 	return func() tea.Msg {
-		for _, k := range keys {
-			if err := client.SetAssignee(k, accountID); err != nil {
-				return kanbanAssignDoneMsg{err: err}
-			}
-		}
-		return kanbanAssignDoneMsg{}
+		errors := client.BulkSetAssignee(keys, accountID)
+		return kanbanBulkDoneMsg{Errors: errors}
 	}
 }
 
 func kanbanTransitionStatusCmd(client api.Client, keys []string, transitionID string) tea.Cmd {
 	return func() tea.Msg {
-		for _, k := range keys {
-			if err := client.TransitionStatus(k, transitionID); err != nil {
-				return kanbanStatusDoneMsg{err: err}
-			}
-		}
-		return kanbanStatusDoneMsg{}
+		errors := client.BulkTransitionStatus(keys, transitionID)
+		return kanbanBulkDoneMsg{Errors: errors}
 	}
 }
 

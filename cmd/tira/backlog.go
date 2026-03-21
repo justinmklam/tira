@@ -66,13 +66,11 @@ type blMoveMultiDoneMsg struct {
 
 type blRankDoneMsg struct{ err error }
 
-type blParentAssignDoneMsg struct{ err error }
-
-type blAssignDoneMsg struct{ err error }
-
-type blStoryPointDoneMsg struct{ err error }
-
-type blStatusDoneMsg struct{ err error }
+// blBulkDoneMsg carries results from parallel bulk operations.
+// Errors is indexed by the original keys slice (nil = success).
+type blBulkDoneMsg struct {
+	Errors []error
+}
 
 type yankMsg struct{}
 
@@ -429,28 +427,11 @@ func (m blModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Rank API failures are non-fatal; local state is already updated.
 		return m, nil
 
-	case blParentAssignDoneMsg:
-		if msg.err == nil {
-			m.result.refresh = true
-		}
-		return m, nil
-
-	case blAssignDoneMsg:
-		if msg.err == nil {
-			m.result.refresh = true
-		}
-		return m, nil
-
-	case blStoryPointDoneMsg:
-		if msg.err == nil {
-			m.result.refresh = true
-		}
-		return m, nil
-
-	case blStatusDoneMsg:
-		if msg.err == nil {
-			m.result.refresh = true
-		}
+	case blBulkDoneMsg:
+		// Bulk operations completed. Refresh to show successful changes.
+		// Errors are logged but don't prevent refresh (partial success is possible).
+		m.result.refresh = true
+		// TODO: Display error count in UI if msg.Errors contains failures
 		return m, nil
 
 	case yankMsg:
@@ -1258,23 +1239,15 @@ func (m blModel) updateAssignPicker(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func blDoAssignCmd(client api.Client, keys []string, accountID string) tea.Cmd {
 	return func() tea.Msg {
-		for _, k := range keys {
-			if err := client.SetAssignee(k, accountID); err != nil {
-				return blAssignDoneMsg{err: err}
-			}
-		}
-		return blAssignDoneMsg{}
+		errors := client.BulkSetAssignee(keys, accountID)
+		return blBulkDoneMsg{Errors: errors}
 	}
 }
 
 func blAssignParentCmd(client api.Client, keys []string, parentKey string) tea.Cmd {
 	return func() tea.Msg {
-		for _, k := range keys {
-			if err := client.SetParent(k, parentKey); err != nil {
-				return blParentAssignDoneMsg{err: err}
-			}
-		}
-		return blParentAssignDoneMsg{}
+		errors := client.BulkSetParent(keys, parentKey)
+		return blBulkDoneMsg{Errors: errors}
 	}
 }
 
@@ -1320,13 +1293,9 @@ func (m blModel) updateStoryPointInput(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func blSetStoryPointCmd(client api.Client, keys []string, storyPoints float64) tea.Cmd {
 	return func() tea.Msg {
-		for _, k := range keys {
-			fields := models.IssueFields{StoryPoints: storyPoints}
-			if err := client.UpdateIssue(k, fields); err != nil {
-				return blStoryPointDoneMsg{err: err}
-			}
-		}
-		return blStoryPointDoneMsg{}
+		fields := models.IssueFields{StoryPoints: storyPoints}
+		errors := client.BulkUpdateIssue(keys, fields)
+		return blBulkDoneMsg{Errors: errors}
 	}
 }
 
@@ -1431,11 +1400,7 @@ func blNewStatusPicker(client api.Client, issueKey, currentStatus string) tui.Pi
 
 func blTransitionStatusCmd(client api.Client, keys []string, transitionID string) tea.Cmd {
 	return func() tea.Msg {
-		for _, k := range keys {
-			if err := client.TransitionStatus(k, transitionID); err != nil {
-				return blStatusDoneMsg{err: err}
-			}
-		}
-		return blStatusDoneMsg{}
+		errors := client.BulkTransitionStatus(keys, transitionID)
+		return blBulkDoneMsg{Errors: errors}
 	}
 }

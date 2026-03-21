@@ -37,6 +37,11 @@ type Client interface {
 	GetStatuses(issueKey string) ([]models.Status, error)
 	TransitionStatus(issueKey, statusID string) error
 	AddComment(issueKey, text string) error
+	// Bulk operations (parallel execution)
+	BulkSetAssignee(keys []string, accountID string) []error
+	BulkSetParent(keys []string, parentKey string) []error
+	BulkUpdateIssue(keys []string, fields models.IssueFields) []error
+	BulkTransitionStatus(keys []string, transitionID string) []error
 }
 
 type jiraClient struct {
@@ -1417,4 +1422,97 @@ func trimDateStr(s string) string {
 		return s[:10]
 	}
 	return s
+}
+
+// BulkSetAssignee updates the assignee for multiple issues in parallel.
+// Returns a slice of errors, one for each failed issue (nil for successes).
+func (c *jiraClient) BulkSetAssignee(keys []string, accountID string) []error {
+	return c.bulkOperation(keys, func(key string) error {
+		return c.SetAssignee(key, accountID)
+	})
+}
+
+// BulkSetParent updates the parent (epic) for multiple issues in parallel.
+// Returns a slice of errors, one for each failed issue (nil for successes).
+func (c *jiraClient) BulkSetParent(keys []string, parentKey string) []error {
+	return c.bulkOperation(keys, func(key string) error {
+		return c.SetParent(key, parentKey)
+	})
+}
+
+// BulkUpdateIssue updates multiple issues in parallel with the same fields.
+// Returns a slice of errors, one for each failed issue (nil for successes).
+func (c *jiraClient) BulkUpdateIssue(keys []string, fields models.IssueFields) []error {
+	return c.bulkOperation(keys, func(key string) error {
+		return c.UpdateIssue(key, fields)
+	})
+}
+
+// BulkTransitionStatus transitions multiple issues in parallel.
+// Returns a slice of errors, one for each failed issue (nil for successes).
+func (c *jiraClient) BulkTransitionStatus(keys []string, transitionID string) []error {
+	return c.bulkOperation(keys, func(key string) error {
+		return c.TransitionStatus(key, transitionID)
+	})
+}
+
+// bulkOperation executes a function for each key in parallel with a worker pool.
+// Returns a slice of errors indexed by the original keys (nil for successes).
+func (c *jiraClient) bulkOperation(keys []string, op func(string) error) []error {
+	if len(keys) == 0 {
+		return nil
+	}
+
+	// Limit concurrency to avoid overwhelming the Jira API
+	const maxWorkers = 10
+	numWorkers := maxWorkers
+	if len(keys) < numWorkers {
+		numWorkers = len(keys)
+	}
+
+	jobs := make(chan string, len(keys))
+	results := make(chan struct {
+		idx int
+		err error
+	}, len(keys))
+
+	// Start workers
+	var wg sync.WaitGroup
+	for i := 0; i < numWorkers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for key := range jobs {
+				err := op(key)
+				// Find the index for this key
+				for i, k := range keys {
+					if k == key {
+						results <- struct {
+							idx int
+							err error
+						}{idx: i, err: err}
+						break
+					}
+				}
+			}
+		}()
+	}
+
+	// Send jobs
+	for _, key := range keys {
+		jobs <- key
+	}
+	close(jobs)
+
+	// Wait for all workers to complete
+	wg.Wait()
+	close(results)
+
+	// Collect results
+	errors := make([]error, len(keys))
+	for result := range results {
+		errors[result.idx] = result.err
+	}
+
+	return errors
 }
