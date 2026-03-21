@@ -143,9 +143,20 @@ These two methods share ~95% of their code. `GetIssueMetadata`'s doc says it "re
 
 **6. Not a standard Go pattern.** Go projects typically split files by *concern* or *type*, not by MVC layers. The `_view.go` suffix is borrowed from Elm architecture but isn't a recognized Go convention. Bubbletea projects in the ecosystem (e.g. `charm` tools, `glow`, `soft-serve`) typically use one file per model or one file per feature — not model/view splits.
 
+### Why one package, not separate packages per model?
+
+The coupling between `boardModel`, `blModel`, and `kanbanModel` is **one-directional and inherent to Bubbletea's composite model pattern** — it's not worth breaking.
+
+- `blModel` and `kanbanModel` **never reference each other or `boardModel`** — zero coupling in that direction.
+- `boardModel` → children coupling is limited to: calling `Update()`, reading `result` struct fields (how children signal "open an overlay"), calling `refreshData()`, and reading state for rendering decisions.
+- The `result` struct pattern is already a clean decoupling: children don't call parent methods, they set flags that the parent reads after `Update()`.
+- Two shared msg types (`editFetchedMsg`, `issueFetchedMsg`) are handled identically by both children.
+
+Splitting into `internal/backlog/`, `internal/kanban/`, `internal/board/` would require exporting all internal state fields, adding getter methods for everything `boardModel` reads directly, and moving shared msg types to a fourth package. All ceremony, no benefit — the dependency direction doesn't change. A parent Bubbletea model *must* inspect child state to coordinate overlays, refresh, and view switching.
+
 ### Recommended structure
 
-Move all TUI models out of `cmd/tira/` into a new `internal/app/` package. The models are tightly coupled — `boardModel` embeds and dispatches to `blModel` and `kanbanModel`, they share msg types — so they belong in one package, not split across separate packages.
+Move all TUI models out of `cmd/tira/` into a new `internal/app/` package. Keep them together — the one-directional parent→child dependency is the natural pattern for composite Bubbletea models.
 
 `cmd/tira/` becomes a thin CLI layer: just Cobra command wiring, `main()`, and config loading.
 
