@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"runtime"
 
 	"github.com/charmbracelet/log"
 	"github.com/justinmklam/tira/internal/config"
@@ -30,13 +29,18 @@ var rootCmd = &cobra.Command{
 				return fmt.Errorf("initializing debug logger: %w", err)
 			}
 			debug.Logf("Debug mode enabled")
+			defer func() {
+				if err := debug.Close(); err != nil {
+					log.Error("closing debug log", "error", err)
+				}
+			}()
 		}
 
 		var err error
 		cfg, err = config.Load(profile)
 		if err != nil {
 			debug.LogError("config.Load", err)
-			return fmt.Errorf("%w", err)
+			return err
 		}
 
 		log.Debug("config loaded", "profile", profile, "url", cfg.JiraURL, "project", cfg.Project)
@@ -50,15 +54,6 @@ func init() {
 }
 
 func Execute() {
-	// Set up cleanup on exit using runtime.SetFinalizer
-	if debugMode {
-		runtime.SetFinalizer(new(struct{}), func(_ *struct{}) {
-			if err := debug.Close(); err != nil {
-				log.Error("closing debug log", "error", err)
-			}
-		})
-	}
-
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}

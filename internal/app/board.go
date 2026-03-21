@@ -90,34 +90,40 @@ type boardModel struct {
 	commentErr     string
 }
 
+// fetchBoardDataCore fetches sprint groups and board columns concurrently.
+// Returns BoardInitData on success, or an error if either fetch fails.
+func fetchBoardDataCore(client api.Client, boardID int) (BoardInitData, error) {
+	var (
+		groups    []models.SprintGroup
+		boardCols []models.BoardColumn
+		groupsErr error
+		colsErr   error
+		wg        sync.WaitGroup
+	)
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		groups, groupsErr = client.GetSprintGroups(boardID)
+	}()
+	go func() {
+		defer wg.Done()
+		boardCols, colsErr = client.GetBoardColumns(boardID)
+	}()
+	wg.Wait()
+
+	if groupsErr != nil {
+		return BoardInitData{}, groupsErr
+	}
+	if colsErr != nil {
+		return BoardInitData{}, colsErr
+	}
+	return BoardInitData{Groups: groups, BoardCols: boardCols}, nil
+}
+
 // FetchBoardData fetches sprint groups and board columns with a spinner.
 func FetchBoardData(client api.Client, boardID int) (BoardInitData, error) {
 	return tui.RunWithSpinner("Fetching board data…", func() (BoardInitData, error) {
-		var (
-			groups    []models.SprintGroup
-			boardCols []models.BoardColumn
-			groupsErr error
-			colsErr   error
-			wg        sync.WaitGroup
-		)
-		wg.Add(2)
-		go func() {
-			defer wg.Done()
-			groups, groupsErr = client.GetSprintGroups(boardID)
-		}()
-		go func() {
-			defer wg.Done()
-			boardCols, colsErr = client.GetBoardColumns(boardID)
-		}()
-		wg.Wait()
-
-		if groupsErr != nil {
-			return BoardInitData{}, groupsErr
-		}
-		if colsErr != nil {
-			return BoardInitData{}, colsErr
-		}
-		return BoardInitData{Groups: groups, BoardCols: boardCols}, nil
+		return fetchBoardDataCore(client, boardID)
 	})
 }
 
@@ -589,34 +595,12 @@ func (m boardModel) canSwitchView() bool {
 }
 
 func (m boardModel) refreshCmd() tea.Cmd {
-	client := m.client
-	boardID := m.boardID
 	return func() tea.Msg {
-		var (
-			groups    []models.SprintGroup
-			boardCols []models.BoardColumn
-			groupsErr error
-			colsErr   error
-			wg        sync.WaitGroup
-		)
-		wg.Add(2)
-		go func() {
-			defer wg.Done()
-			groups, groupsErr = client.GetSprintGroups(boardID)
-		}()
-		go func() {
-			defer wg.Done()
-			boardCols, colsErr = client.GetBoardColumns(boardID)
-		}()
-		wg.Wait()
-
-		if groupsErr != nil {
-			return boardRefreshDoneMsg{err: groupsErr}
+		data, err := fetchBoardDataCore(m.client, m.boardID)
+		if err != nil {
+			return boardRefreshDoneMsg{err: err}
 		}
-		if colsErr != nil {
-			return boardRefreshDoneMsg{err: colsErr}
-		}
-		return boardRefreshDoneMsg{data: BoardInitData{Groups: groups, BoardCols: boardCols}}
+		return boardRefreshDoneMsg{data: data}
 	}
 }
 

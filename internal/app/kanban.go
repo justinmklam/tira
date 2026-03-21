@@ -370,7 +370,7 @@ func fetchIssueCmd(client api.Client, key string, vpW int) tea.Cmd {
 		if err != nil {
 			return issueFetchedMsg{err: err}
 		}
-		md, _ := display.RenderIssue(issue)
+		md := display.RenderIssue(issue)
 		// Use a fixed dark style to avoid terminal detection in the goroutine.
 		// The pre-detection in RunBoardTUI caches termenv's sync.Once, but
 		// using a fixed style here is more reliable and avoids any blocking.

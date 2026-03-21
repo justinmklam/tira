@@ -9,7 +9,7 @@ import (
 )
 
 // RenderIssue returns a pure Markdown string suitable for piping to glow.
-func RenderIssue(issue *models.Issue) (string, error) {
+func RenderIssue(issue *models.Issue) string {
 	var sb strings.Builder
 
 	// Metadata list — build rows first so we can align values.
@@ -97,7 +97,7 @@ func RenderIssue(issue *models.Issue) (string, error) {
 		fmt.Fprintf(&sb, "*No comments*")
 	}
 
-	return sb.String(), nil
+	return sb.String()
 }
 
 // formatCommentTime parses a Jira timestamp and returns a human-readable string.

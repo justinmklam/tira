@@ -45,11 +45,7 @@ var getCmd = &cobra.Command{
 		}
 
 		if !editFlag {
-			output, err := display.RenderIssue(issue)
-			if err != nil {
-				debug.LogError("display.RenderIssue", err)
-				return err
-			}
+			output := display.RenderIssue(issue)
 			return page(output)
 		}
 

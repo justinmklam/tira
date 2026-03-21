@@ -112,3 +112,48 @@ func ContainsCI(list []string, val string) bool {
 	}
 	return false
 }
+
+// RenderPickerOverlay renders a centered picker modal with consistent styling.
+// The picker model's View method is called to render the list content.
+func RenderPickerOverlay(pickerView func(innerW, listH int) string, title string, totalW, totalH int) string {
+	width := totalW
+	if width == 0 {
+		width = 120
+	}
+	height := totalH
+	if height == 0 {
+		height = 40
+	}
+
+	pickerW := width * 2 / 3
+	if pickerW < 52 {
+		pickerW = 52
+	}
+	if pickerW > 90 {
+		pickerW = 90
+	}
+	innerW := pickerW - 2
+
+	header := BoldBlue.Padding(0, 1).Width(innerW).
+		Render(FixedWidth(title, innerW-2))
+
+	listH := height/2 - 6
+	if listH < 4 {
+		listH = 4
+	}
+
+	footer := DimStyle.Render("  ↑/↓ ctrl+p/n: navigate   enter: select   esc: cancel")
+
+	body := header + "\n" +
+		pickerView(innerW, listH) + "\n" +
+		DimStyle.Render(strings.Repeat("─", innerW)) + "\n" +
+		footer
+
+	modal := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(ColorBlue).
+		Width(innerW).
+		Render(body)
+
+	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, modal)
+}

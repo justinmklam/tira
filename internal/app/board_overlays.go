@@ -1,8 +1,6 @@
 package app
 
 import (
-	"strings"
-
 	"github.com/charmbracelet/lipgloss"
 	"github.com/justinmklam/tira/internal/tui"
 )
@@ -99,37 +97,12 @@ func (m boardModel) viewEditForm(w, h int) string {
 }
 
 func (m boardModel) viewAssigneePickerOverlay(w, h int) string {
-	pickerW := w * 2 / 3
-	if pickerW < 52 {
-		pickerW = 52
-	}
-	if pickerW > 90 {
-		pickerW = 90
-	}
-	innerW := pickerW - 2
-
-	header := tui.BoldBlue.Padding(0, 1).Width(innerW).
-		Render(tui.FixedWidth("Set Assignee", innerW-2))
-
-	listH := h/2 - 6
-	if listH < 4 {
-		listH = 4
-	}
-
-	footer := tui.DimStyle.Render("  ↑/↓ ctrl+p/n: navigate   enter: select   esc: cancel")
-
-	body := header + "\n" +
-		m.assigneePicker.View(innerW, listH) + "\n" +
-		tui.DimStyle.Render(strings.Repeat("─", innerW)) + "\n" +
-		footer
-
-	modal := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(tui.ColorBlue).
-		Width(innerW).
-		Render(body)
-
-	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, modal)
+	return tui.RenderPickerOverlay(
+		func(innerW, listH int) string { return m.assigneePicker.View(innerW, listH) },
+		"Set Assignee",
+		w,
+		h,
+	)
 }
 
 func (m boardModel) viewHelpOverlay(w, h int) string {

@@ -16,10 +16,7 @@ func TestRenderIssue_Basic(t *testing.T) {
 		Priority:  "High",
 	}
 
-	got, err := RenderIssue(issue)
-	if err != nil {
-		t.Fatalf("RenderIssue error: %v", err)
-	}
+	got := RenderIssue(issue)
 
 	checks := [][2]string{
 		{"**Status:**", "In Progress"},
@@ -50,10 +47,7 @@ func TestRenderIssue_OptionalFields(t *testing.T) {
 		Labels:      []string{"frontend", "urgent"},
 	}
 
-	got, err := RenderIssue(issue)
-	if err != nil {
-		t.Fatalf("RenderIssue error: %v", err)
-	}
+	got := RenderIssue(issue)
 
 	checks := [][2]string{
 		{"**Reporter:**", "Alice"},
@@ -81,10 +75,7 @@ func TestRenderIssue_OmitsEmptyOptional(t *testing.T) {
 		Priority:  "Low",
 	}
 
-	got, err := RenderIssue(issue)
-	if err != nil {
-		t.Fatalf("RenderIssue error: %v", err)
-	}
+	got := RenderIssue(issue)
 
 	omitted := []string{"Reporter", "Story Points", "Sprint", "Labels"}
 	for _, field := range omitted {
@@ -104,10 +95,7 @@ func TestRenderIssue_WithDescription(t *testing.T) {
 		Description: "This is the description.",
 	}
 
-	got, err := RenderIssue(issue)
-	if err != nil {
-		t.Fatalf("RenderIssue error: %v", err)
-	}
+	got := RenderIssue(issue)
 	if !strings.Contains(got, "# Description") {
 		t.Error("expected Description section")
 	}
@@ -128,10 +116,7 @@ func TestRenderIssue_WithLinkedIssues(t *testing.T) {
 		},
 	}
 
-	got, err := RenderIssue(issue)
-	if err != nil {
-		t.Fatalf("RenderIssue error: %v", err)
-	}
+	got := RenderIssue(issue)
 	if !strings.Contains(got, "# Linked Work Items") {
 		t.Error("expected Linked Work Items section")
 	}
@@ -151,10 +136,7 @@ func TestRenderIssue_WithParent(t *testing.T) {
 		ParentSummary: "Parent Epic",
 	}
 
-	got, err := RenderIssue(issue)
-	if err != nil {
-		t.Fatalf("RenderIssue error: %v", err)
-	}
+	got := RenderIssue(issue)
 	if !strings.Contains(got, "PROJ-6: Parent Epic") {
 		t.Error("expected parent key with summary")
 	}

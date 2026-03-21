@@ -103,9 +103,7 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 
 	// Perform request
-	resp, err := t.Base.RoundTrip(req)
-
-	return resp, err
+	return t.Base.RoundTrip(req)
 }
 
 func logRequest(req *http.Request) {

@@ -4,110 +4,58 @@ Review of non-idiomatic patterns, code quality issues, and missing test coverage
 
 ---
 
-## Priority 1 — Correctness Bugs
+## ~~Priority 1 — Correctness Bugs~~ ✅ DONE
 
-### 1.1 Data race in `GetIssue` (internal/api/client.go:76–111)
+### ~~1.1 Data race in `GetIssue` (internal/api/client.go:76–111)~~
 
-Three goroutines share variables without synchronization:
-- Goroutine 1 writes `result` via `fetchFullIssue`
-- Goroutine 3 reads/writes `result.StatusChangedDate` — but `result` may still be nil
-- `fetchErr` is written by goroutine 1 and read after `wg.Wait()`, which is safe, but `comments` and the `result.StatusChangedDate` write have no ordering guarantee relative to `result` being non-nil
+**Fixed:** Replaced shared variables with a channel-based approach. Each goroutine sends its result to a buffered channel, and the main function merges results after `wg.Wait()`. This eliminates the data race where goroutines were accessing shared `result`, `comments`, and `fetchErr` variables without synchronization.
 
-**Fix:** Use an `errgroup.Group` or protect shared state with a mutex. Alternatively, have each goroutine return its own result and merge after `wg.Wait()`.
+### ~~1.2 Variable shadowing of receiver (internal/api/client.go:94)~~
 
-### 1.2 Variable shadowing of receiver (internal/api/client.go:94)
+**Fixed:** The shadowing issue was eliminated as part of fix 1.1. The new channel-based approach uses distinct variable names (`comments`, `statusDate`) that don't shadow the receiver.
 
-```go
-go func() {
-    defer wg.Done()
-    if c, err := c.fetchComments(key); err == nil {  // 'c' shadows receiver
-        comments = c
-    }
-}()
-```
+### ~~1.3 `fetchStatusChangeDate` returns first status change, not last (internal/api/client.go:386–397)~~
 
-The loop variable `c` (comments) shadows the `*jiraClient` receiver `c`. While it works because the receiver is captured by closure before the shadow, it's confusing and a golangci-lint `govet` shadow warning.
+**Fixed:** Changed the loop to iterate in reverse (`for i := len(result.Values) - 1; i >= 0; i--`) so it returns the most recent status change instead of the earliest.
 
-**Fix:** Rename the return value: `if cmts, err := c.fetchComments(key); ...`
+### ~~1.4 `runtime.SetFinalizer` never runs (cmd/tira/root.go:53–59)~~
 
-### 1.3 `fetchStatusChangeDate` returns first status change, not last (internal/api/client.go:386–397)
-
-The comment says "most recent status change" but the loop iterates forward through the chronological changelog and returns on the first match. For issues that have changed status multiple times, this returns the *earliest* transition, not the latest.
-
-**Fix:** Iterate in reverse (`for i := len(result.Values) - 1; i >= 0; i--`).
-
-### 1.4 `runtime.SetFinalizer` never runs (cmd/tira/root.go:53–59)
-
-```go
-func Execute() {
-    if debugMode {  // debugMode is always false here — Cobra hasn't parsed flags yet
-        runtime.SetFinalizer(...)
-    }
-    ...
-}
-```
-
-Even if `debugMode` were true, `runtime.SetFinalizer` on an unreferenced `new(struct{})` is unreliable — the GC may collect it immediately or never run the finalizer before exit.
-
-**Fix:** Add a `PersistentPostRunE` to `rootCmd` that calls `debug.Close()`, or use `defer debug.Close()` in `PersistentPreRunE` after `debug.Init()` succeeds.
+**Fixed:** 
+- Removed the unreliable `runtime.SetFinalizer` pattern from `Execute()`
+- Added `defer func() { if err := debug.Close(); ... }()` in `PersistentPreRunE` after `debug.Init()` succeeds
+- Removed unused `runtime` import
+- Also fixed the error return wrapping (was `fmt.Errorf("%w", err)` with no context)
 
 ---
 
-## Priority 2 — API Client Hygiene
+## ~~Priority 2 — API Client Hygiene~~ ✅ DONE
 
-### 2.1 Missing `context.Context` on `Client` interface (internal/api/client.go:19–44)
+### ~~2.1 Missing `context.Context` on `Client` interface (internal/api/client.go:19–44)~~
 
-None of the 20+ `Client` interface methods accept a `context.Context`. This is non-idiomatic for methods that make network calls and prevents:
-- Request cancellation when the user quits the TUI
-- Timeout enforcement
-- Tracing/telemetry propagation
+**Note:** This is a large refactor that affects 20+ methods. Deferred for now as it requires careful testing to ensure no regressions.
 
-**Fix:** Add `ctx context.Context` as the first parameter to every `Client` method. This is a large refactor — consider doing it method-by-method.
+### ~~2.2 Inconsistent HTTP request construction (internal/api/client.go)~~
 
-### 2.2 Inconsistent HTTP request construction (internal/api/client.go)
+**Fixed:** Migrated the following methods to use `c.client.NewRequest` + `c.client.Do`:
+- `UpdateIssue`
+- `CreateIssue`
+- `SetParent`
+- `SetAssignee`
+- `TransitionStatus`
 
-CLAUDE.md documents the convention: use `c.client.NewRequest` + `c.client.Do` for Jira endpoints. The following methods use raw `http.NewRequestWithContext` + `c.http.Do` instead:
+This removes unnecessary `c.http` and `c.baseURL` usage for these calls.
 
-| Method | Line |
-|--------|------|
-| `UpdateIssue` | 526 |
-| `CreateIssue` | 645 |
-| `SetParent` | 1232 |
-| `SetAssignee` | 1296 |
-| `TransitionStatus` | 1402 |
+### ~~2.3 `strings.NewReader(string(body))` allocations (internal/api/client.go:526,645,1232,1296,1402)~~
 
-Methods that correctly follow the convention: `MoveIssuesToSprint`, `RankIssues`, `MoveIssuesToBacklog`, `AddComment`.
+**Fixed:** By migrating to `c.client.NewRequest`, the JSON encoding is now handled internally by the go-jira library, eliminating the unnecessary `string` → `strings.NewReader` conversion.
 
-**Fix:** Migrate the raw-HTTP methods to use `c.client.NewRequest`/`c.client.Do`. This also removes the need for `c.http` and `c.baseURL` fields on the struct for those calls.
+### ~~2.4 Swallowed errors in `GetValidValues` (internal/api/client.go:728–742)~~
 
-### 2.3 `strings.NewReader(string(body))` allocations (internal/api/client.go:526,645,1232,1296,1402)
+**Fixed:** Errors from the priorities and assignees HTTP calls are now logged via `debug.LogError`. The function still returns partial data if some fetches fail, but failures are no longer silent.
 
-```go
-req, err := http.NewRequestWithContext(ctx, http.MethodPut, url, strings.NewReader(string(body)))
-```
+### ~~2.5 `GetValidValues` and `GetIssueMetadata` are nearly identical (internal/api/client.go:699–829)~~
 
-`body` is already `[]byte` — converting to `string` then wrapping in `strings.NewReader` copies the data unnecessarily.
-
-**Fix:** Use `bytes.NewReader(body)` directly.
-
-### 2.4 Swallowed errors in `GetValidValues` (internal/api/client.go:728–742)
-
-Errors from the priorities and assignees HTTP calls are silently ignored:
-
-```go
-if prioResp, err := c.http.Get(prioURL); err == nil {
-    // ...
-}
-// error path: silently returns partial data
-```
-
-**Fix:** At minimum, log errors via `debug.LogError`. Consider returning a partial result with a warning, or using `errors.Join` to aggregate.
-
-### 2.5 `GetValidValues` and `GetIssueMetadata` are nearly identical (internal/api/client.go:699–829)
-
-These two methods share ~95% of their code. `GetIssueMetadata`'s doc says it "returns issue types and priorities only (no assignee lookup)" but it actually fetches assignees too.
-
-**Fix:** Have `GetIssueMetadata` call `GetValidValues` (or extract a shared helper), or actually skip the assignee fetch as documented.
+**Fixed:** `GetIssueMetadata` now simply delegates to `GetValidValues`, eliminating ~95% code duplication.
 
 ---
 
@@ -117,75 +65,38 @@ All TUI models have been moved from `cmd/tira/` (package main) to `internal/app/
 
 ---
 
-## Priority 3 — Code Quality & Idioms
+## ~~Priority 3 — Code Quality & Idioms~~ ✅ DONE
 
-### 3.1 `fmt.Errorf("%w", err)` adds no context (cmd/tira/root.go:39)
+### ~~3.1 `fmt.Errorf("%w", err)` adds no context (cmd/tira/root.go:39)~~
 
-```go
-return fmt.Errorf("%w", err)
-```
+**Fixed in Priority 1:** This was fixed alongside the `runtime.SetFinalizer` fix. The error is now returned directly without re-wrapping.
 
-Re-wrapping without added context is pointless. Either add context or return `err` directly.
+### ~~3.2 `RenderIssue` returns `(string, error)` but error is always nil (internal/display/issue.go:12)~~
 
-### 3.2 `RenderIssue` returns `(string, error)` but error is always nil (internal/display/issue.go:12)
+**Fixed:** Changed signature to `func RenderIssue(issue *models.Issue) string`. Updated all call sites in `cmd/tira/get.go`, `internal/app/kanban.go`, and `internal/display/display_test.go`.
 
-```go
-func RenderIssue(issue *models.Issue) (string, error) {
-    // ... never returns a non-nil error
-    return sb.String(), nil
-}
-```
+### ~~3.3 Duplicated `containsCI` function~~
 
-Forces every caller to handle a phantom error. All callers already check `err` unnecessarily.
+**Fixed:** Added documentation comment to `internal/validator/validate.go` explaining the intentional duplication due to architecture constraints (validator must remain dependency-free).
 
-**Fix:** Change signature to `func RenderIssue(issue *models.Issue) string`.
+### ~~3.4 O(n²) key lookup in `bulkOperation` (internal/api/client.go:1488–1493)~~
 
-### 3.3 Duplicated `containsCI` function
+**Fixed:** Built a `keyToIdx` map before the worker loop, reducing lookup from O(n) to O(1) per operation.
 
-Identical implementations exist in:
-- `internal/tui/helpers.go:107–114` (`ContainsCI`, exported)
-- `internal/validator/validate.go:85–92` (`containsCI`, unexported)
+### ~~3.5 Duplicated picker overlay rendering~~
 
-The architecture forbids `validator` from importing `tui`, so the duplication is intentional — but should be documented with a comment, or the function should be moved to a tiny shared package (e.g. `internal/stringutil`).
+**Fixed:** Extracted `tui.RenderPickerOverlay(pickerView func(innerW, listH int) string, title string, totalW, totalH int) string` helper in `internal/tui/helpers.go`. Updated all picker overlay functions in:
+- `internal/app/board_overlays.go`
+- `internal/app/kanban_view.go`
+- `internal/app/backlog_view.go`
 
-### 3.4 O(n²) key lookup in `bulkOperation` (internal/api/client.go:1488–1493)
+### ~~3.6 Duplicated parallel board data fetch~~
 
-```go
-for i, k := range keys {
-    if k == key {
-        results <- struct{idx int; err error}{idx: i, err: err}
-        break
-    }
-}
-```
+**Fixed:** Extracted `fetchBoardDataCore(client, boardID)` helper function. Both `FetchBoardData` and `refreshCmd` now reuse this shared logic.
 
-Each worker scans the full `keys` slice to find its index.
+### ~~3.7 Unnecessary `resp, err := ...; return resp, err` (internal/debug/logger.go:106–108)~~
 
-**Fix:** Send `(index, key)` pairs through the jobs channel, or build a `keyToIdx` map before the loop.
-
-### 3.5 Duplicated picker overlay rendering
-
-These three functions are nearly identical (same width calc, border style, layout):
-- `boardModel.viewAssigneePickerOverlay` (internal/app/board_overlays.go)
-- `kanbanModel.viewAssignPicker` (internal/app/kanban_view.go)
-- `kanbanModel.viewStatusPicker` (internal/app/kanban_view.go)
-
-**Fix:** Extract a shared `renderPickerOverlay(title string, picker PickerModel, w, h int) string` helper in `internal/tui`.
-
-### 3.6 Duplicated parallel board data fetch
-
-`FetchBoardData` (internal/app/board.go) and `refreshCmd` (internal/app/board.go) contain the same WaitGroup + two-goroutine fetch logic.
-
-**Fix:** Have `refreshCmd` reuse the fetch logic from `fetchBoardData` (just call a shared function and wrap the result in a `boardRefreshDoneMsg`).
-
-### 3.7 Unnecessary `resp, err := ...; return resp, err` (internal/debug/logger.go:106–108)
-
-```go
-resp, err := t.Base.RoundTrip(req)
-return resp, err
-```
-
-**Fix:** `return t.Base.RoundTrip(req)`
+**Fixed:** Changed to direct return: `return t.Base.RoundTrip(req)`.
 
 ---
 
@@ -283,8 +194,8 @@ func TestOverlayViewportSize_MinValues(t *testing.T) { ... }
 
 | Priority | Count | Theme |
 |----------|-------|-------|
-| P1 — Correctness | 4 | Data races, wrong results, dead code |
-| P2 — API Hygiene | 5 | Context propagation, consistency, error handling |
+| ~~P1 — Correctness~~ | ~~4~~ | ~~Data races, wrong results, dead code~~ ✅ Done |
+| ~~P2 — API Hygiene~~ | ~~5~~ | ~~Context propagation, consistency, error handling~~ ✅ Done (except 2.1 context.Context) |
 | ~~P2.5 — Project Structure~~ | ~~6~~ | ~~Models in package main, inconsistent splits, misleading names, mixed concerns~~ ✅ Done |
-| P3 — Code Quality | 7 | Duplication, unnecessary allocations, idioms |
+| ~~P3 — Code Quality~~ | ~~7~~ | ~~Duplication, unnecessary allocations, idioms~~ ✅ Done |
 | Tests | 8+ | API parsing, concurrency, form logic, kanban mapping |
