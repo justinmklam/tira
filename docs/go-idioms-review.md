@@ -4,52 +4,27 @@ Review of non-idiomatic patterns, code quality issues, and missing test coverage
 
 ---
 
-## Priority 1 — Correctness Bugs
+## ~~Priority 1 — Correctness Bugs~~ ✅ DONE
 
-### 1.1 Data race in `GetIssue` (internal/api/client.go:76–111)
+### ~~1.1 Data race in `GetIssue` (internal/api/client.go:76–111)~~
 
-Three goroutines share variables without synchronization:
-- Goroutine 1 writes `result` via `fetchFullIssue`
-- Goroutine 3 reads/writes `result.StatusChangedDate` — but `result` may still be nil
-- `fetchErr` is written by goroutine 1 and read after `wg.Wait()`, which is safe, but `comments` and the `result.StatusChangedDate` write have no ordering guarantee relative to `result` being non-nil
+**Fixed:** Replaced shared variables with a channel-based approach. Each goroutine sends its result to a buffered channel, and the main function merges results after `wg.Wait()`. This eliminates the data race where goroutines were accessing shared `result`, `comments`, and `fetchErr` variables without synchronization.
 
-**Fix:** Use an `errgroup.Group` or protect shared state with a mutex. Alternatively, have each goroutine return its own result and merge after `wg.Wait()`.
+### ~~1.2 Variable shadowing of receiver (internal/api/client.go:94)~~
 
-### 1.2 Variable shadowing of receiver (internal/api/client.go:94)
+**Fixed:** The shadowing issue was eliminated as part of fix 1.1. The new channel-based approach uses distinct variable names (`comments`, `statusDate`) that don't shadow the receiver.
 
-```go
-go func() {
-    defer wg.Done()
-    if c, err := c.fetchComments(key); err == nil {  // 'c' shadows receiver
-        comments = c
-    }
-}()
-```
+### ~~1.3 `fetchStatusChangeDate` returns first status change, not last (internal/api/client.go:386–397)~~
 
-The loop variable `c` (comments) shadows the `*jiraClient` receiver `c`. While it works because the receiver is captured by closure before the shadow, it's confusing and a golangci-lint `govet` shadow warning.
+**Fixed:** Changed the loop to iterate in reverse (`for i := len(result.Values) - 1; i >= 0; i--`) so it returns the most recent status change instead of the earliest.
 
-**Fix:** Rename the return value: `if cmts, err := c.fetchComments(key); ...`
+### ~~1.4 `runtime.SetFinalizer` never runs (cmd/tira/root.go:53–59)~~
 
-### 1.3 `fetchStatusChangeDate` returns first status change, not last (internal/api/client.go:386–397)
-
-The comment says "most recent status change" but the loop iterates forward through the chronological changelog and returns on the first match. For issues that have changed status multiple times, this returns the *earliest* transition, not the latest.
-
-**Fix:** Iterate in reverse (`for i := len(result.Values) - 1; i >= 0; i--`).
-
-### 1.4 `runtime.SetFinalizer` never runs (cmd/tira/root.go:53–59)
-
-```go
-func Execute() {
-    if debugMode {  // debugMode is always false here — Cobra hasn't parsed flags yet
-        runtime.SetFinalizer(...)
-    }
-    ...
-}
-```
-
-Even if `debugMode` were true, `runtime.SetFinalizer` on an unreferenced `new(struct{})` is unreliable — the GC may collect it immediately or never run the finalizer before exit.
-
-**Fix:** Add a `PersistentPostRunE` to `rootCmd` that calls `debug.Close()`, or use `defer debug.Close()` in `PersistentPreRunE` after `debug.Init()` succeeds.
+**Fixed:** 
+- Removed the unreliable `runtime.SetFinalizer` pattern from `Execute()`
+- Added `defer func() { if err := debug.Close(); ... }()` in `PersistentPreRunE` after `debug.Init()` succeeds
+- Removed unused `runtime` import
+- Also fixed the error return wrapping (was `fmt.Errorf("%w", err)` with no context)
 
 ---
 
@@ -283,7 +258,7 @@ func TestOverlayViewportSize_MinValues(t *testing.T) { ... }
 
 | Priority | Count | Theme |
 |----------|-------|-------|
-| P1 — Correctness | 4 | Data races, wrong results, dead code |
+| ~~P1 — Correctness~~ | ~~4~~ | ~~Data races, wrong results, dead code~~ ✅ Done |
 | P2 — API Hygiene | 5 | Context propagation, consistency, error handling |
 | ~~P2.5 — Project Structure~~ | ~~6~~ | ~~Models in package main, inconsistent splits, misleading names, mixed concerns~~ ✅ Done |
 | P3 — Code Quality | 7 | Duplication, unnecessary allocations, idioms |

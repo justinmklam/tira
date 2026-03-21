@@ -78,37 +78,67 @@ func (c *jiraClient) GetIssue(key string) (*models.Issue, error) {
 	// fetchFullIssue replaces the previous two-step approach (go-jira Issue.Get
 	// followed by a separate fetchRawFields call to the same endpoint) with a
 	// single raw HTTP request, halving the number of serial API calls.
-	var (
-		result   *models.Issue
-		comments []models.Comment
-		fetchErr error
-		wg       sync.WaitGroup
-	)
-	wg.Add(3)
-	go func() {
-		defer wg.Done()
-		result, fetchErr = c.fetchFullIssue(key)
-	}()
-	go func() {
-		defer wg.Done()
-		if c, err := c.fetchComments(key); err == nil {
-			comments = c
-		}
-	}()
-	go func() {
-		defer wg.Done()
-		if date, err := c.fetchStatusChangeDate(key); err == nil {
-			if result != nil {
-				result.StatusChangedDate = date
-			}
-		}
-	}()
-	wg.Wait()
-	if fetchErr != nil {
-		return nil, fetchErr
+	type fetchResult struct {
+		issue      *models.Issue
+		comments   []models.Comment
+		statusDate string
+		err        error
 	}
-	result.Comments = comments
-	return result, nil
+
+	resultCh := make(chan fetchResult, 3)
+	var wg sync.WaitGroup
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		issue, err := c.fetchFullIssue(key)
+		resultCh <- fetchResult{issue: issue, err: err}
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		comments, err := c.fetchComments(key)
+		resultCh <- fetchResult{comments: comments, err: err}
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		statusDate, err := c.fetchStatusChangeDate(key)
+		resultCh <- fetchResult{statusDate: statusDate, err: err}
+	}()
+
+	// Wait for all goroutines to complete, then read results from channel.
+	wg.Wait()
+	close(resultCh)
+
+	var result fetchResult
+	for r := range resultCh {
+		if r.err != nil && result.err == nil {
+			result.err = r.err
+		}
+		if r.issue != nil {
+			result.issue = r.issue
+		}
+		if r.comments != nil {
+			result.comments = r.comments
+		}
+		if r.statusDate != "" {
+			result.statusDate = r.statusDate
+		}
+	}
+
+	if result.err != nil {
+		return nil, result.err
+	}
+
+	if result.issue != nil {
+		result.issue.StatusChangedDate = result.statusDate
+		result.issue.Comments = result.comments
+	}
+
+	return result.issue, nil
 }
 
 // fetchFullIssue fetches a single issue using one raw HTTP request to
@@ -382,8 +412,11 @@ func (c *jiraClient) fetchStatusChangeDate(key string) (string, error) {
 		return "", err
 	}
 
-	// Find the most recent status change (last entry in changelog that changed status).
-	for _, v := range result.Values {
+	// Find the most recent status change. The changelog is returned in
+	// chronological order (oldest first), so we iterate in reverse to find
+	// the last (most recent) status change.
+	for i := len(result.Values) - 1; i >= 0; i-- {
+		v := result.Values[i]
 		for _, item := range v.Items {
 			if item.Field == "status" {
 				// Extract date portion (ISO 8601 format: "2026-03-01T10:30:00.000+0000")
