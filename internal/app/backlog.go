@@ -3,7 +3,9 @@ package app
 import (
 	"fmt"
 	"os/exec"
+	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -31,6 +33,7 @@ const (
 	blStoryPointInput  // floating story point input
 	blStatusPicker     // floating status picker
 	blEpicFilterPicker // floating epic filter picker
+	blSprintForm       // create or edit sprint (sprintFormEditID == 0 means create)
 )
 
 type blRowKind int
@@ -76,9 +79,15 @@ type yankMsg struct{}
 
 type yankDoneMsg struct{}
 
+type blSprintDoneMsg struct {
+	created *models.Sprint // non-nil when a new sprint was just created
+	err     error
+}
+
 type blModel struct {
 	state   blState
 	client  api.Client
+	boardID int
 	project string
 	jiraURL string
 
@@ -124,6 +133,15 @@ type blModel struct {
 	filterEpic       string // empty means no filter
 	epicFilterPicker tui.PickerModel
 
+	// sprint create/edit form state
+	sprintFormName       textinput.Model
+	sprintFormStart      textinput.Model
+	sprintFormDuration   textinput.Model
+	sprintFormField      int    // active field: 0=name, 1=start, 2=duration
+	sprintFormEditID     int    // 0=creating new sprint, >0=editing existing sprint
+	sprintFormError      string // validation or API error message
+	sprintFormSubmitting bool   // true while API call is in flight
+
 	// yank indicator state
 	yankMessage string
 	yankTimer   *time.Timer
@@ -167,7 +185,7 @@ func blMatchesFilter(issue models.Issue, filter string, filterEpic string) bool 
 	return false
 }
 
-func newBacklogModel(client api.Client, groups []models.SprintGroup, project, jiraURL string) blModel {
+func newBacklogModel(client api.Client, boardID int, groups []models.SprintGroup, project, jiraURL string) blModel {
 	collapsed := make(map[int]bool)
 
 	ti := textinput.New()
@@ -185,6 +203,7 @@ func newBacklogModel(client api.Client, groups []models.SprintGroup, project, ji
 	m := blModel{
 		state:           blList,
 		client:          client,
+		boardID:         boardID,
 		project:         project,
 		jiraURL:         jiraURL,
 		groups:          groups,
@@ -375,7 +394,7 @@ func (m blModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case spinner.TickMsg:
-		if m.state == blLoading || m.moving {
+		if m.state == blLoading || m.moving || m.sprintFormSubmitting {
 			var cmd tea.Cmd
 			m.loadSpinner, cmd = m.loadSpinner.Update(msg)
 			return m, cmd
@@ -437,6 +456,27 @@ func (m blModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// TODO: Display error count in UI if msg.Errors contains failures
 		return m, nil
 
+	case blSprintDoneMsg:
+		m.sprintFormSubmitting = false
+		if msg.err != nil {
+			m.sprintFormError = msg.err.Error()
+			m.state = blSprintForm
+			// Re-focus the active field so the user can correct and resubmit.
+			var cmd tea.Cmd
+			switch m.sprintFormField {
+			case 0:
+				cmd = m.sprintFormName.Focus()
+			case 1:
+				cmd = m.sprintFormStart.Focus()
+			case 2:
+				cmd = m.sprintFormDuration.Focus()
+			}
+			return m, cmd
+		}
+		m.state = blList
+		m.result.refresh = true
+		return m, nil
+
 	case yankMsg:
 		m.yankMessage = "YANKED"
 		if m.yankTimer != nil {
@@ -471,6 +511,8 @@ func (m blModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateStatusPicker(msg)
 	case blEpicFilterPicker:
 		return m.updateEpicFilterPicker(msg)
+	case blSprintForm:
+		return m.updateSprintForm(msg)
 	}
 	return m, nil
 }
@@ -522,6 +564,63 @@ func copyToClipboardCmd(text string) tea.Cmd {
 func (m blModel) issueURL(key string) string {
 	baseURL := strings.TrimRight(m.jiraURL, "/")
 	return fmt.Sprintf("%s/browse/%s", baseURL, key)
+}
+
+// nextSprintName derives the name for a new sprint from the last non-backlog sprint.
+// It finds a trailing integer and increments it; if none is found, appends " 1".
+func nextSprintName(groups []models.SprintGroup) string {
+	var lastName string
+	for _, g := range groups {
+		if g.Sprint.State != "backlog" && g.Sprint.Name != "" {
+			lastName = g.Sprint.Name
+		}
+	}
+	if lastName == "" {
+		return "Sprint 1"
+	}
+	re := regexp.MustCompile(`^(.*?)(\d+)\s*$`)
+	if m := re.FindStringSubmatch(lastName); m != nil {
+		n, _ := strconv.Atoi(m[2])
+		return m[1] + strconv.Itoa(n+1)
+	}
+	return lastName + " 1"
+}
+
+// computeEndDate returns startDate + durationWeeks*7 days formatted as YYYY-MM-DD.
+// Returns "" if startDate is not a valid YYYY-MM-DD or durationWeeks < 1.
+func computeEndDate(startDate string, durationWeeks int) string {
+	if durationWeeks < 1 {
+		return ""
+	}
+	t, err := time.Parse("2006-01-02", startDate)
+	if err != nil {
+		return ""
+	}
+	return t.AddDate(0, 0, durationWeeks*7).Format("2006-01-02")
+}
+
+// sprintDurationWeeks returns the number of weeks between two YYYY-MM-DD date strings.
+// Returns 2 as a safe default if either date is missing or unparseable.
+func sprintDurationWeeks(startDate, endDate string) int {
+	s := startDate
+	if len(s) > 10 {
+		s = s[:10]
+	}
+	e := endDate
+	if len(e) > 10 {
+		e = e[:10]
+	}
+	t1, err1 := time.Parse("2006-01-02", s)
+	t2, err2 := time.Parse("2006-01-02", e)
+	if err1 != nil || err2 != nil {
+		return 2
+	}
+	days := int(t2.Sub(t1).Hours() / 24)
+	weeks := (days + 6) / 7
+	if weeks < 1 {
+		return 2
+	}
+	return weeks
 }
 
 func parseFloat(s string) (float64, error) {

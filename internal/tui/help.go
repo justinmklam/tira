@@ -90,6 +90,8 @@ func HelpSections() []HelpSection {
 				{Key: "o", Description: "Open ticket in browser"},
 				{Key: "O", Description: "Open all selected tickets in browser"},
 				{Key: "y", Description: "Copy ticket URL to clipboard (cursor issue)"},
+				{Key: "C-n", Description: "Create new sprint — form with name, start date, duration"},
+				{Key: "E", Description: "Edit sprint under cursor (name, start date, duration)"},
 			},
 		},
 		{

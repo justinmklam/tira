@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -40,6 +41,8 @@ func (m blModel) View() string {
 		return m.viewStatusPicker()
 	case blEpicFilterPicker:
 		return m.viewEpicFilterPicker()
+	case blSprintForm:
+		return m.viewSprintForm()
 	default:
 		return m.viewList()
 	}
@@ -142,7 +145,7 @@ func (m blModel) viewList() string {
 		hints := []string{
 			"e: edit", "c: comment", "o: open", "y: copy", "s: status", "S: story pts",
 			"x: cut", "p: paste", ">/<: adj sprint", "B: backlog",
-			"/: filter", "F: epic", "R: refresh",
+			"/: filter", "F: epic", "ctrl+n: new sprint", "E: edit sprint", "R: refresh",
 		}
 		left := "  " + strings.Join(hints, "   ")
 		if n := len(m.allSelected()); n > 0 {
@@ -508,6 +511,100 @@ func formatSprintDate(s string) string {
 		return s
 	}
 	return t.Format("Jan 2")
+}
+
+func (m blModel) viewSprintForm() string {
+	width := m.width
+	if width == 0 {
+		width = 120
+	}
+	height := m.height
+	if height == 0 {
+		height = 40
+	}
+
+	pickerW := width * 2 / 3
+	if pickerW < 56 {
+		pickerW = 56
+	}
+	if pickerW > 84 {
+		pickerW = 84
+	}
+	innerW := pickerW - 2
+
+	isEdit := m.sprintFormEditID != 0
+	title := "Create Sprint"
+	if isEdit {
+		title = "Edit Sprint"
+	}
+	header := tui.BoldBlue.Padding(0, 1).Width(innerW).
+		Render(tui.FixedWidth(title, innerW-2))
+
+	const labelW = 16
+	labelStyle := tui.DimStyle
+	activeStyle := lipgloss.NewStyle().Foreground(tui.ColorFg)
+
+	label := func(text string, active bool) string {
+		s := labelStyle
+		if active {
+			s = activeStyle
+		}
+		return s.Render(fmt.Sprintf("%-*s", labelW, text))
+	}
+
+	nameLine := "  " + label("Name", m.sprintFormField == 0 && !m.sprintFormSubmitting) +
+		m.sprintFormName.View()
+	startLine := "  " + label("Start Date", m.sprintFormField == 1 && !m.sprintFormSubmitting) +
+		m.sprintFormStart.View()
+	durLine := "  " + label("Duration (wk)", m.sprintFormField == 2 && !m.sprintFormSubmitting) +
+		m.sprintFormDuration.View()
+
+	// Compute and display end date in real time.
+	startVal := strings.TrimSpace(m.sprintFormStart.Value())
+	durVal := strings.TrimSpace(m.sprintFormDuration.Value())
+	endDate := "—"
+	if dur, err := strconv.Atoi(durVal); err == nil {
+		if e := computeEndDate(startVal, dur); e != "" {
+			endDate = e
+		}
+	}
+	endLine := "  " + tui.DimStyle.Render(fmt.Sprintf("%-*s", labelW, "End Date")) +
+		tui.DimStyle.Render(endDate)
+
+	var errorLine string
+	if m.sprintFormError != "" {
+		errorLine = "\n  " + lipgloss.NewStyle().Foreground(tui.ColorRed).Render("✗ "+m.sprintFormError)
+	}
+
+	var footer string
+	if m.sprintFormSubmitting {
+		footer = "  " + m.loadSpinner.View() + tui.DimStyle.Render(" Saving…")
+	} else {
+		action := "create"
+		if isEdit {
+			action = "save"
+		}
+		footer = tui.DimStyle.Render(fmt.Sprintf("  tab/shift+tab: next field   ctrl+s: %s   esc: cancel", action))
+	}
+
+	body := header + "\n" +
+		"\n" +
+		nameLine + "\n" +
+		startLine + "\n" +
+		durLine + "\n" +
+		endLine +
+		errorLine + "\n" +
+		"\n" +
+		tui.DimStyle.Render(strings.Repeat("─", innerW)) + "\n" +
+		footer
+
+	modal := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(tui.ColorBlue).
+		Width(innerW).
+		Render(body)
+
+	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, modal)
 }
 
 func (m blModel) viewStatusPicker() string {

@@ -31,6 +31,8 @@ type Client interface {
 	MoveIssuesToSprint(sprintID int, keys []string) error
 	MoveIssuesToBacklog(keys []string) error
 	RankIssues(keys []string, rankAfterKey, rankBeforeKey string) error
+	CreateSprint(boardID int, name, startDate, endDate string) (*models.Sprint, error)
+	UpdateSprint(sprintID int, name, startDate, endDate string) error
 	SetParent(issueKey, parentKey string) error
 	SearchAssignees(projectKey, query string) ([]models.Assignee, error)
 	SetAssignee(issueKey, accountID string) error
@@ -1263,6 +1265,55 @@ func (c *jiraClient) MoveIssuesToBacklog(keys []string) error {
 	req, err := c.client.NewRequest(context.Background(), http.MethodPost,
 		"rest/agile/1.0/backlog/issue",
 		map[string]any{"issues": keys})
+	if err != nil {
+		return err
+	}
+	_, err = c.client.Do(req, nil)
+	return err
+}
+
+// CreateSprint creates a new sprint on the given board.
+// startDate and endDate must be in YYYY-MM-DD format.
+func (c *jiraClient) CreateSprint(boardID int, name, startDate, endDate string) (*models.Sprint, error) {
+	payload := map[string]any{
+		"name":          name,
+		"startDate":     startDate + "T00:00:00.000+0000",
+		"endDate":       endDate + "T00:00:00.000+0000",
+		"originBoardId": boardID,
+	}
+	req, err := c.client.NewRequest(context.Background(), http.MethodPost, "rest/agile/1.0/sprint", payload)
+	if err != nil {
+		return nil, err
+	}
+	var result struct {
+		ID        int    `json:"id"`
+		Name      string `json:"name"`
+		State     string `json:"state"`
+		StartDate string `json:"startDate"`
+		EndDate   string `json:"endDate"`
+	}
+	if _, err = c.client.Do(req, &result); err != nil {
+		return nil, err
+	}
+	return &models.Sprint{
+		ID:        result.ID,
+		Name:      result.Name,
+		State:     result.State,
+		StartDate: trimDateStr(result.StartDate),
+		EndDate:   trimDateStr(result.EndDate),
+	}, nil
+}
+
+// UpdateSprint performs a partial update of an existing sprint (name and dates only).
+// startDate and endDate must be in YYYY-MM-DD format.
+func (c *jiraClient) UpdateSprint(sprintID int, name, startDate, endDate string) error {
+	payload := map[string]any{
+		"name":      name,
+		"startDate": startDate + "T00:00:00.000+0000",
+		"endDate":   endDate + "T00:00:00.000+0000",
+	}
+	req, err := c.client.NewRequest(context.Background(), http.MethodPost,
+		fmt.Sprintf("rest/agile/1.0/sprint/%d", sprintID), payload)
 	if err != nil {
 		return err
 	}

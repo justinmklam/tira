@@ -1,8 +1,11 @@
 package app
 
 import (
+	"strconv"
 	"strings"
+	"time"
 
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/justinmklam/tira/internal/api"
 	"github.com/justinmklam/tira/internal/models"
@@ -358,6 +361,19 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if issue := m.currentIssue(); issue != nil {
 			m.result = blResult{commentKey: issue.Key, commentSummary: issue.Summary}
 			return m, nil
+		}
+
+	case "ctrl+n":
+		m = m.openSprintCreateForm()
+		return m, m.sprintFormName.Focus()
+
+	case "E":
+		if m.cursor < len(m.rows) && m.rows[m.cursor].kind == blRowSprint {
+			sprint := m.groups[m.rows[m.cursor].groupIdx].Sprint
+			if sprint.State != "backlog" && sprint.ID != 0 {
+				m = m.openSprintEditForm(sprint)
+				return m, m.sprintFormName.Focus()
+			}
 		}
 	}
 
@@ -887,5 +903,190 @@ func blTransitionStatusCmd(client api.Client, keys []string, transitionID string
 	return func() tea.Msg {
 		errors := client.BulkTransitionStatus(keys, transitionID)
 		return blBulkDoneMsg{Errors: errors}
+	}
+}
+
+// openSprintCreateForm initialises the sprint form for creating a new sprint.
+func (m blModel) openSprintCreateForm() blModel {
+	today := time.Now().Format("2006-01-02")
+
+	nameInput := textinput.New()
+	nameInput.Placeholder = "sprint name"
+	nameInput.CharLimit = 100
+	nameInput.Width = 40
+	nameInput.SetValue(nextSprintName(m.groups))
+
+	startInput := textinput.New()
+	startInput.Placeholder = "YYYY-MM-DD"
+	startInput.CharLimit = 10
+	startInput.Width = 12
+	startInput.SetValue(today)
+
+	durInput := textinput.New()
+	durInput.Placeholder = "weeks"
+	durInput.CharLimit = 3
+	durInput.Width = 5
+	durInput.SetValue("2")
+
+	m.sprintFormName = nameInput
+	m.sprintFormStart = startInput
+	m.sprintFormDuration = durInput
+	m.sprintFormField = 0
+	m.sprintFormEditID = 0
+	m.sprintFormError = ""
+	m.sprintFormSubmitting = false
+	m.state = blSprintForm
+	return m
+}
+
+// openSprintEditForm initialises the sprint form pre-populated with existing sprint data.
+func (m blModel) openSprintEditForm(sprint models.Sprint) blModel {
+	startDate := sprint.StartDate
+	if len(startDate) > 10 {
+		startDate = startDate[:10]
+	}
+	weeks := sprintDurationWeeks(sprint.StartDate, sprint.EndDate)
+
+	nameInput := textinput.New()
+	nameInput.Placeholder = "sprint name"
+	nameInput.CharLimit = 100
+	nameInput.Width = 40
+	nameInput.SetValue(sprint.Name)
+
+	startInput := textinput.New()
+	startInput.Placeholder = "YYYY-MM-DD"
+	startInput.CharLimit = 10
+	startInput.Width = 12
+	startInput.SetValue(startDate)
+
+	durInput := textinput.New()
+	durInput.Placeholder = "weeks"
+	durInput.CharLimit = 3
+	durInput.Width = 5
+	durInput.SetValue(strconv.Itoa(weeks))
+
+	m.sprintFormName = nameInput
+	m.sprintFormStart = startInput
+	m.sprintFormDuration = durInput
+	m.sprintFormField = 0
+	m.sprintFormEditID = sprint.ID
+	m.sprintFormError = ""
+	m.sprintFormSubmitting = false
+	m.state = blSprintForm
+	return m
+}
+
+// focusSprintField blurs all form inputs then focuses the given field index.
+func (m blModel) focusSprintField(field int) (tea.Model, tea.Cmd) {
+	m.sprintFormField = field
+	m.sprintFormName.Blur()
+	m.sprintFormStart.Blur()
+	m.sprintFormDuration.Blur()
+	var cmd tea.Cmd
+	switch field {
+	case 0:
+		cmd = m.sprintFormName.Focus()
+	case 1:
+		cmd = m.sprintFormStart.Focus()
+	case 2:
+		cmd = m.sprintFormDuration.Focus()
+	}
+	return m, cmd
+}
+
+// validateSprintForm returns a human-readable error string, or "" if the form is valid.
+func (m blModel) validateSprintForm() string {
+	if strings.TrimSpace(m.sprintFormName.Value()) == "" {
+		return "sprint name is required"
+	}
+	start := strings.TrimSpace(m.sprintFormStart.Value())
+	if _, err := time.Parse("2006-01-02", start); err != nil {
+		return "start date must be in YYYY-MM-DD format"
+	}
+	dur := strings.TrimSpace(m.sprintFormDuration.Value())
+	n, err := strconv.Atoi(dur)
+	if err != nil || n < 1 {
+		return "duration must be a positive number of weeks"
+	}
+	return ""
+}
+
+func (m blModel) updateSprintForm(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if key, ok := msg.(tea.KeyMsg); ok {
+		// While submitting, only allow quitting.
+		if m.sprintFormSubmitting {
+			if key.String() == "ctrl+c" {
+				m.quitting = true
+			}
+			return m, nil
+		}
+
+		switch key.String() {
+		case "ctrl+c":
+			m.quitting = true
+			return m, nil
+
+		case "esc":
+			m.state = blList
+			return m, nil
+
+		case "tab":
+			return m.focusSprintField((m.sprintFormField + 1) % 3)
+
+		case "shift+tab":
+			return m.focusSprintField((m.sprintFormField + 2) % 3)
+
+		case "ctrl+s":
+			if errMsg := m.validateSprintForm(); errMsg != "" {
+				m.sprintFormError = errMsg
+				return m, nil
+			}
+			m.sprintFormError = ""
+			m.sprintFormSubmitting = true
+			// Blur inputs during submission.
+			m.sprintFormName.Blur()
+			m.sprintFormStart.Blur()
+			m.sprintFormDuration.Blur()
+
+			name := strings.TrimSpace(m.sprintFormName.Value())
+			start := strings.TrimSpace(m.sprintFormStart.Value())
+			dur, _ := strconv.Atoi(strings.TrimSpace(m.sprintFormDuration.Value()))
+			end := computeEndDate(start, dur)
+
+			if m.sprintFormEditID == 0 {
+				return m, tea.Batch(m.loadSpinner.Tick, blCreateSprintCmd(m.client, m.boardID, name, start, end))
+			}
+			return m, tea.Batch(m.loadSpinner.Tick, blUpdateSprintCmd(m.client, m.sprintFormEditID, name, start, end))
+		}
+	}
+
+	// Forward message to the active text input.
+	var cmd tea.Cmd
+	switch m.sprintFormField {
+	case 0:
+		m.sprintFormName, cmd = m.sprintFormName.Update(msg)
+	case 1:
+		m.sprintFormStart, cmd = m.sprintFormStart.Update(msg)
+	case 2:
+		m.sprintFormDuration, cmd = m.sprintFormDuration.Update(msg)
+	}
+	// Clear error when the user types.
+	if _, ok := msg.(tea.KeyMsg); ok {
+		m.sprintFormError = ""
+	}
+	return m, cmd
+}
+
+func blCreateSprintCmd(client api.Client, boardID int, name, startDate, endDate string) tea.Cmd {
+	return func() tea.Msg {
+		sprint, err := client.CreateSprint(boardID, name, startDate, endDate)
+		return blSprintDoneMsg{created: sprint, err: err}
+	}
+}
+
+func blUpdateSprintCmd(client api.Client, sprintID int, name, startDate, endDate string) tea.Cmd {
+	return func() tea.Msg {
+		err := client.UpdateSprint(sprintID, name, startDate, endDate)
+		return blSprintDoneMsg{err: err}
 	}
 }

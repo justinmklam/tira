@@ -71,6 +71,10 @@ Modelled on yazi's philosophy: modal only where the modality is obvious from con
 | `o` | Open ticket in browser (cursor issue) |
 | `O` | Open all selected tickets in browser |
 | `y` | Copy ticket URL to clipboard (cursor issue) |
+| `<C-n>` | Create a new sprint — form with name, start date, duration |
+| `E` | Edit the sprint under the cursor (name, start date, duration) |
+
+Sprint form: `tab`/`shift+tab` to move between fields, `ctrl+s` to save, `esc` to cancel.
 
 Quick pickers (`s`, `P`, `A`, `F`) open a small overlay, navigate with `j`/`k`, confirm with `<Enter>`, cancel with `<Esc>`.
 
