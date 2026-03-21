@@ -115,3 +115,55 @@ func TestContainsCI(t *testing.T) {
 		t.Error("unexpected match on nil list")
 	}
 }
+
+func TestOverlaySize_Clamping(t *testing.T) {
+	tests := []struct {
+		name        string
+		totalWidth  int
+		totalHeight int
+		wantW       int
+		wantH       int
+	}{
+		{"normal", 120, 40, 102, 38},
+		{"small", 60, 20, 60, 19},
+		{"large", 200, 60, 140, 57},
+		{"min width", 40, 30, 60, 28},
+		{"min height", 100, 10, 85, 15},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotW, gotH := OverlaySize(tt.totalWidth, tt.totalHeight)
+			if gotW != tt.wantW {
+				t.Errorf("OverlaySize(%d, %d) width = %d, want %d", tt.totalWidth, tt.totalHeight, gotW, tt.wantW)
+			}
+			if gotH != tt.wantH {
+				t.Errorf("OverlaySize(%d, %d) height = %d, want %d", tt.totalWidth, tt.totalHeight, gotH, tt.wantH)
+			}
+		})
+	}
+}
+
+func TestOverlayViewportSize_MinValues(t *testing.T) {
+	tests := []struct {
+		name        string
+		totalWidth  int
+		totalHeight int
+		minVpW      int
+		minVpH      int
+	}{
+		{"normal", 120, 40, 20, 5},
+		{"small", 60, 20, 20, 5},
+		{"large", 200, 60, 20, 5},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotVpW, gotVpH := OverlayViewportSize(tt.totalWidth, tt.totalHeight)
+			if gotVpW < tt.minVpW {
+				t.Errorf("OverlayViewportSize(%d, %d) width = %d, want >= %d", tt.totalWidth, tt.totalHeight, gotVpW, tt.minVpW)
+			}
+			if gotVpH < tt.minVpH {
+				t.Errorf("OverlayViewportSize(%d, %d) height = %d, want >= %d", tt.totalWidth, tt.totalHeight, gotVpH, tt.minVpH)
+			}
+		})
+	}
+}
