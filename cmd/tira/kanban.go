@@ -265,6 +265,9 @@ func (m kanbanModel) updateBoard(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.state = stateStatusPicker
 			return m, m.statusPicker.Init()
 		}
+	case "R":
+		m.result = kanbanResult{refresh: true}
+		return m, nil
 	}
 	return m, nil
 }

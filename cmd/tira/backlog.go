@@ -878,6 +878,9 @@ func (m blModel) updateDetail(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.result = blResult{commentKey: m.detailIssue.Key, commentSummary: m.detailIssue.Summary}
 				return m, nil
 			}
+		case "R":
+			m.result = blResult{refresh: true}
+			return m, nil
 		case "ctrl+c":
 			m.quitting = true
 			return m, nil
