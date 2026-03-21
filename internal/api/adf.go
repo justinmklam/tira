@@ -3,6 +3,10 @@ package api
 import (
 	"fmt"
 	"strings"
+
+	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/ast"
+	"github.com/yuin/goldmark/text"
 )
 
 // ADFToMarkdown converts an Atlassian Document Format node (as parsed from JSON
@@ -11,6 +15,271 @@ func ADFToMarkdown(node map[string]any) string {
 	var sb strings.Builder
 	renderNode(&sb, node, 0)
 	return sb.String()
+}
+
+// markdownToADF converts Markdown text to Atlassian Document Format (ADF).
+func markdownToADF(input string) map[string]any {
+	if input == "" {
+		return map[string]any{
+			"version": 1,
+			"type":    "doc",
+			"content": []any{},
+		}
+	}
+
+	md := goldmark.New()
+	source := []byte(input)
+	reader := text.NewReader(source)
+	doc := md.Parser().Parse(reader)
+
+	converter := &adfConverter{source: source}
+	converter.walkNode(doc)
+
+	return map[string]any{
+		"version": 1,
+		"type":    "doc",
+		"content": converter.content,
+	}
+}
+
+// adfConverter converts Markdown AST to ADF
+type adfConverter struct {
+	source  []byte
+	content []any
+}
+
+func (c *adfConverter) walkNode(node ast.Node) {
+	switch n := node.(type) {
+	case *ast.Document:
+		for child := node.FirstChild(); child != nil; child = child.NextSibling() {
+			c.walkNode(child)
+		}
+
+	case *ast.Paragraph:
+		para := c.buildParagraph(node)
+		if para != nil {
+			c.content = append(c.content, para)
+		}
+
+	case *ast.Heading:
+		heading := c.buildHeading(node, n.Level)
+		if heading != nil {
+			c.content = append(c.content, heading)
+		}
+
+	case *ast.List:
+		list := c.buildList(node, n)
+		if list != nil {
+			c.content = append(c.content, list)
+		}
+
+	case *ast.CodeBlock:
+		code := c.buildCodeBlock(node, "")
+		if code != nil {
+			c.content = append(c.content, code)
+		}
+
+	case *ast.FencedCodeBlock:
+		language := ""
+		if n.Info != nil {
+			language = string(n.Language(c.source))
+		}
+		code := c.buildCodeBlock(node, language)
+		if code != nil {
+			c.content = append(c.content, code)
+		}
+
+	case *ast.Blockquote:
+		quote := c.buildBlockquote(node)
+		if quote != nil {
+			c.content = append(c.content, quote)
+		}
+
+	case *ast.ThematicBreak:
+		c.content = append(c.content, map[string]any{
+			"type": "rule",
+		})
+
+	case *ast.HTMLBlock:
+		// Skip HTML blocks
+
+	case *ast.Text:
+		// Handled by parent nodes
+
+	default:
+		// Handle other node types
+		for child := node.FirstChild(); child != nil; child = child.NextSibling() {
+			c.walkNode(child)
+		}
+	}
+}
+
+func (c *adfConverter) buildParagraph(node ast.Node) map[string]any {
+	textContent := c.buildInlineContent(node)
+	if len(textContent) == 0 {
+		return nil
+	}
+	return map[string]any{
+		"type": "paragraph",
+		"content": []any{
+			map[string]any{
+				"type": "text",
+				"text": textContent,
+			},
+		},
+	}
+}
+
+func (c *adfConverter) buildHeading(node ast.Node, level int) map[string]any {
+	textContent := c.buildInlineContent(node)
+	if textContent == "" {
+		return nil
+	}
+	return map[string]any{
+		"type": "heading",
+		"attrs": map[string]any{
+			"level": level,
+		},
+		"content": []any{
+			map[string]any{
+				"type": "text",
+				"text": textContent,
+			},
+		},
+	}
+}
+
+func (c *adfConverter) buildList(node ast.Node, listNode *ast.List) map[string]any {
+	listType := "bulletList"
+	if listNode.IsOrdered() {
+		listType = "orderedList"
+	}
+
+	items := []any{}
+	for child := node.FirstChild(); child != nil; child = child.NextSibling() {
+		if listItem, ok := child.(*ast.ListItem); ok {
+			itemContent := c.buildInlineContent(listItem)
+			if itemContent != "" {
+				items = append(items, map[string]any{
+					"type": "listItem",
+					"content": []any{
+						map[string]any{
+							"type": "paragraph",
+							"content": []any{
+								map[string]any{
+									"type": "text",
+									"text": itemContent,
+								},
+							},
+						},
+					},
+				})
+			}
+		}
+	}
+
+	if len(items) == 0 {
+		return nil
+	}
+
+	return map[string]any{
+		"type":    listType,
+		"content": items,
+	}
+}
+
+func (c *adfConverter) buildCodeBlock(node ast.Node, language string) map[string]any {
+	var codeText string
+
+	if fenced, ok := node.(*ast.FencedCodeBlock); ok {
+		// Use Lines to get the code content
+		var lines []string
+		for i := 0; i < fenced.Lines().Len(); i++ {
+			segment := fenced.Lines().At(i)
+			lines = append(lines, string(segment.Value(c.source)))
+		}
+		codeText = strings.Join(lines, "\n")
+	} else {
+		var codeLines []string
+		for child := node.FirstChild(); child != nil; child = child.NextSibling() {
+			if textNode, ok := child.(*ast.Text); ok {
+				codeLines = append(codeLines, string(textNode.Segment.Value(c.source)))
+			}
+		}
+		codeText = strings.Join(codeLines, "\n")
+	}
+
+	if codeText == "" {
+		return nil
+	}
+
+	content := []any{
+		map[string]any{
+			"type": "text",
+			"text": codeText,
+		},
+	}
+
+	adf := map[string]any{
+		"type": "codeBlock",
+		"attrs": map[string]any{
+			"language": language,
+		},
+		"content": content,
+	}
+
+	return adf
+}
+
+func (c *adfConverter) buildBlockquote(node ast.Node) map[string]any {
+	textContent := c.buildInlineContent(node)
+	if textContent == "" {
+		return nil
+	}
+	return map[string]any{
+		"type": "blockquote",
+		"content": []any{
+			map[string]any{
+				"type": "paragraph",
+				"content": []any{
+					map[string]any{
+						"type": "text",
+						"text": textContent,
+					},
+				},
+			},
+		},
+	}
+}
+
+func (c *adfConverter) buildInlineContent(node ast.Node) string {
+	var sb strings.Builder
+	c.collectInlineText(&sb, node)
+	return sb.String()
+}
+
+func (c *adfConverter) collectInlineText(sb *strings.Builder, node ast.Node) {
+	for child := node.FirstChild(); child != nil; child = child.NextSibling() {
+		switch n := child.(type) {
+		case *ast.Text:
+			sb.Write(n.Segment.Value(c.source))
+		case *ast.Emphasis:
+			c.collectInlineText(sb, child)
+		case *ast.CodeSpan:
+			for gc := child.FirstChild(); gc != nil; gc = gc.NextSibling() {
+				if textNode, ok := gc.(*ast.Text); ok {
+					sb.Write(textNode.Segment.Value(c.source))
+				}
+			}
+		case *ast.Link:
+			// For links, just include the text content
+			c.collectInlineText(sb, child)
+		case *ast.AutoLink:
+			sb.Write(n.URL(c.source))
+		default:
+			c.collectInlineText(sb, child)
+		}
+	}
 }
 
 func renderNode(sb *strings.Builder, node map[string]any, listDepth int) {

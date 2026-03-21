@@ -36,6 +36,13 @@ var rootCmd = &cobra.Command{
 			}()
 		}
 
+		// Skip config loading for commands that don't need it
+		if cmd.Name() == "create" && cmd.Flag("template") != nil {
+			if val := cmd.Flag("template").Value.String(); val == "true" {
+				return nil
+			}
+		}
+
 		var err error
 		cfg, err = config.Load(profile)
 		if err != nil {

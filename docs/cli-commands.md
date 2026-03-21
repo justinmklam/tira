@@ -67,11 +67,15 @@ WriteTempFile → OpenEditor → ReadFile
 
 ---
 
-## `tira create [--project <key>] [--type <type>] [--parent <key>]`
+## `tira create [--project <key>] [--type <type>] [--parent <key>] [--file <path>] [--no-edit]`
 
 **File:** `cmd/tira/create.go`
 
-Creates a new issue via `$EDITOR`:
+Creates a new issue in either **interactive mode** (via `$EDITOR`) or **non-interactive mode** (via file/stdin).
+
+### Interactive Mode (default)
+
+When no `--file` or `--no-edit` flag is provided and stdin is a terminal:
 
 1. Resolves project key from `--project` flag or `cfg.Project`
 2. Fetches valid values (with spinner)
@@ -100,6 +104,103 @@ Creates a new issue via `$EDITOR`:
 # Create a sub-task under a parent
 ./tira create --type Sub-task --parent MP-100
 ```
+
+### Non-Interactive Mode (for AI agents / automation)
+
+When `--file`, `--no-edit`, or piped stdin is used:
+
+1. Reads template content from file (`--file`) or stdin (`--no-edit` or pipe)
+2. Parses the template format (YAML-like front matter + Markdown body)
+3. Validates all fields (type, priority, required summary)
+4. Resolves assignee display name to account ID if provided
+5. Calls `client.CreateIssue`
+
+**Flags:**
+- `--file <path>`, `-f` — Read issue template from a file
+- `--no-edit` — Read issue template from stdin (equivalent to piping)
+
+**Template Format:**
+```markdown
+<!-- tira: do not remove this line or change field names -->
+<!-- Valid types: Bug, Story, Task -->
+type: Task
+<!-- Valid priorities: Low, Medium, High -->
+priority: High
+assignee: John Doe
+<!-- Enter a number or leave blank -->
+story_points: 3
+<!-- Comma-separated, e.g. backend, auth -->
+labels: backend, api
+
+---
+
+# Summary goes here
+
+## Description
+
+Issue description in Markdown.
+
+## Acceptance Criteria
+
+- [ ] Criterion 1
+- [ ] Criterion 2
+```
+
+**Examples:**
+```bash
+# Create from a file
+./tira create --file issue-template.md
+
+# Pipe from stdin (e.g., from an AI agent)
+echo -e "type: Task\npriority: High\n---\n# My Summary\n\n## Description\n\nDo the thing" | ./tira create --no-edit
+
+# Generate with AI and create in one command
+ai-generate-issue-prompt "Fix the login bug" | ./tira create --no-edit
+
+# Use a heredoc for rich content
+./tira create --no-edit << 'EOF'
+type: Story
+priority: High
+assignee: Jane Smith
+labels: frontend, auth
+
+---
+
+# Implement OAuth2 Login
+
+## Description
+
+Add OAuth2 login flow with Google provider.
+
+## Acceptance Criteria
+
+- [ ] User can sign in with Google
+- [ ] Session is persisted correctly
+- [ ] Logout clears the session
+EOF
+```
+
+**Notes:**
+- Validation is still performed in non-interactive mode (valid types, priorities, required fields)
+- If `type` or `priority` is omitted, defaults are applied (first type, middle priority)
+- Assignee is resolved by display name (case-insensitive match)
+- Errors are returned with clear messages for invalid templates
+
+### Template Format (for AI Agents)
+
+To get the complete template format specification, run:
+
+```bash
+./tira create --template
+```
+
+This outputs detailed documentation including:
+- All front matter fields and their descriptions
+- Markdown body structure
+- Minimal and full examples
+- Validation rules
+
+AI agents can use this to generate properly formatted issue templates programmatically.
 
 ---
 

@@ -586,26 +586,6 @@ func (c *jiraClient) fetchFieldIDs(key string) (map[string]string, error) {
 	return nameToID, nil
 }
 
-// markdownToADF wraps plain text/markdown as a minimal ADF paragraph doc.
-// For now we send the description as a plain-text paragraph block.
-func markdownToADF(text string) map[string]any {
-	return map[string]any{
-		"version": 1,
-		"type":    "doc",
-		"content": []any{
-			map[string]any{
-				"type": "paragraph",
-				"content": []any{
-					map[string]any{
-						"type": "text",
-						"text": text,
-					},
-				},
-			},
-		},
-	}
-}
-
 func (c *jiraClient) CreateIssue(projectKey string, fields models.IssueFields) (*models.Issue, error) {
 	f := map[string]any{
 		"project":   map[string]any{"key": projectKey},
