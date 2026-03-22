@@ -143,13 +143,18 @@ func saveCreateCmd(client api.Client, projectKey string, fields models.IssueFiel
 	}
 }
 
-// validateEditFields runs validator.Validate and returns the first error message,
-// or "" if all fields are valid.
+// validateEditFields checks type and priority against the known valid values.
+// Assignee is intentionally excluded: the assignee list is capped at 50 results,
+// so rejecting a name not in that list would produce false positives for large orgs.
+// Assignee correctness is enforced by using the picker, not free-text entry.
 func validateEditFields(fields models.IssueFields, valid *models.ValidValues) string {
 	if valid == nil {
 		return ""
 	}
-	errs := validator.Validate(&fields, valid)
+	// Clear assignee so validator.Validate only checks type and priority.
+	check := fields
+	check.Assignee = ""
+	errs := validator.Validate(&check, valid)
 	if len(errs) == 0 {
 		return ""
 	}
