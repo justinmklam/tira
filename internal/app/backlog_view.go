@@ -135,15 +135,6 @@ func (m blModel) viewList() string {
 	// Sidebar content with scroll
 	sidebarLines := strings.Split(m.sidebarContent, "\n")
 	totalSidebarLines := len(sidebarLines)
-	maxSidebarOffset := totalSidebarLines - vh
-	if maxSidebarOffset < 0 {
-		maxSidebarOffset = 0
-	}
-	if m.sidebarOffset < 0 {
-		m.sidebarOffset = 0
-	} else if m.sidebarOffset > maxSidebarOffset {
-		m.sidebarOffset = maxSidebarOffset
-	}
 	sidebarEnd := m.sidebarOffset + vh
 	if sidebarEnd > totalSidebarLines {
 		sidebarEnd = totalSidebarLines

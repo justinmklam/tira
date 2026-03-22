@@ -81,7 +81,14 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case "ctrl+d":
 		// Scroll sidebar content down by 1/4 page
 		m.sidebarOffset += m.viewHeight() / 4
-		// Clamp to content bounds (will be validated after we know content length)
+		totalLines := strings.Count(m.sidebarContent, "\n") + 1
+		if maxOffset := totalLines - m.viewHeight(); m.sidebarOffset > maxOffset {
+			if maxOffset < 0 {
+				m.sidebarOffset = 0
+			} else {
+				m.sidebarOffset = maxOffset
+			}
+		}
 		return m, nil
 
 	case "ctrl+u":

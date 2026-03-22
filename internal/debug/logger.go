@@ -113,7 +113,7 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	resp, err := t.Base.RoundTrip(req)
 
 	// Log response
-	if IsEnabled() {
+	if IsEnabled() && resp != nil {
 		mu.Lock()
 		if logger != nil {
 			logger.Printf("<-- %s %s (status: %s)\n", req.Method, req.URL.String(), resp.Status)
