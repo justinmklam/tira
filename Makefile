@@ -42,9 +42,13 @@ fmt:
 vet:
 	go vet ./...
 
+# Run govulncheck
+vuln-check:
+	govulncheck ./...
+
 # Run golangci-lint (install: https://golangci-lint.run/welcome/install/)
 lint:
 	golangci-lint run ./...
 
 # Run all checks (fmt, vet, lint, test) — same as CI
-check: fmt-check vet lint test
+check: fmt-check vet lint test vuln-check

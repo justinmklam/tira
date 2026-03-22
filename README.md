@@ -2,7 +2,7 @@
 
 A lazygit-style CLI for Jira, built in Go with Charm tooling. This project provides a fast, scriptable, and extensible interface to Jira issues, sprints, and boards.
 
-![Go Version](https://img.shields.io/badge/Go-1.26-blue)
+![Go Version](https://img.shields.io/badge/Go-1.25-blue)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
 ## Features
@@ -17,7 +17,7 @@ A lazygit-style CLI for Jira, built in Go with Charm tooling. This project provi
 
 ### Prerequisites
 
-- Go 1.26+
+- Go 1.25+
 - A Jira Cloud account with API access
 - Clipboard support (optional, for copying URLs):
   - **macOS**: `pbcopy` (built-in)
@@ -55,11 +55,13 @@ profiles:
 ```
 
 **Required fields:**
+
 - `jira_url` — Your Jira Cloud instance URL
 - `email` — Your Jira Cloud email address
-- `token` — Your Jira API token (generate from https://id.atlassian.com/manage-profile/security/api-tokens)
+- `token` — Your Jira API token (generate from <https://id.atlassian.com/manage-profile/security/api-tokens>)
 
 **Optional fields:**
+
 - `project` — Default project key
 - `board_id` — Required for `board`/`backlog`/`kanban` commands
 - `classic_project` — Affects browser URL construction only
@@ -108,16 +110,19 @@ See [Keybindings](docs/keybindings-backlog.md) for the complete reference.
 #### CLI Commands
 
 **View an issue:**
+
 ```sh
 ./tira get MP-101
 ```
 
 **Edit an issue in your editor:**
+
 ```sh
 ./tira get MP-101 --edit
 ```
 
 **Create a new issue:**
+
 ```sh
 # Interactive with defaults
 ./tira create
@@ -127,6 +132,7 @@ See [Keybindings](docs/keybindings-backlog.md) for the complete reference.
 ```
 
 **Use a specific profile:**
+
 ```sh
 ./tira --profile dev get DEV-101
 ./tira --profile dev board
@@ -208,6 +214,7 @@ Pull requests welcome! Key areas:
 - **Tests** — Add unit tests for API parsing, form logic, kanban mapping
 
 Before submitting a PR:
+
 1. Run `make check` to ensure all checks pass
 2. Update keybindings in [docs/keybindings-backlog.md](docs/keybindings-backlog.md) if adding new keys
 3. Update [docs/architecture.md](docs/architecture.md) if changing package structure
