@@ -18,10 +18,17 @@ func RenderIssue(issue *models.Issue) string {
 	if assignee == "" {
 		assignee = "—"
 	}
-	rows := []metaRow{{"Assignee", assignee}, {"Status", issue.Status}}
+	var spText string
 	if issue.StoryPoints > 0 {
-		rows = append(rows, metaRow{"Story Points", fmt.Sprintf("%.0f", issue.StoryPoints)})
+		if issue.StoryPoints == float64(int(issue.StoryPoints)) {
+			spText = fmt.Sprintf("%.0f", issue.StoryPoints)
+		} else {
+			spText = fmt.Sprintf("%.1f", issue.StoryPoints)
+		}
+	} else {
+		spText = "—"
 	}
+	rows := []metaRow{{"Assignee", assignee}, {"Status", issue.Status}, {"Story Points", spText}}
 	rows = append(rows, metaRow{"Type", issue.IssueType}, metaRow{"Priority", issue.Priority})
 	if issue.Reporter != "" {
 		rows = append(rows, metaRow{"Reporter", issue.Reporter})

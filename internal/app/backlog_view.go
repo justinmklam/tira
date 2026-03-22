@@ -129,30 +129,48 @@ func (m blModel) viewList() string {
 	// Column header for list pane
 	colHeader := blColumnHeader(listPaneW)
 
-	// Sidebar header - aligned to match split pane layout
-	sidebarHeader := tui.BoldBlue.Padding(0, 1).Render("Issue Details")
-	sidebarHeader = lipgloss.NewStyle().Width(detailPaneW).Render(sidebarHeader)
-	headers := colHeader + "│" + sidebarHeader
+	// Sidebar header - show issue key and summary or "Issue Details" if no issue
+	sidebarTitle := "Issue Details"
+	if issue := m.currentIssue(); issue != nil {
+		sidebarTitle = issue.Key + "  " + issue.Summary
+	} else if m.lastIssue != nil {
+		sidebarTitle = m.lastIssue.Key + "  " + m.lastIssue.Summary
+	}
+	wrappedHeader := wrapText(tui.BoldBlue.Render(sidebarTitle), detailPaneW-2)
+	headerLines := strings.Split(wrappedHeader, "\n")
+	headerHeight := len(headerLines)
 
-	// Visible rows for list pane.
+	// Visible rows for list pane - reduce by headerHeight-1 to account for wrapped header
 	vh := m.viewHeight()
-	end := m.offset + vh
+	adjustedVh := vh - (headerHeight - 1)
+	if adjustedVh < 1 {
+		adjustedVh = 1
+	}
+	end := m.offset + adjustedVh
 	if end > len(m.rows) {
 		end = len(m.rows)
 	}
-	lines := make([]string, 0, vh)
+	lines := make([]string, 0, adjustedVh)
 	for i := m.offset; i < end; i++ {
 		lines = append(lines, m.renderRow(i, listPaneW))
 	}
-	for len(lines) < vh {
+	for len(lines) < adjustedVh {
 		lines = append(lines, "")
 	}
 	listContent := strings.Join(lines, "\n")
 
-	// Sidebar content with scroll
+	// Build header line (first line only contains column header + separator)
+	// Wrapped header lines will be prepended to split content
+	div := lipgloss.NewStyle().Foreground(tui.ColorDimmer).Render("│")
+	headerLine := colHeader + div + headerLines[0]
+
+	// Sidebar content with scroll - height matches adjusted list content
 	sidebarLines := strings.Split(m.sidebarContent, "\n")
 	totalSidebarLines := len(sidebarLines)
-	sidebarViewH := vh
+	sidebarViewH := adjustedVh
+	if sidebarViewH < 1 {
+		sidebarViewH = 1
+	}
 	sidebarEnd := m.sidebarOffset + sidebarViewH
 	if sidebarEnd > totalSidebarLines {
 		sidebarEnd = totalSidebarLines
@@ -170,8 +188,39 @@ func (m blModel) viewList() string {
 	}
 	sidebarContent := strings.Join(visibleSidebarLines, "\n")
 
-	// Split panes
-	splitContent := tui.SplitPanes(listContent, sidebarContent, listPaneW, vh)
+	// Build split content line by line
+	listLines := strings.Split(listContent, "\n")
+	sidebarLinesSplit := strings.Split(sidebarContent, "\n")
+
+	// Pad both sides to same length
+	maxLen := len(listLines)
+	if len(sidebarLinesSplit) > maxLen {
+		maxLen = len(sidebarLinesSplit)
+	}
+	for len(listLines) < maxLen {
+		listLines = append(listLines, "")
+	}
+	for len(sidebarLinesSplit) < maxLen {
+		sidebarLinesSplit = append(sidebarLinesSplit, "")
+	}
+
+	var splitLines []string
+	for i := 0; i < maxLen; i++ {
+		left := lipgloss.NewStyle().Width(listPaneW).Render(listLines[i])
+		splitLines = append(splitLines, left+div+sidebarLinesSplit[i])
+	}
+	splitContent := strings.Join(splitLines, "\n")
+
+	// Build wrapped header continuation lines (if header wrapped)
+	var wrappedHeaderContinuation string
+	if headerHeight > 1 {
+		leftPadding := lipgloss.NewStyle().Width(listPaneW).Render("")
+		var continuationLines []string
+		for i := 1; i < headerHeight; i++ {
+			continuationLines = append(continuationLines, leftPadding+div+headerLines[i])
+		}
+		wrappedHeaderContinuation = strings.Join(continuationLines, "\n")
+	}
 
 	// Footer spans both panes
 	var footer string
@@ -204,7 +253,10 @@ func (m blModel) viewList() string {
 		}
 	}
 
-	return topBar + "\n" + headers + "\n" + splitContent + "\n" + footer
+	if wrappedHeaderContinuation != "" {
+		return topBar + "\n" + headerLine + "\n" + wrappedHeaderContinuation + "\n" + splitContent + "\n" + footer
+	}
+	return topBar + "\n" + headerLine + "\n" + splitContent + "\n" + footer
 }
 
 func (m blModel) renderRow(idx, width int) string {
@@ -660,4 +712,62 @@ func (m blModel) viewStatusPicker() string {
 		m.width,
 		m.height,
 	)
+}
+
+// wrapText wraps a string to fit within maxWidth, preserving lipgloss styling.
+func wrapText(s string, maxWidth int) string {
+	if maxWidth <= 0 {
+		return s
+	}
+	// Simple word-based wrapping (ignore ANSI codes for width calculation)
+	// Strip ANSI codes for measurement
+	stripped := s
+	for _, c := range s {
+		if c == '\x1b' {
+			// Found ANSI escape, skip until 'm'
+			stripped = ""
+			inEscape := false
+			for i := 0; i < len(s); i++ {
+				ch := s[i]
+				if ch == '\x1b' {
+					inEscape = true
+				} else if inEscape && ch == 'm' {
+					inEscape = false
+				} else if !inEscape {
+					stripped += string(ch)
+				}
+			}
+			break
+		}
+	}
+	if len(stripped) <= maxWidth {
+		return s
+	}
+
+	words := strings.Fields(stripped)
+	var lines []string
+	var currentLine strings.Builder
+	currentLen := 0
+
+	for _, word := range words {
+		wordLen := len(word)
+		if currentLen == 0 {
+			currentLine.WriteString(word)
+			currentLen = wordLen
+		} else if currentLen+1+wordLen <= maxWidth {
+			currentLine.WriteString(" " + word)
+			currentLen += 1 + wordLen
+		} else {
+			lines = append(lines, currentLine.String())
+			currentLine.Reset()
+			currentLine.WriteString(word)
+			currentLen = wordLen
+		}
+	}
+	if currentLine.Len() > 0 {
+		lines = append(lines, currentLine.String())
+	}
+
+	// Re-apply styling to each line (simplified: just return plain text with padding)
+	return tui.BoldBlue.Padding(0, 1).Render(strings.Join(lines, "\n"))
 }
