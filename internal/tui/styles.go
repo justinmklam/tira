@@ -93,9 +93,14 @@ func DaysColor(days int) lipgloss.Color {
 	}
 }
 
-// parseDate parses an ISO date string (YYYY-MM-DD) to time.Time.
+// parseDate parses an ISO date string (YYYY-MM-DD) to time.Time in local timezone.
 func parseDate(dateStr string) (time.Time, error) {
-	return time.Parse("2006-01-02", dateStr)
+	t, err := time.Parse("2006-01-02", dateStr)
+	if err != nil {
+		return t, err
+	}
+	// Convert to local timezone to match time.Now() behavior
+	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.Local), nil
 }
 
 // parseDateOrNow parses an ISO date string or returns time.Now() if empty.

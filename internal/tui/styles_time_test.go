@@ -2,13 +2,15 @@ package tui
 
 import (
 	"testing"
+	"time"
 )
 
 func TestDaysInColumn_ValidDate(t *testing.T) {
 	// Date 10 days ago should return approximately 10 days
-	got := DaysInColumn("2026-03-11")
+	tenDaysAgo := time.Now().AddDate(0, 0, -10).Format("2006-01-02")
+	got := DaysInColumn(tenDaysAgo)
 	if got < 9 || got > 11 {
-		t.Errorf("DaysInColumn(\"2026-03-11\") = %d, want approximately 10", got)
+		t.Errorf("DaysInColumn(%q) = %d, want approximately 10", tenDaysAgo, got)
 	}
 }
 
@@ -28,17 +30,19 @@ func TestDaysInColumn_InvalidDate(t *testing.T) {
 
 func TestDaysInColumn_Today(t *testing.T) {
 	// Today's date should return 0 days
-	got := DaysInColumn("2026-03-21")
+	today := time.Now().Format("2006-01-02")
+	got := DaysInColumn(today)
 	if got != 0 {
-		t.Errorf("DaysInColumn(\"2026-03-21\") = %d, want 0", got)
+		t.Errorf("DaysInColumn(%q) = %d, want 0", today, got)
 	}
 }
 
 func TestDaysInColumn_Yesterday(t *testing.T) {
 	// Yesterday should return 1 day
-	got := DaysInColumn("2026-03-20")
+	yesterday := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
+	got := DaysInColumn(yesterday)
 	if got != 1 {
-		t.Errorf("DaysInColumn(\"2026-03-20\") = %d, want 1", got)
+		t.Errorf("DaysInColumn(%q) = %d, want 1", yesterday, got)
 	}
 }
 
