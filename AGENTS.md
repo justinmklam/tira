@@ -8,7 +8,8 @@
 - `make vet` — run go vet
 - `make lint` — run golangci-lint (requires [golangci-lint](https://golangci-lint.run/welcome/install/))
 - `make check` — run all checks (fmt, vet, lint, test) — mirrors CI
-- Always run `make check` before pushing
+
+Important: Always run `make fmt check` after every code change.
 
 ## Architecture
 
@@ -124,6 +125,7 @@ The board TUI wraps the `jiraClient` with `api.NewCachedClient` (see `internal/a
 **When adding a new `Client` method:**
 
 - If it is a **read** method, add a cached implementation in `cachedClient` following the existing pattern:
+
   ```go
   func (c *cachedClient) GetFoo(key string) (*models.Foo, error) {
       ckey := "foo:" + key
@@ -138,7 +140,9 @@ The board TUI wraps the `jiraClient` with `api.NewCachedClient` (see `internal/a
       return result, nil
   }
   ```
+
 - If it is a **mutating** method, add a pass-through that invalidates affected cache entries on success:
+
   ```go
   func (c *cachedClient) UpdateFoo(key string, ...) error {
       if err := c.inner.UpdateFoo(key, ...); err != nil {
@@ -148,6 +152,7 @@ The board TUI wraps the `jiraClient` with `api.NewCachedClient` (see `internal/a
       return nil
   }
   ```
+
 - If the mutation affects board sprint data (moves, ranking), use `c.cdelPrefix("sprint_groups:")` instead.
 - If the method has no useful caching (e.g. query-based search, one-off mutations), add a straight pass-through.
 
