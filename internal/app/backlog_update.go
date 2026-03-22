@@ -1126,7 +1126,7 @@ func (m blModel) updateSidebarContent() (blModel, tea.Cmd) {
 	}
 
 	// If we already have the full issue cached, use it
-	if m.sidebarFullIssue != nil && m.sidebarIssueKey == issue.Key {
+	if issue != nil && m.sidebarFullIssue != nil && m.sidebarIssueKey == issue.Key {
 		m.sidebarContent = renderSidebarContent(m.sidebarFullIssue, tui.DetailPaneWidth(m.width))
 		m.sidebarOffset = 0
 		return m, nil
