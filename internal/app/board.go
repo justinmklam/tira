@@ -447,20 +447,17 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.assigneePicker = newAssigneePicker(m.client, projectKey)
 			m.assigneeForEdit = true
-			m.prevView = m.activeView
 			m.activeView = viewAssigneePicker
 			return m, m.assigneePicker.Init()
 		}
 		if m.editForm != nil && m.editForm.wantTypePicker {
 			m.editForm.wantTypePicker = false
 			m.typePicker = newTypePicker(m.editValid.IssueTypes, m.editForm.inputs[efType].Value())
-			m.prevView = m.activeView
 			m.activeView = viewTypePicker
 		}
 		if m.editForm != nil && m.editForm.wantPriorityPicker {
 			m.editForm.wantPriorityPicker = false
 			m.priorityPicker = newPriorityPicker(m.editValid.Priorities, m.editForm.inputs[efPriority].Value())
-			m.prevView = m.activeView
 			m.activeView = viewPriorityPicker
 		}
 		return m, cmd
@@ -534,20 +531,17 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.assigneePicker = newAssigneePicker(m.client, projectKey)
 			m.assigneeForEdit = true
-			m.prevView = m.activeView
 			m.activeView = viewAssigneePicker
 			return m, m.assigneePicker.Init()
 		}
 		if m.editForm != nil && m.editForm.wantTypePicker {
 			m.editForm.wantTypePicker = false
 			m.typePicker = newTypePicker(m.editValid.IssueTypes, m.editForm.inputs[efType].Value())
-			m.prevView = m.activeView
 			m.activeView = viewTypePicker
 		}
 		if m.editForm != nil && m.editForm.wantPriorityPicker {
 			m.editForm.wantPriorityPicker = false
 			m.priorityPicker = newPriorityPicker(m.editValid.Priorities, m.editForm.inputs[efPriority].Value())
-			m.prevView = m.activeView
 			m.activeView = viewPriorityPicker
 		}
 		return m, cmd
@@ -575,14 +569,26 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case viewAssigneePicker:
 		if key, ok := msg.(tea.KeyMsg); ok && key.String() == "ctrl+c" {
-			m.activeView = m.prevView
-			m.editForm = nil
+			if m.assigneeForEdit {
+				m.editForm = nil
+				m.activeView = m.prevView
+			} else {
+				m.activeView = m.prevView
+			}
 			return m, nil
 		}
 		updated, cmd := m.assigneePicker.Update(msg)
 		m.assigneePicker = updated
 		if m.assigneePicker.Aborted {
-			m.activeView = m.prevView
+			if m.assigneeForEdit {
+				editFormView := viewEdit
+				if m.editKey == "" {
+					editFormView = viewCreate
+				}
+				m.activeView = editFormView
+			} else {
+				m.activeView = m.prevView
+			}
 			return m, nil
 		}
 		if m.assigneePicker.Completed {
@@ -593,7 +599,11 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				} else {
 					m.editForm.setAssignee("", "")
 				}
-				m.activeView = m.prevView
+				editFormView := viewEdit
+				if m.editKey == "" {
+					editFormView = viewCreate
+				}
+				m.activeView = editFormView
 				return m, nil
 			}
 		}
@@ -602,15 +612,19 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case viewTypePicker:
 		updated, cmd := m.typePicker.Update(msg)
 		m.typePicker = updated
+		editFormView := viewEdit
+		if m.editKey == "" {
+			editFormView = viewCreate
+		}
 		if m.typePicker.Aborted {
-			m.activeView = m.prevView
+			m.activeView = editFormView
 			return m, nil
 		}
 		if m.typePicker.Completed {
 			if val := m.typePicker.SelectedItem(); val != "" && m.editForm != nil {
 				m.editForm.inputs[efType].SetValue(val)
 			}
-			m.activeView = m.prevView
+			m.activeView = editFormView
 			return m, nil
 		}
 		return m, cmd
@@ -618,15 +632,19 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case viewPriorityPicker:
 		updated, cmd := m.priorityPicker.Update(msg)
 		m.priorityPicker = updated
+		editFormView := viewEdit
+		if m.editKey == "" {
+			editFormView = viewCreate
+		}
 		if m.priorityPicker.Aborted {
-			m.activeView = m.prevView
+			m.activeView = editFormView
 			return m, nil
 		}
 		if m.priorityPicker.Completed {
 			if val := m.priorityPicker.SelectedItem(); val != "" && m.editForm != nil {
 				m.editForm.inputs[efPriority].SetValue(val)
 			}
-			m.activeView = m.prevView
+			m.activeView = editFormView
 			return m, nil
 		}
 		return m, cmd
