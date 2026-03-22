@@ -43,6 +43,9 @@ func (m boardModel) View() string {
 	case viewTypePicker:
 		return m.viewTypePickerOverlay(w, h)
 
+	case viewPriorityPicker:
+		return m.viewPriorityPickerOverlay(w, h)
+
 	case viewHelp:
 		return m.viewHelpOverlay(w, h)
 
@@ -112,6 +115,15 @@ func (m boardModel) viewTypePickerOverlay(w, h int) string {
 	return tui.RenderPickerOverlay(
 		func(innerW, listH int) string { return m.typePicker.View(innerW, listH) },
 		"Set Issue Type",
+		w,
+		h,
+	)
+}
+
+func (m boardModel) viewPriorityPickerOverlay(w, h int) string {
+	return tui.RenderPickerOverlay(
+		func(innerW, listH int) string { return m.priorityPicker.View(innerW, listH) },
+		"Set Priority",
 		w,
 		h,
 	)

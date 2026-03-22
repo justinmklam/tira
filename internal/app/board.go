@@ -31,6 +31,7 @@ const (
 	viewCreateSaving   // create API call in flight
 	viewAssigneePicker // assignee fuzzy picker (edit form or direct assignment)
 	viewTypePicker     // issue type option picker (edit/create form)
+	viewPriorityPicker // priority option picker (edit/create form)
 	viewHelp           // help overlay
 	viewComment        // comment textarea active
 	viewCommentSaving  // comment API call in flight
@@ -109,8 +110,9 @@ type boardModel struct {
 	assigneePicker  tui.PickerModel
 	assigneeForEdit bool // true = inject result into editForm; false = used externally
 
-	// In-TUI type picker state.
-	typePicker tui.OptionPickerModel
+	// In-TUI type/priority picker state.
+	typePicker     tui.OptionPickerModel
+	priorityPicker tui.OptionPickerModel
 
 	// Help overlay state.
 	helpModel tui.HelpModel
@@ -455,6 +457,12 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.prevView = m.activeView
 			m.activeView = viewTypePicker
 		}
+		if m.editForm != nil && m.editForm.wantPriorityPicker {
+			m.editForm.wantPriorityPicker = false
+			m.priorityPicker = newPriorityPicker(m.editValid.Priorities, m.editForm.inputs[efPriority].Value())
+			m.prevView = m.activeView
+			m.activeView = viewPriorityPicker
+		}
 		return m, cmd
 
 	case viewEditSaving:
@@ -536,6 +544,12 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.prevView = m.activeView
 			m.activeView = viewTypePicker
 		}
+		if m.editForm != nil && m.editForm.wantPriorityPicker {
+			m.editForm.wantPriorityPicker = false
+			m.priorityPicker = newPriorityPicker(m.editValid.Priorities, m.editForm.inputs[efPriority].Value())
+			m.prevView = m.activeView
+			m.activeView = viewPriorityPicker
+		}
 		return m, cmd
 
 	case viewCreateSaving:
@@ -595,6 +609,22 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.typePicker.Completed {
 			if val := m.typePicker.SelectedItem(); val != "" && m.editForm != nil {
 				m.editForm.inputs[efType].SetValue(val)
+			}
+			m.activeView = m.prevView
+			return m, nil
+		}
+		return m, cmd
+
+	case viewPriorityPicker:
+		updated, cmd := m.priorityPicker.Update(msg)
+		m.priorityPicker = updated
+		if m.priorityPicker.Aborted {
+			m.activeView = m.prevView
+			return m, nil
+		}
+		if m.priorityPicker.Completed {
+			if val := m.priorityPicker.SelectedItem(); val != "" && m.editForm != nil {
+				m.editForm.inputs[efPriority].SetValue(val)
 			}
 			m.activeView = m.prevView
 			return m, nil

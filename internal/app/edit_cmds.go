@@ -148,6 +148,11 @@ func newTypePicker(typeOpts []string, initialValue string) tui.OptionPickerModel
 	return tui.NewOptionPickerModel(typeOpts, initialValue)
 }
 
+// newPriorityPicker builds an OptionPickerModel for selecting a priority.
+func newPriorityPicker(priorityOpts []string, initialValue string) tui.OptionPickerModel {
+	return tui.NewOptionPickerModel(priorityOpts, initialValue)
+}
+
 // newAssigneePicker builds a PickerModel backed by a debounced assignee search.
 // projectKey may be derived from an issue key (e.g. "PROJ-1" → "PROJ").
 func newAssigneePicker(client api.Client, projectKey string) tui.PickerModel {
