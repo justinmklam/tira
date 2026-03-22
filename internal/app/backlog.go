@@ -246,19 +246,22 @@ func newBacklogModel(client api.Client, boardID int, groups []models.SprintGroup
 }
 
 // refreshData replaces the sprint groups and rebuilds the row list.
-func (m *blModel) refreshData(groups []models.SprintGroup) {
+// Returns a command to re-fetch the sidebar issue at the correct width.
+func (m *blModel) refreshData(groups []models.SprintGroup) tea.Cmd {
 	m.groups = groups
 	m.rows = blBuildRows(groups, m.collapsed, m.filter, m.filterEpic)
 	m.cursor = tui.Clamp(m.cursor, 0, max(len(m.rows)-1, 0))
-	// Reset sidebar cache - fetch will be triggered by next navigation
-	m.sidebarIssueKey = ""
+	// Reset sidebar cache and show a preview while the full issue is re-fetched.
 	m.sidebarFullIssue = nil
-	if issue := m.currentIssue(); issue != nil {
-		m.sidebarContent = renderSidebarContent(issue, tui.DetailPaneWidth(0))
-	} else {
-		m.sidebarContent = renderSidebarContent(nil, tui.DetailPaneWidth(0))
-	}
+	issue := m.currentIssue()
+	m.sidebarContent = renderSidebarContent(issue, tui.DetailPaneWidth(m.width))
 	m.sidebarOffset = 0
+	if issue != nil {
+		m.sidebarIssueKey = issue.Key
+		return fetchSidebarIssueCmd(m.client, issue.Key)
+	}
+	m.sidebarIssueKey = ""
+	return nil
 }
 
 func (m blModel) viewHeight() int {

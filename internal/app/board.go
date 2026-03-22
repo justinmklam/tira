@@ -205,13 +205,15 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if msg, ok := msg.(boardRefreshDoneMsg); ok {
 		if msg.err == nil {
 			m.initData = msg.data
-			m.backlog.refreshData(msg.data.Groups)
+			sidebarCmd := m.backlog.refreshData(msg.data.Groups)
 			issues, sprintName := activeSprintFromGroups(msg.data.Groups)
 			m.kanban.refreshData(msg.data.BoardCols, issues, sprintName)
 			if m.createResultKey != "" {
 				m.backlog.navigateToKey(m.createResultKey)
 				m.createResultKey = ""
 			}
+			m.backlog.moving = false
+			return m, sidebarCmd
 		}
 		m.backlog.moving = false
 		return m, nil
