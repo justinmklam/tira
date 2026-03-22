@@ -143,6 +143,19 @@ func saveCreateCmd(client api.Client, projectKey string, fields models.IssueFiel
 	}
 }
 
+// validateEditFields runs validator.Validate and returns the first error message,
+// or "" if all fields are valid.
+func validateEditFields(fields models.IssueFields, valid *models.ValidValues) string {
+	if valid == nil {
+		return ""
+	}
+	errs := validator.Validate(&fields, valid)
+	if len(errs) == 0 {
+		return ""
+	}
+	return errs[0].Message
+}
+
 // newTypePicker builds an OptionPickerModel for selecting an issue type.
 func newTypePicker(typeOpts []string, initialValue string) tui.OptionPickerModel {
 	return tui.NewOptionPickerModel(typeOpts, initialValue)

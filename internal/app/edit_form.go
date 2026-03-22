@@ -58,9 +58,9 @@ type editModel struct {
 	aborted   bool
 	validErr  string
 
-	wantAssigneePicker  bool
-	wantTypePicker      bool
-	wantPriorityPicker  bool
+	wantAssigneePicker bool
+	wantTypePicker     bool
+	wantPriorityPicker bool
 }
 
 func newEditModel(issue *models.Issue, valid *models.ValidValues, width, height int) *editModel {
@@ -244,7 +244,6 @@ func (m *editModel) focusFocused() {
 		m.acTA.Focus()
 	}
 }
-
 
 func (m *editModel) isDirty() bool {
 	curr := m.currentState()

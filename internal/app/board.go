@@ -454,6 +454,11 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.editForm = updated.(*editModel)
 		if m.editForm.completed {
 			fields := m.editForm.currentState().toIssueFields(m.editValid)
+			if errMsg := validateEditFields(fields, m.editValid); errMsg != "" {
+				m.editErr = errMsg
+				m.editForm.completed = false
+				return m, nil
+			}
 			m.activeView = viewEditSaving
 			m.editErr = ""
 			return m, tea.Batch(m.editSpinner.Tick, saveEditCmd(m.client, m.editKey, fields))
@@ -494,13 +499,16 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.editSpinner, cmd = m.editSpinner.Update(msg)
 			return m, cmd
 		case editSaveDoneMsg:
-			m.editForm = nil
-			m.editIssue = nil
-			m.activeView = m.prevView
 			if msg.err != nil {
 				m.editErr = fmt.Sprintf("Save failed: %v", msg.err)
+				m.editForm.completed = false
+				m.activeView = viewEdit
 				return m, nil
 			}
+			m.editForm = nil
+			m.editIssue = nil
+			m.editErr = ""
+			m.activeView = m.prevView
 			return m, issueRefreshCmd(m.client, m.editKey)
 		}
 		return m, nil
@@ -538,6 +546,11 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.editForm = updated.(*editModel)
 		if m.editForm.completed {
 			fields := m.editForm.currentState().toIssueFields(m.editValid)
+			if errMsg := validateEditFields(fields, m.editValid); errMsg != "" {
+				m.editErr = errMsg
+				m.editForm.completed = false
+				return m, nil
+			}
 			m.activeView = viewCreateSaving
 			m.editErr = ""
 			return m, tea.Batch(m.editSpinner.Tick, saveCreateCmd(m.client, m.project, fields, m.createSprintID))
@@ -578,12 +591,15 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.editSpinner, cmd = m.editSpinner.Update(msg)
 			return m, cmd
 		case createSaveDoneMsg:
-			m.editForm = nil
-			m.activeView = m.prevView
 			if msg.err != nil {
 				m.editErr = fmt.Sprintf("Create failed: %v", msg.err)
+				m.editForm.completed = false
+				m.activeView = viewCreate
 				return m, nil
 			}
+			m.editForm = nil
+			m.editErr = ""
+			m.activeView = m.prevView
 			if msg.issue != nil {
 				m.createResultKey = msg.issue.Key
 				return m, issueInsertCmd(m.client, msg.issue.Key, m.createSprintID)
