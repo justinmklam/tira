@@ -269,6 +269,11 @@ func newBoardModel(client api.Client, boardID int, jiraURL, project string, clas
 		cmds = append(cmds, lazyLoadCmd(client, boardID, nil, project))
 	}
 
+	// Pre-warm the issue metadata cache so the edit form opens without blocking.
+	if project != "" {
+		cmds = append(cmds, metadataPreloadCmd(client, project))
+	}
+
 	initCmd := tea.Batch(cmds...)
 
 	return boardModel{
@@ -287,6 +292,21 @@ func newBoardModel(client api.Client, boardID int, jiraURL, project string, clas
 }
 
 func (m boardModel) Init() tea.Cmd { return m.initCmd }
+
+// metadataPreloadDoneMsg is sent when the background metadata preload finishes.
+type metadataPreloadDoneMsg struct{ err error }
+
+// metadataPreloadCmd warms the GetIssueMetadata cache entry so the edit form
+// opens without waiting on those network requests.
+func metadataPreloadCmd(client api.Client, projectKey string) tea.Cmd {
+	return func() tea.Msg {
+		_, err := client.GetIssueMetadata(projectKey)
+		if err != nil {
+			debug.LogError("metadataPreload: GetIssueMetadata", err)
+		}
+		return metadataPreloadDoneMsg{err: err}
+	}
+}
 
 // lazyLoadCmd fetches remaining sprint groups and backlog issues in the background.
 func lazyLoadCmd(client api.Client, boardID int, remainingSprints []models.Sprint, projectFilter string) tea.Cmd {
@@ -389,6 +409,11 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.kanban.refreshData(m.initData.BoardCols, issues, sprintName)
 			}
 		}
+		return m, nil
+	}
+
+	// Metadata preload completed — result is already cached; nothing else to do.
+	if _, ok := msg.(metadataPreloadDoneMsg); ok {
 		return m, nil
 	}
 
