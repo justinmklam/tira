@@ -92,7 +92,8 @@ type boardModel struct {
 
 // fetchBoardDataCore fetches sprint groups and board columns concurrently.
 // Returns BoardInitData on success, or an error if either fetch fails.
-func fetchBoardDataCore(client api.Client, boardID int) (BoardInitData, error) {
+// If projectFilter is non-empty, only issues from that project are included.
+func fetchBoardDataCore(client api.Client, boardID int, projectFilter string) (BoardInitData, error) {
 	var (
 		groups    []models.SprintGroup
 		boardCols []models.BoardColumn
@@ -117,13 +118,33 @@ func fetchBoardDataCore(client api.Client, boardID int) (BoardInitData, error) {
 	if colsErr != nil {
 		return BoardInitData{}, colsErr
 	}
+
+	// Filter issues by project if specified, then remove empty groups.
+	if projectFilter != "" {
+		filteredGroups := make([]models.SprintGroup, 0, len(groups))
+		for _, g := range groups {
+			filtered := make([]models.Issue, 0, len(g.Issues))
+			for _, issue := range g.Issues {
+				if issue.ProjectKey == projectFilter {
+					filtered = append(filtered, issue)
+				}
+			}
+			if len(filtered) > 0 {
+				g.Issues = filtered
+				filteredGroups = append(filteredGroups, g)
+			}
+		}
+		groups = filteredGroups
+	}
+
 	return BoardInitData{Groups: groups, BoardCols: boardCols}, nil
 }
 
 // FetchBoardData fetches sprint groups and board columns with a spinner.
-func FetchBoardData(client api.Client, boardID int) (BoardInitData, error) {
+// If projectFilter is non-empty, only issues from that project are included.
+func FetchBoardData(client api.Client, boardID int, projectFilter string) (BoardInitData, error) {
 	return tui.RunWithSpinner("Fetching board data…", func() (BoardInitData, error) {
-		return fetchBoardDataCore(client, boardID)
+		return fetchBoardDataCore(client, boardID, projectFilter)
 	})
 }
 
@@ -596,7 +617,7 @@ func (m boardModel) canSwitchView() bool {
 
 func (m boardModel) refreshCmd() tea.Cmd {
 	return func() tea.Msg {
-		data, err := fetchBoardDataCore(m.client, m.boardID)
+		data, err := fetchBoardDataCore(m.client, m.boardID, m.project)
 		if err != nil {
 			return boardRefreshDoneMsg{err: err}
 		}

@@ -4,10 +4,13 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/charmbracelet/log"
 	"github.com/justinmklam/tira/internal/api"
 	"github.com/justinmklam/tira/internal/app"
 	"github.com/spf13/cobra"
 )
+
+var boardProject string
 
 var boardCmd = &cobra.Command{
 	Use:   "board",
@@ -37,6 +40,11 @@ func init() {
 	rootCmd.AddCommand(boardCmd)
 	rootCmd.AddCommand(backlogCmd)
 	rootCmd.AddCommand(kanbanCmd)
+
+	// Add project flag to all board commands
+	for _, cmd := range []*cobra.Command{boardCmd, backlogCmd, kanbanCmd} {
+		cmd.Flags().StringVar(&boardProject, "project", "", "override the default project from config")
+	}
 }
 
 func runBoardCmd(startView app.BoardView) error {
@@ -44,12 +52,25 @@ func runBoardCmd(startView app.BoardView) error {
 		return fmt.Errorf("board ID not configured: set default_board_id in ~/.config/tira/config.yaml")
 	}
 
+	// Override project from flag if provided
+	project := cfg.Project
+	if boardProject != "" {
+		project = boardProject
+		log.Debug("project overridden", "original", cfg.Project, "override", project)
+	}
+
 	client, err := api.NewClient(cfg)
 	if err != nil {
 		return err
 	}
 
-	data, err := app.FetchBoardData(client, cfg.BoardID)
+	// Validate project exists before fetching board data
+	if err := client.ValidateProject(project); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return nil
+	}
+
+	data, err := app.FetchBoardData(client, cfg.BoardID, project)
 	if err != nil {
 		return err
 	}
@@ -58,5 +79,5 @@ func runBoardCmd(startView app.BoardView) error {
 		return nil
 	}
 
-	return app.RunBoardTUI(client, cfg.BoardID, cfg.JiraURL, cfg.Project, cfg.ClassicProject, data, startView)
+	return app.RunBoardTUI(client, cfg.BoardID, cfg.JiraURL, project, cfg.ClassicProject, data, startView)
 }

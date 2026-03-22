@@ -39,6 +39,7 @@ type Client interface {
 	GetStatuses(issueKey string) ([]models.Status, error)
 	TransitionStatus(issueKey, statusID string) error
 	AddComment(issueKey, text string) error
+	ValidateProject(projectKey string) error
 	// Bulk operations (parallel execution)
 	BulkSetAssignee(keys []string, accountID string) []error
 	BulkSetParent(keys []string, parentKey string) []error
@@ -381,6 +382,20 @@ func (c *jiraClient) AddComment(issueKey, text string) error {
 	}
 	_, err = c.client.Do(req, nil)
 	return err
+}
+
+// ValidateProject checks if a project exists by fetching its metadata.
+func (c *jiraClient) ValidateProject(projectKey string) error {
+	req, err := c.client.NewRequest(context.Background(), http.MethodGet,
+		fmt.Sprintf("rest/api/3/project/%s", projectKey), nil)
+	if err != nil {
+		return err
+	}
+	_, err = c.client.Do(req, nil)
+	if err != nil {
+		return fmt.Errorf("project %q not found or not accessible: %w", projectKey, err)
+	}
+	return nil
 }
 
 // fetchStatusChangeDate fetches the changelog for an issue and returns the date
@@ -942,7 +957,7 @@ func (c *jiraClient) GetSprintGroups(boardID int) ([]models.SprintGroup, error) 
 		return nil, fmt.Errorf("parsing sprints: %w", err)
 	}
 
-	const issueFields = "summary,status,issuetype,priority,assignee,labels,parent,story_points,customfield_10016"
+	const issueFields = "summary,status,issuetype,priority,assignee,labels,parent,story_points,customfield_10016,project"
 
 	// Fetch all sprint issues and the backlog concurrently.
 	// Pre-allocate one slot per sprint; backlog is appended after.
@@ -1064,6 +1079,9 @@ func (c *jiraClient) fetchAgileIssues(url, sprintName string) ([]models.Issue, e
 				// Story points — field ID varies by instance; try both.
 				StoryPoints   *float64 `json:"story_points"`
 				CustomField16 *float64 `json:"customfield_10016"`
+				Project       struct {
+					Key string `json:"key"`
+				} `json:"project"`
 			} `json:"fields"`
 		} `json:"issues"`
 	}
@@ -1091,6 +1109,7 @@ func (c *jiraClient) fetchAgileIssues(url, sprintName string) ([]models.Issue, e
 			Priority:   raw.Fields.Priority.Name,
 			SprintName: sprintName,
 			Labels:     raw.Fields.Labels,
+			ProjectKey: raw.Fields.Project.Key,
 		}
 		if raw.Fields.Assignee != nil {
 			issue.Assignee = raw.Fields.Assignee.DisplayName

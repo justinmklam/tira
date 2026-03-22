@@ -22,6 +22,7 @@ type Issue struct {
 	LinkedIssues       []LinkedIssue
 	Comments           []Comment
 	StatusChangedDate  string // ISO date when status last changed, e.g. "2026-03-01"
+	ProjectKey         string
 }
 
 type LinkedIssue struct {
