@@ -40,6 +40,9 @@ func (m boardModel) View() string {
 	case viewAssigneePicker:
 		return m.viewAssigneePickerOverlay(w, h)
 
+	case viewTypePicker:
+		return m.viewTypePickerOverlay(w, h)
+
 	case viewHelp:
 		return m.viewHelpOverlay(w, h)
 
@@ -100,6 +103,15 @@ func (m boardModel) viewAssigneePickerOverlay(w, h int) string {
 	return tui.RenderPickerOverlay(
 		func(innerW, listH int) string { return m.assigneePicker.View(innerW, listH) },
 		"Set Assignee",
+		w,
+		h,
+	)
+}
+
+func (m boardModel) viewTypePickerOverlay(w, h int) string {
+	return tui.RenderPickerOverlay(
+		func(innerW, listH int) string { return m.typePicker.View(innerW, listH) },
+		"Set Issue Type",
 		w,
 		h,
 	)

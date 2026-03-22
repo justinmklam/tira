@@ -30,6 +30,7 @@ const (
 	viewCreate         // create form active
 	viewCreateSaving   // create API call in flight
 	viewAssigneePicker // assignee fuzzy picker (edit form or direct assignment)
+	viewTypePicker     // issue type option picker (edit/create form)
 	viewHelp           // help overlay
 	viewComment        // comment textarea active
 	viewCommentSaving  // comment API call in flight
@@ -107,6 +108,9 @@ type boardModel struct {
 	// In-TUI assignee picker state.
 	assigneePicker  tui.PickerModel
 	assigneeForEdit bool // true = inject result into editForm; false = used externally
+
+	// In-TUI type picker state.
+	typePicker tui.OptionPickerModel
 
 	// Help overlay state.
 	helpModel tui.HelpModel
@@ -445,6 +449,12 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.activeView = viewAssigneePicker
 			return m, m.assigneePicker.Init()
 		}
+		if m.editForm != nil && m.editForm.wantTypePicker {
+			m.editForm.wantTypePicker = false
+			m.typePicker = newTypePicker(m.editValid.IssueTypes, m.editForm.inputs[efType].Value())
+			m.prevView = m.activeView
+			m.activeView = viewTypePicker
+		}
 		return m, cmd
 
 	case viewEditSaving:
@@ -520,6 +530,12 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.activeView = viewAssigneePicker
 			return m, m.assigneePicker.Init()
 		}
+		if m.editForm != nil && m.editForm.wantTypePicker {
+			m.editForm.wantTypePicker = false
+			m.typePicker = newTypePicker(m.editValid.IssueTypes, m.editForm.inputs[efType].Value())
+			m.prevView = m.activeView
+			m.activeView = viewTypePicker
+		}
 		return m, cmd
 
 	case viewCreateSaving:
@@ -566,6 +582,22 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.activeView = m.prevView
 				return m, nil
 			}
+		}
+		return m, cmd
+
+	case viewTypePicker:
+		updated, cmd := m.typePicker.Update(msg)
+		m.typePicker = updated
+		if m.typePicker.Aborted {
+			m.activeView = m.prevView
+			return m, nil
+		}
+		if m.typePicker.Completed {
+			if val := m.typePicker.SelectedItem(); val != "" && m.editForm != nil {
+				m.editForm.inputs[efType].SetValue(val)
+			}
+			m.activeView = m.prevView
+			return m, nil
 		}
 		return m, cmd
 

@@ -67,6 +67,7 @@ type editModel struct {
 	validErr  string
 
 	wantAssigneePicker bool
+	wantTypePicker     bool
 }
 
 func newEditModel(issue *models.Issue, valid *models.ValidValues, width, height int) *editModel {
@@ -220,6 +221,11 @@ func (m *editModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.wantAssigneePicker = true
 					return m, nil
 				}
+				// Type field: open option picker instead of advancing.
+				if m.focused == efType {
+					m.wantTypePicker = true
+					return m, nil
+				}
 				// Accept highlighted suggestion (or first) if any; otherwise advance field.
 				if m.hasSuggestions() && len(m.suggestions) > 0 {
 					idx := m.suggCursor
@@ -290,7 +296,7 @@ func (m *editModel) focusFocused() {
 }
 
 func (m *editModel) hasSuggestions() bool {
-	return m.focused == efType || m.focused == efPriority
+	return m.focused == efPriority
 }
 
 func (m *editModel) refreshSuggestions() {
