@@ -667,33 +667,30 @@ func parseFloat(s string) (float64, error) {
 	return result, err
 }
 
+// renderIssueContent renders an issue's markdown through glamour at the given wrap width.
+// This is the shared rendering logic used by both the sidebar and the detail overlay.
+func renderIssueContent(issue *models.Issue, wrapWidth int) string {
+	md := display.RenderIssue(issue)
+	renderer, err := glamour.NewTermRenderer(
+		glamour.WithStyles(styles.DarkStyleConfig),
+		glamour.WithWordWrap(wrapWidth),
+	)
+	if err != nil {
+		return md
+	}
+	content, err := renderer.Render(md)
+	if err != nil {
+		return md
+	}
+	return strings.TrimLeft(content, "\n")
+}
+
 // renderSidebarContent returns the sidebar content for the given issue.
-// It renders the full issue details using glamour (same as the detail overlay).
 func renderSidebarContent(issue *models.Issue, width int) string {
 	if issue == nil {
 		return tui.DimStyle.Render("No issue selected")
 	}
-
-	// Use the same rendering as the detail overlay
-	md := display.RenderIssue(issue)
-
-	// Use a fixed dark style with word wrapping
-	renderer, err := glamour.NewTermRenderer(
-		glamour.WithStyles(styles.DarkStyleConfig),
-		glamour.WithWordWrap(width-4), // -4 for padding
-	)
-	if err != nil {
-		// Fallback to plain markdown if renderer fails
-		return md
-	}
-
-	content, err := renderer.Render(md)
-	if err != nil {
-		// Fallback to plain markdown if rendering fails
-		return md
-	}
-
-	return strings.TrimLeft(content, "\n")
+	return renderIssueContent(issue, width-4)
 }
 
 // fetchSidebarIssueCmd fetches the full issue from the Jira API for sidebar display.
@@ -703,17 +700,6 @@ func fetchSidebarIssueCmd(client api.Client, key string, width int) tea.Cmd {
 		if err != nil {
 			return sidebarIssueFetchedMsg{err: err}
 		}
-		md := display.RenderIssue(issue)
-		renderer, rerr := glamour.NewTermRenderer(
-			glamour.WithStyles(styles.DarkStyleConfig),
-			glamour.WithWordWrap(width-4),
-		)
-		content := md
-		if rerr == nil {
-			if rendered, rerr2 := renderer.Render(md); rerr2 == nil {
-				content = strings.TrimLeft(rendered, "\n")
-			}
-		}
-		return sidebarIssueFetchedMsg{issue: issue, content: content}
+		return sidebarIssueFetchedMsg{issue: issue, content: renderIssueContent(issue, width-4)}
 	}
 }
