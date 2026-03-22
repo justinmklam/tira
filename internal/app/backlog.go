@@ -89,9 +89,8 @@ type blSprintDoneMsg struct {
 
 // sidebarIssueFetchedMsg is sent when the sidebar's full issue is fetched.
 type sidebarIssueFetchedMsg struct {
-	issue   *models.Issue
-	content string
-	err     error
+	issue *models.Issue
+	err   error
 }
 
 type blModel struct {
@@ -408,6 +407,25 @@ func (m blModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.detailView.Width = vpW
 			m.detailView.Height = vpH
 		}
+		// Re-render sidebar at the actual terminal width. The initial render
+		// in newBacklogModel uses width=0 (terminal size not yet known), which
+		// produces a very narrow word-wrap. Re-render now using the real width.
+		detailW := tui.DetailPaneWidth(m.width)
+		issue := m.sidebarFullIssue
+		if issue == nil {
+			issue = m.currentIssue()
+		}
+		if issue == nil {
+			issue = m.lastIssue
+		}
+		m.sidebarContent = renderSidebarContent(issue, detailW)
+		// Trigger the initial full-issue fetch if navigation hasn't done so yet.
+		if m.sidebarIssueKey == "" {
+			if cur := m.currentIssue(); cur != nil {
+				m.sidebarIssueKey = cur.Key
+				return m, fetchSidebarIssueCmd(m.client, cur.Key)
+			}
+		}
 		return m, nil
 
 	case issueFetchedMsg:
@@ -426,7 +444,7 @@ func (m blModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case sidebarIssueFetchedMsg:
 		if msg.err == nil && msg.issue != nil {
 			m.sidebarFullIssue = msg.issue
-			m.sidebarContent = msg.content
+			m.sidebarContent = renderSidebarContent(msg.issue, tui.DetailPaneWidth(m.width))
 			m.sidebarOffset = 0
 		}
 		return m, nil
@@ -700,12 +718,10 @@ func renderSidebarContent(issue *models.Issue, width int) string {
 }
 
 // fetchSidebarIssueCmd fetches the full issue from the Jira API for sidebar display.
-func fetchSidebarIssueCmd(client api.Client, key string, width int) tea.Cmd {
+// Rendering happens in the Update handler so it uses the current terminal width.
+func fetchSidebarIssueCmd(client api.Client, key string) tea.Cmd {
 	return func() tea.Msg {
 		issue, err := client.GetIssue(key)
-		if err != nil {
-			return sidebarIssueFetchedMsg{err: err}
-		}
-		return sidebarIssueFetchedMsg{issue: issue, content: renderSidebarContent(issue, width)}
+		return sidebarIssueFetchedMsg{issue: issue, err: err}
 	}
 }

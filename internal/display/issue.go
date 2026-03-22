@@ -29,23 +29,36 @@ func RenderIssue(issue *models.Issue) string {
 		spText = "—"
 	}
 	rows := []metaRow{{"Assignee", assignee}, {"Status", issue.Status}, {"Story Points", spText}}
-	rows = append(rows, metaRow{"Type", issue.IssueType}, metaRow{"Priority", issue.Priority})
-	if issue.SprintName != "" {
-		rows = append(rows, metaRow{"Sprint", issue.SprintName})
+	rows = append(rows, metaRow{"Type", issue.IssueType})
+	priority := issue.Priority
+	if priority == "" {
+		priority = "—"
 	}
-	if issue.Reporter != "" {
-		rows = append(rows, metaRow{"Reporter", issue.Reporter})
+	rows = append(rows, metaRow{"Priority", priority})
+	sprintName := issue.SprintName
+	if sprintName == "" {
+		sprintName = "—"
 	}
+	rows = append(rows, metaRow{"Sprint", sprintName})
+	parent := "—"
 	if issue.ParentKey != "" {
-		parent := issue.ParentKey
+		parent = issue.ParentKey
 		if issue.ParentSummary != "" {
 			parent = fmt.Sprintf("%s: %s", issue.ParentKey, issue.ParentSummary)
 		}
-		rows = append(rows, metaRow{"Parent", parent})
 	}
-	if len(issue.Labels) > 0 {
-		rows = append(rows, metaRow{"Labels", strings.Join(issue.Labels, ", ")})
+	rows = append(rows, metaRow{"Parent", parent})
+	reporter := issue.Reporter
+	if reporter == "" {
+		reporter = "—"
 	}
+	rows = append(rows, metaRow{"Reporter", reporter})
+	labels := issue.Labels
+	labelsStr := "—"
+	if len(labels) > 0 {
+		labelsStr = strings.Join(labels, ", ")
+	}
+	rows = append(rows, metaRow{"Labels", labelsStr})
 
 	maxKeyLen := 0
 	for _, r := range rows {
