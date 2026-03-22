@@ -30,11 +30,11 @@ func RenderIssue(issue *models.Issue) string {
 	}
 	rows := []metaRow{{"Assignee", assignee}, {"Status", issue.Status}, {"Story Points", spText}}
 	rows = append(rows, metaRow{"Type", issue.IssueType}, metaRow{"Priority", issue.Priority})
-	if issue.Reporter != "" {
-		rows = append(rows, metaRow{"Reporter", issue.Reporter})
-	}
 	if issue.SprintName != "" {
 		rows = append(rows, metaRow{"Sprint", issue.SprintName})
+	}
+	if issue.Reporter != "" {
+		rows = append(rows, metaRow{"Reporter", issue.Reporter})
 	}
 	if issue.ParentKey != "" {
 		parent := issue.ParentKey
