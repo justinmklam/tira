@@ -89,9 +89,8 @@ type blSprintDoneMsg struct {
 
 // sidebarIssueFetchedMsg is sent when the sidebar's full issue is fetched.
 type sidebarIssueFetchedMsg struct {
-	issue   *models.Issue
-	content string
-	err     error
+	issue *models.Issue
+	err   error
 }
 
 type blModel struct {
@@ -204,7 +203,7 @@ func blMatchesFilter(issue models.Issue, filter string, filterEpic string) bool 
 	return false
 }
 
-func newBacklogModel(client api.Client, boardID int, groups []models.SprintGroup, project, jiraURL string) blModel {
+func newBacklogModel(client api.Client, boardID int, groups []models.SprintGroup, project, jiraURL string) (blModel, tea.Cmd) {
 	collapsed := make(map[int]bool)
 
 	ti := textinput.New()
@@ -241,9 +240,15 @@ func newBacklogModel(client api.Client, boardID int, groups []models.SprintGroup
 			break
 		}
 	}
-	// Initialize sidebar content (fetch will be triggered by first navigation)
-	m.sidebarContent = renderSidebarContent(m.currentIssue(), tui.DetailPaneWidth(0))
-	return m
+	// Initialize sidebar content and trigger fetch for first issue
+	issue := m.currentIssue()
+	m.sidebarContent = renderSidebarContent(issue, 40) // Default width until we get window size
+	m.sidebarOffset = 0
+	if issue != nil {
+		m.sidebarIssueKey = issue.Key
+		return m, fetchSidebarIssueCmd(m.client, issue.Key)
+	}
+	return m, nil
 }
 
 // refreshData replaces the sprint groups and rebuilds the row list.
@@ -259,7 +264,7 @@ func (m *blModel) refreshData(groups []models.SprintGroup) tea.Cmd {
 	m.sidebarOffset = 0
 	if issue != nil {
 		m.sidebarIssueKey = issue.Key
-		return fetchSidebarIssueCmd(m.client, issue.Key, tui.DetailPaneWidth(m.width))
+		return fetchSidebarIssueCmd(m.client, issue.Key)
 	}
 	m.sidebarIssueKey = ""
 	return nil
@@ -411,23 +416,23 @@ func (m blModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.detailView.Width = vpW
 			m.detailView.Height = vpH
 		}
-		// Re-render sidebar at the actual terminal width. The initial render
-		// in newBacklogModel uses width=0 (terminal size not yet known), which
-		// produces a very narrow word-wrap. Re-render now using the real width.
-		detailW := tui.DetailPaneWidth(m.width)
-		issue := m.sidebarFullIssue
-		if issue == nil {
-			issue = m.currentIssue()
+		// Re-render sidebar at the actual terminal width.
+		// The initial render uses a default width since the terminal size isn't known yet.
+		if m.width > 0 {
+			detailW := tui.DetailPaneWidth(m.width)
+			if m.sidebarFullIssue != nil {
+				m.sidebarContent = renderSidebarContent(m.sidebarFullIssue, detailW)
+			} else if issue := m.currentIssue(); issue != nil {
+				m.sidebarContent = renderSidebarContent(issue, detailW)
+			} else if m.lastIssue != nil {
+				m.sidebarContent = renderSidebarContent(m.lastIssue, detailW)
+			}
 		}
-		if issue == nil {
-			issue = m.lastIssue
-		}
-		m.sidebarContent = renderSidebarContent(issue, detailW)
-		// Trigger the initial full-issue fetch if navigation hasn't done so yet.
-		if m.sidebarIssueKey == "" {
+		// Trigger initial fetch if we haven't done so yet
+		if m.width > 0 && m.sidebarIssueKey == "" {
 			if cur := m.currentIssue(); cur != nil {
 				m.sidebarIssueKey = cur.Key
-				return m, fetchSidebarIssueCmd(m.client, cur.Key, detailW)
+				return m, fetchSidebarIssueCmd(m.client, cur.Key)
 			}
 		}
 		return m, nil
@@ -448,7 +453,12 @@ func (m blModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case sidebarIssueFetchedMsg:
 		if msg.err == nil && msg.issue != nil {
 			m.sidebarFullIssue = msg.issue
-			m.sidebarContent = msg.content
+			// Always re-render at the current width (don't use pre-rendered content)
+			width := tui.DetailPaneWidth(m.width)
+			if width < 20 {
+				width = 40 // Fallback if window size not known
+			}
+			m.sidebarContent = renderSidebarContent(msg.issue, width)
 			m.sidebarOffset = 0
 		}
 		return m, nil
@@ -736,15 +746,11 @@ func renderSidebarContent(issue *models.Issue, width int) string {
 }
 
 // fetchSidebarIssueCmd fetches the full issue from the Jira API for sidebar display.
-// Rendering happens here using the current pane width.
-func fetchSidebarIssueCmd(client api.Client, key string, width int) tea.Cmd {
+// Rendering happens in the Update handler using the current terminal width.
+func fetchSidebarIssueCmd(client api.Client, key string) tea.Cmd {
 	return func() tea.Msg {
 		issue, err := client.GetIssue(key)
-		if err != nil {
-			return sidebarIssueFetchedMsg{issue: issue, err: err}
-		}
-		content := renderIssueContent(issue, width-4)
-		return sidebarIssueFetchedMsg{issue: issue, content: content, err: err}
+		return sidebarIssueFetchedMsg{issue: issue, err: err}
 	}
 }
 
