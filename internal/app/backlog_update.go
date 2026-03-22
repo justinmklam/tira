@@ -29,6 +29,7 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			next = tui.Clamp(next+1, 0, len(m.rows)-1)
 		}
 		m.cursor = next
+		m = m.updateSidebarContent()
 		return blScrollToFit(m), nil
 
 	case "k":
@@ -37,6 +38,7 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			prev = tui.Clamp(prev-1, 0, len(m.rows)-1)
 		}
 		m.cursor = prev
+		m = m.updateSidebarContent()
 		return blScrollToFit(m), nil
 
 	case "J", "}":
@@ -46,6 +48,7 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 				break
 			}
 		}
+		m = m.updateSidebarContent()
 		return blScrollToFit(m), nil
 
 	case "K", "{":
@@ -55,30 +58,33 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 				break
 			}
 		}
+		m = m.updateSidebarContent()
 		return blScrollToFit(m), nil
 
 	case "g":
 		m.cursor = 0
 		m.offset = 0
+		m = m.updateSidebarContent()
 		return m, nil
 
 	case "G":
 		m.cursor = len(m.rows) - 1
+		m = m.updateSidebarContent()
 		return blScrollToFit(m), nil
 
 	case "ctrl+d":
-		m.cursor = tui.Clamp(m.cursor+m.viewHeight()/2, 0, len(m.rows)-1)
-		if m.rows[m.cursor].kind == blRowSpacer {
-			m.cursor = tui.Clamp(m.cursor+1, 0, len(m.rows)-1)
-		}
-		return blScrollToFit(m), nil
+		// Scroll sidebar content down by 1/4 page
+		m.sidebarOffset += m.viewHeight() / 4
+		// Clamp to content bounds (will be validated after we know content length)
+		return m, nil
 
 	case "ctrl+u":
-		m.cursor = tui.Clamp(m.cursor-m.viewHeight()/2, 0, len(m.rows)-1)
-		if m.rows[m.cursor].kind == blRowSpacer {
-			m.cursor = tui.Clamp(m.cursor-1, 0, len(m.rows)-1)
+		// Scroll sidebar content up by 1/4 page
+		m.sidebarOffset -= m.viewHeight() / 4
+		if m.sidebarOffset < 0 {
+			m.sidebarOffset = 0
 		}
-		return blScrollToFit(m), nil
+		return m, nil
 
 	case "z":
 		row := m.rows[m.cursor]
@@ -1089,4 +1095,21 @@ func blUpdateSprintCmd(client api.Client, sprintID int, name, startDate, endDate
 		err := client.UpdateSprint(sprintID, name, startDate, endDate)
 		return blSprintDoneMsg{err: err}
 	}
+}
+
+// updateSidebarContent updates the sidebar content based on the currently selected issue.
+// If the cursor is on a sprint header, it uses the last selected issue.
+// It also resets the sidebar scroll offset to 0.
+func (m blModel) updateSidebarContent() blModel {
+	issue := m.currentIssue()
+	// Track last issue for when cursor is on sprint header
+	if issue != nil {
+		m.lastIssue = issue
+	} else if m.lastIssue != nil {
+		// Cursor is on sprint header or spacer, use last issue
+		issue = m.lastIssue
+	}
+	m.sidebarContent = renderSidebarContent(issue, tui.DetailPaneWidth(m.width))
+	m.sidebarOffset = 0
+	return m
 }

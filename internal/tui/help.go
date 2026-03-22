@@ -41,12 +41,17 @@ func HelpSections() []HelpSection {
 				{Key: "J / }", Description: "Jump to next sprint header"},
 				{Key: "K / {", Description: "Jump to previous sprint header"},
 				{Key: "g / G", Description: "Jump to first / last ticket in the list"},
-				{Key: "C-d / C-u", Description: "Half-page down / up"},
 				{Key: "z", Description: "Toggle collapse current sprint"},
 				{Key: "Z", Description: "Toggle collapse all sprints"},
 				{Key: "/", Description: "Filter tickets (fuzzy search by summary or key)"},
 				{Key: "Enter", Description: "Toggle expand/collapse sprint or open ticket detail"},
 				{Key: "Esc", Description: "Clear filter / cancel current action / clear selection"},
+			},
+		},
+		{
+			Title: "Issue Details Sidebar (Backlog)",
+			Keybindings: []HelpKeybinding{
+				{Key: "ctrl+d / ctrl+u", Description: "Scroll details down / up by 1/4 page"},
 			},
 		},
 		{

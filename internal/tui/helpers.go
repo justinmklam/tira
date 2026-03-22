@@ -53,8 +53,9 @@ func SplitPanes(left, right string, leftWidth, height int) string {
 }
 
 // ListPaneWidth returns the width of the list pane in a split layout.
+// The list pane takes 65% of the total width.
 func ListPaneWidth(totalWidth int) int {
-	w := totalWidth * 40 / 100
+	w := totalWidth * 65 / 100
 	if w < 30 {
 		w = 30
 	}
@@ -62,6 +63,7 @@ func ListPaneWidth(totalWidth int) int {
 }
 
 // DetailPaneWidth returns the width of the detail pane in a split layout.
+// The detail pane takes the remaining width (approximately 35%).
 func DetailPaneWidth(totalWidth int) int {
 	w := totalWidth - ListPaneWidth(totalWidth) - 1
 	if w < 20 {

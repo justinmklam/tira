@@ -13,8 +13,11 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/glamour"
+	"github.com/charmbracelet/glamour/styles"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/justinmklam/tira/internal/api"
+	"github.com/justinmklam/tira/internal/display"
 	"github.com/justinmklam/tira/internal/models"
 	"github.com/justinmklam/tira/internal/tui"
 )
@@ -148,6 +151,13 @@ type blModel struct {
 
 	result   blResult
 	quitting bool
+
+	// Sidebar state (always visible in split-pane view)
+	sidebarContent string
+	sidebarOffset  int // scroll offset for sidebar content
+
+	// lastIssue tracks the most recently selected issue (used when cursor is on sprint header)
+	lastIssue *models.Issue
 }
 
 func blBuildRows(groups []models.SprintGroup, collapsed map[int]bool, filter string, filterEpic string) []blRow {
@@ -222,6 +232,8 @@ func newBacklogModel(client api.Client, boardID int, groups []models.SprintGroup
 			break
 		}
 	}
+	// Initialize sidebar content
+	m = m.updateSidebarContent()
 	return m
 }
 
@@ -230,6 +242,11 @@ func (m *blModel) refreshData(groups []models.SprintGroup) {
 	m.groups = groups
 	m.rows = blBuildRows(groups, m.collapsed, m.filter, m.filterEpic)
 	m.cursor = tui.Clamp(m.cursor, 0, max(len(m.rows)-1, 0))
+	// Update sidebar content (call on value, then assign back)
+	tempM := *m
+	tempM = tempM.updateSidebarContent()
+	m.sidebarContent = tempM.sidebarContent
+	m.sidebarOffset = tempM.sidebarOffset
 }
 
 func (m blModel) viewHeight() int {
@@ -627,4 +644,33 @@ func parseFloat(s string) (float64, error) {
 	var result float64
 	_, err := fmt.Sscanf(s, "%f", &result)
 	return result, err
+}
+
+// renderSidebarContent returns the sidebar content for the given issue.
+// It renders the full issue details using glamour (same as the detail overlay).
+func renderSidebarContent(issue *models.Issue, width int) string {
+	if issue == nil {
+		return tui.DimStyle.Render("No issue selected")
+	}
+
+	// Use the same rendering as the detail overlay
+	md := display.RenderIssue(issue)
+
+	// Use a fixed dark style with word wrapping
+	renderer, err := glamour.NewTermRenderer(
+		glamour.WithStyles(styles.DarkStyleConfig),
+		glamour.WithWordWrap(width-4), // -4 for padding
+	)
+	if err != nil {
+		// Fallback to plain markdown if renderer fails
+		return md
+	}
+
+	content, err := renderer.Render(md)
+	if err != nil {
+		// Fallback to plain markdown if rendering fails
+		return md
+	}
+
+	return strings.TrimLeft(content, "\n")
 }
