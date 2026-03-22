@@ -29,8 +29,9 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			next = tui.Clamp(next+1, 0, len(m.rows)-1)
 		}
 		m.cursor = next
-		m = m.updateSidebarContent()
-		return blScrollToFit(m), nil
+		var cmd tea.Cmd
+		m, cmd = m.updateSidebarContent()
+		return blScrollToFit(m), cmd
 
 	case "k":
 		prev := tui.Clamp(m.cursor-1, 0, len(m.rows)-1)
@@ -38,8 +39,9 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			prev = tui.Clamp(prev-1, 0, len(m.rows)-1)
 		}
 		m.cursor = prev
-		m = m.updateSidebarContent()
-		return blScrollToFit(m), nil
+		var cmd tea.Cmd
+		m, cmd = m.updateSidebarContent()
+		return blScrollToFit(m), cmd
 
 	case "J", "}":
 		for i := m.cursor + 1; i < len(m.rows); i++ {
@@ -48,8 +50,9 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 				break
 			}
 		}
-		m = m.updateSidebarContent()
-		return blScrollToFit(m), nil
+		var cmd tea.Cmd
+		m, cmd = m.updateSidebarContent()
+		return blScrollToFit(m), cmd
 
 	case "K", "{":
 		for i := m.cursor - 1; i >= 0; i-- {
@@ -58,19 +61,22 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 				break
 			}
 		}
-		m = m.updateSidebarContent()
-		return blScrollToFit(m), nil
+		var cmd tea.Cmd
+		m, cmd = m.updateSidebarContent()
+		return blScrollToFit(m), cmd
 
 	case "g":
 		m.cursor = 0
 		m.offset = 0
-		m = m.updateSidebarContent()
-		return m, nil
+		var cmd tea.Cmd
+		m, cmd = m.updateSidebarContent()
+		return m, cmd
 
 	case "G":
 		m.cursor = len(m.rows) - 1
-		m = m.updateSidebarContent()
-		return blScrollToFit(m), nil
+		var cmd tea.Cmd
+		m, cmd = m.updateSidebarContent()
+		return blScrollToFit(m), cmd
 
 	case "ctrl+d":
 		// Scroll sidebar content down by 1/4 page
@@ -1099,8 +1105,8 @@ func blUpdateSprintCmd(client api.Client, sprintID int, name, startDate, endDate
 
 // updateSidebarContent updates the sidebar content based on the currently selected issue.
 // If the cursor is on a sprint header, it uses the last selected issue.
-// It also resets the sidebar scroll offset to 0.
-func (m blModel) updateSidebarContent() blModel {
+// It triggers an async fetch of the full issue (with description) from the Jira API.
+func (m blModel) updateSidebarContent() (blModel, tea.Cmd) {
 	issue := m.currentIssue()
 	// Track last issue for when cursor is on sprint header
 	if issue != nil {
@@ -1109,7 +1115,26 @@ func (m blModel) updateSidebarContent() blModel {
 		// Cursor is on sprint header or spacer, use last issue
 		issue = m.lastIssue
 	}
-	m.sidebarContent = renderSidebarContent(issue, tui.DetailPaneWidth(m.width))
+
+	// If we already have the full issue cached, use it
+	if m.sidebarFullIssue != nil && m.sidebarIssueKey == issue.Key {
+		m.sidebarContent = renderSidebarContent(m.sidebarFullIssue, tui.DetailPaneWidth(m.width))
+		m.sidebarOffset = 0
+		return m, nil
+	}
+
+	// If the issue key changed, trigger a fetch
+	if issue != nil && m.sidebarIssueKey != issue.Key {
+		m.sidebarIssueKey = issue.Key
+		m.sidebarFullIssue = nil
+		// Show basic issue content while fetching
+		m.sidebarContent = renderSidebarContent(issue, tui.DetailPaneWidth(m.width))
+		m.sidebarOffset = 0
+		return m, fetchSidebarIssueCmd(m.client, issue.Key, tui.DetailPaneWidth(m.width))
+	}
+
+	// No issue selected
+	m.sidebarContent = renderSidebarContent(nil, tui.DetailPaneWidth(m.width))
 	m.sidebarOffset = 0
-	return m
+	return m, nil
 }

@@ -87,6 +87,13 @@ type blSprintDoneMsg struct {
 	err     error
 }
 
+// sidebarIssueFetchedMsg is sent when the sidebar's full issue is fetched.
+type sidebarIssueFetchedMsg struct {
+	issue   *models.Issue
+	content string
+	err     error
+}
+
 type blModel struct {
 	state   blState
 	client  api.Client
@@ -153,8 +160,10 @@ type blModel struct {
 	quitting bool
 
 	// Sidebar state (always visible in split-pane view)
-	sidebarContent string
-	sidebarOffset  int // scroll offset for sidebar content
+	sidebarContent   string
+	sidebarOffset    int           // scroll offset for sidebar content
+	sidebarIssueKey  string        // key of issue being displayed in sidebar
+	sidebarFullIssue *models.Issue // full issue with description from API
 
 	// lastIssue tracks the most recently selected issue (used when cursor is on sprint header)
 	lastIssue *models.Issue
@@ -232,8 +241,8 @@ func newBacklogModel(client api.Client, boardID int, groups []models.SprintGroup
 			break
 		}
 	}
-	// Initialize sidebar content
-	m = m.updateSidebarContent()
+	// Initialize sidebar content (fetch will be triggered by first navigation)
+	m.sidebarContent = renderSidebarContent(m.currentIssue(), tui.DetailPaneWidth(0))
 	return m
 }
 
@@ -242,11 +251,15 @@ func (m *blModel) refreshData(groups []models.SprintGroup) {
 	m.groups = groups
 	m.rows = blBuildRows(groups, m.collapsed, m.filter, m.filterEpic)
 	m.cursor = tui.Clamp(m.cursor, 0, max(len(m.rows)-1, 0))
-	// Update sidebar content (call on value, then assign back)
-	tempM := *m
-	tempM = tempM.updateSidebarContent()
-	m.sidebarContent = tempM.sidebarContent
-	m.sidebarOffset = tempM.sidebarOffset
+	// Reset sidebar cache - fetch will be triggered by next navigation
+	m.sidebarIssueKey = ""
+	m.sidebarFullIssue = nil
+	if issue := m.currentIssue(); issue != nil {
+		m.sidebarContent = renderSidebarContent(issue, tui.DetailPaneWidth(0))
+	} else {
+		m.sidebarContent = renderSidebarContent(nil, tui.DetailPaneWidth(0))
+	}
+	m.sidebarOffset = 0
 }
 
 func (m blModel) viewHeight() int {
@@ -408,6 +421,14 @@ func (m blModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		vp.SetContent(msg.content)
 		m.detailView = vp
 		m.state = blDetail
+		return m, nil
+
+	case sidebarIssueFetchedMsg:
+		if msg.err == nil && msg.issue != nil {
+			m.sidebarFullIssue = msg.issue
+			m.sidebarContent = msg.content
+			m.sidebarOffset = 0
+		}
 		return m, nil
 
 	case spinner.TickMsg:
@@ -673,4 +694,26 @@ func renderSidebarContent(issue *models.Issue, width int) string {
 	}
 
 	return strings.TrimLeft(content, "\n")
+}
+
+// fetchSidebarIssueCmd fetches the full issue from the Jira API for sidebar display.
+func fetchSidebarIssueCmd(client api.Client, key string, width int) tea.Cmd {
+	return func() tea.Msg {
+		issue, err := client.GetIssue(key)
+		if err != nil {
+			return sidebarIssueFetchedMsg{err: err}
+		}
+		md := display.RenderIssue(issue)
+		renderer, rerr := glamour.NewTermRenderer(
+			glamour.WithStyles(styles.DarkStyleConfig),
+			glamour.WithWordWrap(width-4),
+		)
+		content := md
+		if rerr == nil {
+			if rendered, rerr2 := renderer.Render(md); rerr2 == nil {
+				content = strings.TrimLeft(rendered, "\n")
+			}
+		}
+		return sidebarIssueFetchedMsg{issue: issue, content: content}
+	}
 }
