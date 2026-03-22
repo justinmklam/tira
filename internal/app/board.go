@@ -35,10 +35,17 @@ const (
 	viewCommentSaving  // comment API call in flight
 )
 
+// maxInitialSprints is the number of sprint groups fetched during initial load.
+// Remaining sprints and the backlog are lazy-loaded after the TUI renders.
+const maxInitialSprints = 3
+
 // BoardInitData holds the initial fetch results needed by both views.
 type BoardInitData struct {
 	Groups    []models.SprintGroup
 	BoardCols []models.BoardColumn
+	// RemainingSprints holds sprint metadata not yet fetched during initial load.
+	// Empty after lazy loading completes or when all sprints fit in the initial batch.
+	RemainingSprints []models.Sprint
 }
 
 // boardRefreshDoneMsg is sent when an async full-board refresh completes.
@@ -51,6 +58,13 @@ type boardRefreshDoneMsg struct {
 type issueRefreshDoneMsg struct {
 	issue *models.Issue
 	err   error
+}
+
+// blLazyLoadDoneMsg is sent when the remaining sprint groups and backlog
+// finish loading in the background after initial render.
+type blLazyLoadDoneMsg struct {
+	groups []models.SprintGroup // remaining sprints + backlog
+	err    error
 }
 
 // issueInsertDoneMsg is sent after fetching a newly created issue so it can be
@@ -107,10 +121,60 @@ type boardModel struct {
 	initCmd tea.Cmd
 }
 
-// fetchBoardDataCore fetches sprint groups and board columns concurrently.
-// Returns BoardInitData on success, or an error if either fetch fails.
+// fetchBoardDataCore fetches the first batch of sprint groups and board columns
+// concurrently. Remaining sprints are returned in RemainingSprints for lazy loading.
 // If projectFilter is non-empty, only issues from that project are included.
 func fetchBoardDataCore(client api.Client, boardID int, projectFilter string) (BoardInitData, error) {
+	var (
+		allSprints []models.Sprint
+		boardCols  []models.BoardColumn
+		sprintsErr error
+		colsErr    error
+		wg         sync.WaitGroup
+	)
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		allSprints, sprintsErr = client.GetSprintList(boardID)
+	}()
+	go func() {
+		defer wg.Done()
+		boardCols, colsErr = client.GetBoardColumns(boardID)
+	}()
+	wg.Wait()
+
+	if sprintsErr != nil {
+		return BoardInitData{}, sprintsErr
+	}
+	if colsErr != nil {
+		return BoardInitData{}, colsErr
+	}
+
+	// Split sprints into initial batch and remainder.
+	initialSprints := allSprints
+	var remainingSprints []models.Sprint
+	if len(allSprints) > maxInitialSprints {
+		initialSprints = allSprints[:maxInitialSprints]
+		remainingSprints = allSprints[maxInitialSprints:]
+	}
+
+	groups, err := client.GetSprintGroupsBatch(boardID, initialSprints)
+	if err != nil {
+		return BoardInitData{}, err
+	}
+
+	groups = filterGroupsByProject(groups, projectFilter)
+
+	return BoardInitData{
+		Groups:           groups,
+		BoardCols:        boardCols,
+		RemainingSprints: remainingSprints,
+	}, nil
+}
+
+// fetchAllBoardDataCore fetches all sprint groups (no progressive loading).
+// Used by manual refresh (R key) where the user expects a full reload.
+func fetchAllBoardDataCore(client api.Client, boardID int, projectFilter string) (BoardInitData, error) {
 	var (
 		groups    []models.SprintGroup
 		boardCols []models.BoardColumn
@@ -136,25 +200,30 @@ func fetchBoardDataCore(client api.Client, boardID int, projectFilter string) (B
 		return BoardInitData{}, colsErr
 	}
 
-	// Filter issues by project if specified, then remove empty groups.
-	if projectFilter != "" {
-		filteredGroups := make([]models.SprintGroup, 0, len(groups))
-		for _, g := range groups {
-			filtered := make([]models.Issue, 0, len(g.Issues))
-			for _, issue := range g.Issues {
-				if issue.ProjectKey == projectFilter {
-					filtered = append(filtered, issue)
-				}
-			}
-			if len(filtered) > 0 {
-				g.Issues = filtered
-				filteredGroups = append(filteredGroups, g)
-			}
-		}
-		groups = filteredGroups
-	}
+	groups = filterGroupsByProject(groups, projectFilter)
 
 	return BoardInitData{Groups: groups, BoardCols: boardCols}, nil
+}
+
+// filterGroupsByProject filters issues by project if specified, removing empty groups.
+func filterGroupsByProject(groups []models.SprintGroup, projectFilter string) []models.SprintGroup {
+	if projectFilter == "" {
+		return groups
+	}
+	filteredGroups := make([]models.SprintGroup, 0, len(groups))
+	for _, g := range groups {
+		filtered := make([]models.Issue, 0, len(g.Issues))
+		for _, issue := range g.Issues {
+			if issue.ProjectKey == projectFilter {
+				filtered = append(filtered, issue)
+			}
+		}
+		if len(filtered) > 0 {
+			g.Issues = filtered
+			filteredGroups = append(filteredGroups, g)
+		}
+	}
+	return filteredGroups
 }
 
 // FetchBoardData fetches sprint groups and board columns with a spinner.
@@ -184,6 +253,18 @@ func newBoardModel(client api.Client, boardID int, jiraURL, project string, clas
 
 	backlog, backlogCmd := newBacklogModel(client, boardID, data.Groups, project, jiraURL)
 
+	cmds := []tea.Cmd{backlogCmd}
+
+	// If there are remaining sprints to load, fire lazy load in background.
+	if len(data.RemainingSprints) > 0 {
+		cmds = append(cmds, lazyLoadCmd(client, boardID, data.RemainingSprints, project))
+	} else {
+		// All sprints loaded; still need to lazy-load the backlog.
+		cmds = append(cmds, lazyLoadCmd(client, boardID, nil, project))
+	}
+
+	initCmd := tea.Batch(cmds...)
+
 	return boardModel{
 		activeView:     startView,
 		backlog:        backlog,
@@ -195,11 +276,40 @@ func newBoardModel(client api.Client, boardID int, jiraURL, project string, clas
 		classicProject: classicProject,
 		initData:       data,
 		editSpinner:    s,
-		initCmd:        backlogCmd,
-	}, backlogCmd
+		initCmd:        initCmd,
+	}, initCmd
 }
 
 func (m boardModel) Init() tea.Cmd { return m.initCmd }
+
+// lazyLoadCmd fetches remaining sprint groups and backlog issues in the background.
+func lazyLoadCmd(client api.Client, boardID int, remainingSprints []models.Sprint, projectFilter string) tea.Cmd {
+	return func() tea.Msg {
+		var groups []models.SprintGroup
+
+		// Fetch remaining sprint issues if any.
+		if len(remainingSprints) > 0 {
+			batch, err := client.GetSprintGroupsBatch(boardID, remainingSprints)
+			if err != nil {
+				return blLazyLoadDoneMsg{err: err}
+			}
+			groups = append(groups, batch...)
+		}
+
+		// Always fetch backlog.
+		backlogIssues, err := client.GetBacklogIssues(boardID)
+		if err == nil {
+			groups = append(groups, models.SprintGroup{
+				Sprint: models.Sprint{Name: "Backlog", State: "backlog"},
+				Issues: backlogIssues,
+			})
+		}
+
+		groups = filterGroupsByProject(groups, projectFilter)
+
+		return blLazyLoadDoneMsg{groups: groups}
+	}
+}
 
 func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Window size is always forwarded.
@@ -257,6 +367,22 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, sidebarCmd
 		}
 		m.backlog.moving = false
+		return m, nil
+	}
+
+	// Lazy-loaded sprint groups + backlog arrived.
+	if msg, ok := msg.(blLazyLoadDoneMsg); ok {
+		if msg.err == nil && len(msg.groups) > 0 {
+			m.backlog.appendGroups(msg.groups)
+			// Update initData so future refreshes include all groups.
+			m.initData.Groups = m.backlog.groups
+			m.initData.RemainingSprints = nil
+			// Update kanban if new groups contain an active sprint.
+			issues, sprintName := activeSprintFromGroups(msg.groups)
+			if len(issues) > 0 {
+				m.kanban.refreshData(m.initData.BoardCols, issues, sprintName)
+			}
+		}
 		return m, nil
 	}
 
@@ -664,7 +790,7 @@ func (m boardModel) refreshCmd() tea.Cmd {
 		if inv, ok := m.client.(api.CacheInvalidator); ok {
 			inv.Invalidate()
 		}
-		data, err := fetchBoardDataCore(m.client, m.boardID, m.project)
+		data, err := fetchAllBoardDataCore(m.client, m.boardID, m.project)
 		if err != nil {
 			return boardRefreshDoneMsg{err: err}
 		}
