@@ -667,10 +667,8 @@ func parseFloat(s string) (float64, error) {
 	return result, err
 }
 
-// renderIssueContent renders an issue's markdown through glamour at the given wrap width.
-// This is the shared rendering logic used by both the sidebar and the detail overlay.
-func renderIssueContent(issue *models.Issue, wrapWidth int) string {
-	md := display.RenderIssue(issue)
+// renderMarkdownWithGlamour renders a markdown string through glamour at the given wrap width.
+func renderMarkdownWithGlamour(md string, wrapWidth int) string {
 	renderer, err := glamour.NewTermRenderer(
 		glamour.WithStyles(styles.DarkStyleConfig),
 		glamour.WithWordWrap(wrapWidth),
@@ -685,12 +683,20 @@ func renderIssueContent(issue *models.Issue, wrapWidth int) string {
 	return strings.TrimLeft(content, "\n")
 }
 
+// renderIssueContent renders an issue's markdown through glamour at the given wrap width.
+// Used by the detail overlay.
+func renderIssueContent(issue *models.Issue, wrapWidth int) string {
+	return renderMarkdownWithGlamour(display.RenderIssue(issue), wrapWidth)
+}
+
 // renderSidebarContent returns the sidebar content for the given issue.
+// The issue key and summary are prepended as a Markdown H1 so glamour handles word wrapping.
 func renderSidebarContent(issue *models.Issue, width int) string {
 	if issue == nil {
 		return tui.DimStyle.Render("No issue selected")
 	}
-	return renderIssueContent(issue, width-4)
+	md := "# " + issue.Key + "  " + issue.Summary + "\n\n" + display.RenderIssue(issue)
+	return renderMarkdownWithGlamour(md, width-4)
 }
 
 // fetchSidebarIssueCmd fetches the full issue from the Jira API for sidebar display.
@@ -700,6 +706,6 @@ func fetchSidebarIssueCmd(client api.Client, key string, width int) tea.Cmd {
 		if err != nil {
 			return sidebarIssueFetchedMsg{err: err}
 		}
-		return sidebarIssueFetchedMsg{issue: issue, content: renderIssueContent(issue, width-4)}
+		return sidebarIssueFetchedMsg{issue: issue, content: renderSidebarContent(issue, width)}
 	}
 }

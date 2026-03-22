@@ -105,7 +105,6 @@ func (m blModel) viewList() string {
 
 	// Calculate pane widths: 65% for list, 35% for sidebar
 	listPaneW := tui.ListPaneWidth(width)
-	detailPaneW := tui.DetailPaneWidth(width)
 
 	// Top bar spans both panes
 	topBar := tui.BoldBlue.Padding(0, 1).Render("Backlog")
@@ -125,16 +124,6 @@ func (m blModel) viewList() string {
 	// Column header for list pane
 	colHeader := blColumnHeader(listPaneW)
 
-	// Sidebar header - truncated to fit, matching the detail overlay pattern
-	sidebarTitle := "Issue Details"
-	if issue := m.currentIssue(); issue != nil {
-		sidebarTitle = issue.Key + "  " + issue.Summary
-	} else if m.lastIssue != nil {
-		sidebarTitle = m.lastIssue.Key + "  " + m.lastIssue.Summary
-	}
-	sidebarHeader := tui.BoldBlue.Padding(0, 1).Width(detailPaneW).
-		Render(tui.FixedWidth(sidebarTitle, detailPaneW-2))
-
 	// Visible rows for list pane
 	vh := m.viewHeight()
 	end := m.offset + vh
@@ -150,9 +139,9 @@ func (m blModel) viewList() string {
 	}
 	listContent := strings.Join(lines, "\n")
 
-	// Header line: column header on left, sidebar header on right
+	// Header line: column header on left, divider separating sidebar
 	div := lipgloss.NewStyle().Foreground(tui.ColorDimmer).Render("│")
-	headerLine := lipgloss.NewStyle().Width(listPaneW).Render(colHeader) + div + sidebarHeader
+	headerLine := lipgloss.NewStyle().Width(listPaneW).Render(colHeader) + div
 
 	// Sidebar content with scroll
 	sidebarLines := strings.Split(m.sidebarContent, "\n")
