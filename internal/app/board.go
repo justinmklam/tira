@@ -88,6 +88,9 @@ type boardModel struct {
 	commentSummary string
 	commentForm    *commentInputModel
 	commentErr     string
+
+	// Initial command (sidebar fetch).
+	initCmd tea.Cmd
 }
 
 // fetchBoardDataCore fetches sprint groups and board columns concurrently.
@@ -158,16 +161,18 @@ func activeSprintFromGroups(groups []models.SprintGroup) ([]models.Issue, string
 	return nil, ""
 }
 
-func newBoardModel(client api.Client, boardID int, jiraURL, project string, classicProject bool, data BoardInitData, startView BoardView) boardModel {
+func newBoardModel(client api.Client, boardID int, jiraURL, project string, classicProject bool, data BoardInitData, startView BoardView) (boardModel, tea.Cmd) {
 	issues, sprintName := activeSprintFromGroups(data.Groups)
 
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	s.Style = lipgloss.NewStyle().Foreground(tui.SpinnerColor)
 
+	backlog, backlogCmd := newBacklogModel(client, boardID, data.Groups, project, jiraURL)
+
 	return boardModel{
 		activeView:     startView,
-		backlog:        newBacklogModel(client, boardID, data.Groups, project, jiraURL),
+		backlog:        backlog,
 		kanban:         newKanbanModel(client, data.BoardCols, issues, sprintName, project),
 		client:         client,
 		boardID:        boardID,
@@ -176,10 +181,11 @@ func newBoardModel(client api.Client, boardID int, jiraURL, project string, clas
 		classicProject: classicProject,
 		initData:       data,
 		editSpinner:    s,
-	}
+		initCmd:        backlogCmd,
+	}, backlogCmd
 }
 
-func (m boardModel) Init() tea.Cmd { return nil }
+func (m boardModel) Init() tea.Cmd { return m.initCmd }
 
 func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Window size is always forwarded.
@@ -205,13 +211,15 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if msg, ok := msg.(boardRefreshDoneMsg); ok {
 		if msg.err == nil {
 			m.initData = msg.data
-			m.backlog.refreshData(msg.data.Groups)
+			sidebarCmd := m.backlog.refreshData(msg.data.Groups)
 			issues, sprintName := activeSprintFromGroups(msg.data.Groups)
 			m.kanban.refreshData(msg.data.BoardCols, issues, sprintName)
 			if m.createResultKey != "" {
 				m.backlog.navigateToKey(m.createResultKey)
 				m.createResultKey = ""
 			}
+			m.backlog.moving = false
+			return m, sidebarCmd
 		}
 		m.backlog.moving = false
 		return m, nil
@@ -674,7 +682,7 @@ func RunBoardTUI(client api.Client, boardID int, jiraURL, project string, classi
 	// can call WithAutoStyle() without blocking.
 	_, _ = glamour.NewTermRenderer(glamour.WithAutoStyle())
 
-	m := newBoardModel(client, boardID, jiraURL, project, classicProject, data, startView)
+	m, _ := newBoardModel(client, boardID, jiraURL, project, classicProject, data, startView)
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	_, err := p.Run()
 	if err != nil {

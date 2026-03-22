@@ -58,15 +58,20 @@ func TestClamp(t *testing.T) {
 }
 
 func TestListPaneWidth(t *testing.T) {
-	// At 120 width, 40% = 48
+	// At 120 width, 55% = 66
 	w := ListPaneWidth(120)
-	if w != 48 {
-		t.Errorf("ListPaneWidth(120) = %d, want 48", w)
+	if w != 66 {
+		t.Errorf("ListPaneWidth(120) = %d, want 66", w)
 	}
-	// At 60 width, 40% = 24, but min is 30
+	// At 60 width, 55% = 33, which is above min of 30
 	w = ListPaneWidth(60)
+	if w != 33 {
+		t.Errorf("ListPaneWidth(60) = %d, want 33", w)
+	}
+	// At 40 width, 55% = 22, but min is 30
+	w = ListPaneWidth(40)
 	if w != 30 {
-		t.Errorf("ListPaneWidth(60) = %d, want 30", w)
+		t.Errorf("ListPaneWidth(40) = %d, want 30", w)
 	}
 }
 

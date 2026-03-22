@@ -62,7 +62,10 @@ func NewClient(cfg *config.Config) (Client, error) {
 
 	// Wrap with debug transport if debug mode is enabled
 	if debug.IsEnabled() {
+		debug.Logf("Debug mode enabled, wrapping HTTP transport")
 		httpClient.Transport = &debug.Transport{Base: httpClient.Transport}
+	} else {
+		debug.Logf("Debug mode NOT enabled when creating client")
 	}
 
 	c, err := jira.NewClient(cfg.JiraURL, httpClient)

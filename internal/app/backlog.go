@@ -13,8 +13,11 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/glamour"
+	"github.com/charmbracelet/glamour/styles"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/justinmklam/tira/internal/api"
+	"github.com/justinmklam/tira/internal/display"
 	"github.com/justinmklam/tira/internal/models"
 	"github.com/justinmklam/tira/internal/tui"
 )
@@ -84,6 +87,12 @@ type blSprintDoneMsg struct {
 	err     error
 }
 
+// sidebarIssueFetchedMsg is sent when the sidebar's full issue is fetched.
+type sidebarIssueFetchedMsg struct {
+	issue *models.Issue
+	err   error
+}
+
 type blModel struct {
 	state   blState
 	client  api.Client
@@ -148,6 +157,15 @@ type blModel struct {
 
 	result   blResult
 	quitting bool
+
+	// Sidebar state (always visible in split-pane view)
+	sidebarContent   string
+	sidebarOffset    int           // scroll offset for sidebar content
+	sidebarIssueKey  string        // key of issue being displayed in sidebar
+	sidebarFullIssue *models.Issue // full issue with description from API
+
+	// lastIssue tracks the most recently selected issue (used when cursor is on sprint header)
+	lastIssue *models.Issue
 }
 
 func blBuildRows(groups []models.SprintGroup, collapsed map[int]bool, filter string, filterEpic string) []blRow {
@@ -185,7 +203,7 @@ func blMatchesFilter(issue models.Issue, filter string, filterEpic string) bool 
 	return false
 }
 
-func newBacklogModel(client api.Client, boardID int, groups []models.SprintGroup, project, jiraURL string) blModel {
+func newBacklogModel(client api.Client, boardID int, groups []models.SprintGroup, project, jiraURL string) (blModel, tea.Cmd) {
 	collapsed := make(map[int]bool)
 
 	ti := textinput.New()
@@ -222,14 +240,34 @@ func newBacklogModel(client api.Client, boardID int, groups []models.SprintGroup
 			break
 		}
 	}
-	return m
+	// Initialize sidebar content and trigger fetch for first issue
+	issue := m.currentIssue()
+	m.sidebarContent = renderSidebarContent(issue, 40) // Default width until we get window size
+	m.sidebarOffset = 0
+	if issue != nil {
+		m.sidebarIssueKey = issue.Key
+		return m, fetchSidebarIssueCmd(m.client, issue.Key)
+	}
+	return m, nil
 }
 
 // refreshData replaces the sprint groups and rebuilds the row list.
-func (m *blModel) refreshData(groups []models.SprintGroup) {
+// Returns a command to re-fetch the sidebar issue at the correct width.
+func (m *blModel) refreshData(groups []models.SprintGroup) tea.Cmd {
 	m.groups = groups
 	m.rows = blBuildRows(groups, m.collapsed, m.filter, m.filterEpic)
 	m.cursor = tui.Clamp(m.cursor, 0, max(len(m.rows)-1, 0))
+	// Reset sidebar cache and show a preview while the full issue is re-fetched.
+	m.sidebarFullIssue = nil
+	issue := m.currentIssue()
+	m.sidebarContent = renderSidebarContent(issue, tui.DetailPaneWidth(m.width))
+	m.sidebarOffset = 0
+	if issue != nil {
+		m.sidebarIssueKey = issue.Key
+		return fetchSidebarIssueCmd(m.client, issue.Key)
+	}
+	m.sidebarIssueKey = ""
+	return nil
 }
 
 func (m blModel) viewHeight() int {
@@ -378,6 +416,25 @@ func (m blModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.detailView.Width = vpW
 			m.detailView.Height = vpH
 		}
+		// Re-render sidebar at the actual terminal width.
+		// The initial render uses a default width since the terminal size isn't known yet.
+		if m.width > 0 {
+			detailW := tui.DetailPaneWidth(m.width)
+			if m.sidebarFullIssue != nil {
+				m.sidebarContent = renderSidebarContent(m.sidebarFullIssue, detailW)
+			} else if issue := m.currentIssue(); issue != nil {
+				m.sidebarContent = renderSidebarContent(issue, detailW)
+			} else if m.lastIssue != nil {
+				m.sidebarContent = renderSidebarContent(m.lastIssue, detailW)
+			}
+		}
+		// Trigger initial fetch if we haven't done so yet
+		if m.width > 0 && m.sidebarIssueKey == "" {
+			if cur := m.currentIssue(); cur != nil {
+				m.sidebarIssueKey = cur.Key
+				return m, fetchSidebarIssueCmd(m.client, cur.Key)
+			}
+		}
 		return m, nil
 
 	case issueFetchedMsg:
@@ -391,6 +448,19 @@ func (m blModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		vp.SetContent(msg.content)
 		m.detailView = vp
 		m.state = blDetail
+		return m, nil
+
+	case sidebarIssueFetchedMsg:
+		if msg.err == nil && msg.issue != nil {
+			m.sidebarFullIssue = msg.issue
+			// Always re-render at the current width (don't use pre-rendered content)
+			width := tui.DetailPaneWidth(m.width)
+			if width < 20 {
+				width = 40 // Fallback if window size not known
+			}
+			m.sidebarContent = renderSidebarContent(msg.issue, width)
+			m.sidebarOffset = 0
+		}
 		return m, nil
 
 	case spinner.TickMsg:
@@ -627,4 +697,71 @@ func parseFloat(s string) (float64, error) {
 	var result float64
 	_, err := fmt.Sscanf(s, "%f", &result)
 	return result, err
+}
+
+// renderMarkdownWithGlamour renders a markdown string through glamour at the given wrap width.
+func renderMarkdownWithGlamour(md string, wrapWidth int) string {
+	renderer, err := glamour.NewTermRenderer(
+		glamour.WithStyles(styles.DarkStyleConfig),
+		glamour.WithWordWrap(wrapWidth),
+	)
+	if err != nil {
+		return md
+	}
+	content, err := renderer.Render(md)
+	if err != nil {
+		return md
+	}
+	return strings.TrimLeft(content, "\n")
+}
+
+// renderIssueContent renders an issue's markdown through glamour at the given wrap width.
+// Used by the detail overlay and sidebar.
+func renderIssueContent(issue *models.Issue, wrapWidth int) string {
+	return renderMarkdownWithGlamour(display.RenderIssue(issue), wrapWidth)
+}
+
+// renderIssueDetailView renders a common issue detail view with border and footer.
+// Used by both backlog and kanban detail overlays.
+func renderIssueDetailView(issue *models.Issue, detailView viewport.Model, width, height, overlayW, innerW int) string {
+	footer := tui.DimStyle.Render("  e: edit   c: comment   o: open in browser   esc/q: back   j/k: scroll")
+	body := detailView.View() + "\n" + footer
+
+	modal := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(tui.ColorBlue).
+		Width(innerW).
+		Render(body)
+
+	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, modal)
+}
+
+// renderSidebarContent returns the sidebar content for the given issue.
+// It uses the same rendering as the detail overlay.
+func renderSidebarContent(issue *models.Issue, width int) string {
+	if issue == nil {
+		return tui.DimStyle.Render("No issue selected")
+	}
+	return renderIssueContent(issue, width-4)
+}
+
+// fetchSidebarIssueCmd fetches the full issue from the Jira API for sidebar display.
+// Rendering happens in the Update handler using the current terminal width.
+func fetchSidebarIssueCmd(client api.Client, key string) tea.Cmd {
+	return func() tea.Msg {
+		issue, err := client.GetIssue(key)
+		return sidebarIssueFetchedMsg{issue: issue, err: err}
+	}
+}
+
+// fetchIssueCmd fetches the full issue from the Jira API for detail view overlay.
+// This is a shared function used by both backlog and kanban views.
+func fetchIssueCmd(client api.Client, key string, vpW int) tea.Cmd {
+	return func() tea.Msg {
+		issue, err := client.GetIssue(key)
+		if err != nil {
+			return issueFetchedMsg{err: err}
+		}
+		return issueFetchedMsg{issue: issue, content: renderIssueContent(issue, vpW)}
+	}
 }

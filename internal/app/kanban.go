@@ -6,11 +6,8 @@ import (
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/glamour"
-	"github.com/charmbracelet/glamour/styles"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/justinmklam/tira/internal/api"
-	"github.com/justinmklam/tira/internal/display"
 	"github.com/justinmklam/tira/internal/models"
 	"github.com/justinmklam/tira/internal/tui"
 )
@@ -361,30 +358,6 @@ func kanbanTransitionStatusCmd(client api.Client, keys []string, transitionID st
 	return func() tea.Msg {
 		errors := client.BulkTransitionStatus(keys, transitionID)
 		return kanbanBulkDoneMsg{Errors: errors}
-	}
-}
-
-func fetchIssueCmd(client api.Client, key string, vpW int) tea.Cmd {
-	return func() tea.Msg {
-		issue, err := client.GetIssue(key)
-		if err != nil {
-			return issueFetchedMsg{err: err}
-		}
-		md := display.RenderIssue(issue)
-		// Use a fixed dark style to avoid terminal detection in the goroutine.
-		// The pre-detection in RunBoardTUI caches termenv's sync.Once, but
-		// using a fixed style here is more reliable and avoids any blocking.
-		renderer, rerr := glamour.NewTermRenderer(
-			glamour.WithStyles(styles.DarkStyleConfig),
-			glamour.WithWordWrap(vpW),
-		)
-		content := md
-		if rerr == nil {
-			if rendered, rerr2 := renderer.Render(md); rerr2 == nil {
-				content = strings.TrimLeft(rendered, "\n")
-			}
-		}
-		return issueFetchedMsg{issue: issue, content: content}
 	}
 }
 

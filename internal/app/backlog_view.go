@@ -12,8 +12,8 @@ import (
 
 // Column widths for backlog issue rows.
 const (
-	blKeyW    = 10
-	blEpicW   = 16
+	blKeyW    = 8
+	blEpicW   = 12
 	blTypeW   = 8
 	blSpW     = 5
 	blAssignW = 14
@@ -65,18 +65,7 @@ func (m blModel) viewDetail() string {
 	overlayW, _ := tui.OverlaySize(width, height)
 	innerW := overlayW - 2
 
-	header := tui.BoldBlue.Padding(0, 1).Width(innerW).
-		Render(tui.FixedWidth(m.detailIssue.Key+"  "+m.detailIssue.Summary, innerW-2))
-	footer := tui.DimStyle.Render("  e: edit   c: comment   o: open in browser   esc/q: back   j/k: scroll")
-	body := header + "\n" + m.detailView.View() + "\n" + footer
-
-	modal := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(tui.ColorBlue).
-		Width(innerW).
-		Render(body)
-
-	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, modal)
+	return renderIssueDetailView(m.detailIssue, m.detailView, width, height, overlayW, innerW)
 }
 
 // blColumnHeader returns a dim header row aligned with issue row columns.
@@ -103,7 +92,10 @@ func (m blModel) viewList() string {
 		width = 120
 	}
 
-	// Top bar.
+	// Calculate pane widths: 65% for list, 35% for sidebar
+	listPaneW := tui.ListPaneWidth(width)
+
+	// Top bar spans both panes
 	topBar := tui.BoldBlue.Padding(0, 1).Render("Backlog")
 	if m.yankMessage != "" {
 		topBar += " " + lipgloss.NewStyle().Bold(true).Foreground(tui.ColorGreen).Render(m.yankMessage)
@@ -118,10 +110,10 @@ func (m blModel) viewList() string {
 		topBar += " " + lipgloss.NewStyle().Foreground(tui.ColorOrange).Render(fmt.Sprintf("✂ %d cut", len(m.cutKeys)))
 	}
 
-	// Column header.
-	colHeader := blColumnHeader(width)
+	// Column header for list pane
+	colHeader := blColumnHeader(listPaneW)
 
-	// Visible rows.
+	// Visible rows for list pane
 	vh := m.viewHeight()
 	end := m.offset + vh
 	if end > len(m.rows) {
@@ -129,13 +121,31 @@ func (m blModel) viewList() string {
 	}
 	lines := make([]string, 0, vh)
 	for i := m.offset; i < end; i++ {
-		lines = append(lines, m.renderRow(i, width))
+		lines = append(lines, m.renderRow(i, listPaneW))
 	}
 	for len(lines) < vh {
 		lines = append(lines, "")
 	}
+	listContent := strings.Join(lines, "\n")
 
-	// Footer.
+	// Header line: column header on left, divider separating sidebar
+	div := lipgloss.NewStyle().Foreground(tui.ColorDimmer).Render("│")
+	headerLine := lipgloss.NewStyle().Width(listPaneW).Render(colHeader) + div
+
+	// Sidebar content with scroll
+	sidebarLines := strings.Split(m.sidebarContent, "\n")
+	totalSidebarLines := len(sidebarLines)
+	sidebarEnd := m.sidebarOffset + vh
+	if sidebarEnd > totalSidebarLines {
+		sidebarEnd = totalSidebarLines
+	}
+	visibleSidebarLines := sidebarLines[m.sidebarOffset:sidebarEnd]
+	for len(visibleSidebarLines) < vh {
+		visibleSidebarLines = append(visibleSidebarLines, "")
+	}
+	sidebarContent := strings.Join(visibleSidebarLines, "\n")
+
+	// Footer spans both panes
 	var footer string
 	if m.state == blFilter {
 		footer = lipgloss.NewStyle().Foreground(tui.ColorBlue).Render("/") +
@@ -146,6 +156,7 @@ func (m blModel) viewList() string {
 			"e: edit", "c: comment", "o: open", "y: copy", "s: status", "S: story pts",
 			"x: cut", "p: paste", ">/<: adj sprint", "B: backlog",
 			"/: filter", "F: epic", "ctrl+n: new sprint", "E: edit sprint", "R: refresh",
+			"ctrl+d/u: scroll details",
 		}
 		left := "  " + strings.Join(hints, "   ")
 		if n := len(m.allSelected()); n > 0 {
@@ -154,18 +165,18 @@ func (m blModel) viewList() string {
 		switch {
 		case m.state == blLoading:
 			spinnerStr := m.loadSpinner.View() + tui.DimStyle.Render(" Loading…")
-			leftWidth := width - lipgloss.Width(spinnerStr) - 2
+			leftWidth := listPaneW - lipgloss.Width(spinnerStr) - 2
 			footer = tui.DimStyle.Render(tui.FixedWidth(left, leftWidth)) + "  " + spinnerStr
 		case m.moving:
 			spinnerStr := m.loadSpinner.View() + tui.DimStyle.Render(" Moving…")
-			leftWidth := width - lipgloss.Width(spinnerStr) - 2
+			leftWidth := listPaneW - lipgloss.Width(spinnerStr) - 2
 			footer = tui.DimStyle.Render(tui.FixedWidth(left, leftWidth)) + "  " + spinnerStr
 		default:
 			footer = tui.DimStyle.Render(left)
 		}
 	}
 
-	return topBar + "\n" + colHeader + "\n" + strings.Join(lines, "\n") + "\n" + footer
+	return topBar + "\n" + headerLine + "\n" + tui.SplitPanes(listContent, sidebarContent, listPaneW, vh) + "\n" + footer
 }
 
 func (m blModel) renderRow(idx, width int) string {

@@ -29,11 +29,6 @@ var rootCmd = &cobra.Command{
 				return fmt.Errorf("initializing debug logger: %w", err)
 			}
 			debug.Logf("Debug mode enabled")
-			defer func() {
-				if err := debug.Close(); err != nil {
-					log.Error("closing debug log", "error", err)
-				}
-			}()
 		}
 
 		// Skip config loading for commands that don't need it
@@ -61,7 +56,11 @@ func init() {
 }
 
 func Execute() {
-	if err := rootCmd.Execute(); err != nil {
+	err := rootCmd.Execute()
+	if closeErr := debug.Close(); closeErr != nil {
+		log.Error("closing debug log", "error", closeErr)
+	}
+	if err != nil {
 		os.Exit(1)
 	}
 }
