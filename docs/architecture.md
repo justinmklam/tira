@@ -229,13 +229,16 @@ type Client interface {
     GetBoardColumns(boardID int) ([]models.BoardColumn, error)
     GetActiveSprint(boardID int) ([]models.Issue, error)
     GetSprintGroups(boardID int) ([]models.SprintGroup, error)
+    GetSprintList(boardID int) ([]models.Sprint, error)
+    GetSprintGroupsBatch(boardID int, sprints []models.Sprint) ([]models.SprintGroup, error)
+    GetBacklogIssues(boardID int) ([]models.Issue, error)
     MoveIssuesToSprint(sprintID int, keys []string) error
     MoveIssuesToBacklog(keys []string) error
     // ... and more
 }
 ```
 
-**Hybrid approach:** Uses `go-jira` for structured fields, raw HTTP for ADF (Atlassian Document Format) fields that go-jira can't decode. Sprint group fetches run concurrently with `sync.WaitGroup`.
+**Hybrid approach:** Uses `go-jira` for structured fields, raw HTTP for ADF (Atlassian Document Format) fields that go-jira can't decode. Sprint group fetches run concurrently with `sync.WaitGroup`. The board TUI uses progressive loading: first 3 sprints are fetched initially, remaining sprints + backlog are lazy-loaded after the TUI renders.
 
 ### API Client Conventions
 

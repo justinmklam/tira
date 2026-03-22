@@ -222,11 +222,21 @@ All three commands call `runBoardCmd(startView)` which:
 3. Calls `fetchBoardData` with spinner — fetches sprint groups + board columns **concurrently**
 4. Calls `runBoardTUI` — starts the `tea.Program` with `tea.WithAltScreen()`
 
-### Board Data Fetch
+### Board Data Fetch (Progressive Loading)
 
-Two goroutines run in parallel:
-- `client.GetSprintGroups(boardID)` — fetches all active/future sprints + backlog
-- `client.GetBoardColumns(boardID)` — fetches board column configuration
+The initial fetch is split into two phases for fast time-to-first-render:
+
+**Phase 1 (blocking, with spinner):**
+- `client.GetSprintList(boardID)` + `client.GetBoardColumns(boardID)` — run in parallel
+- `client.GetSprintGroupsBatch(boardID, first3Sprints)` — fetches issues for the first 3 sprints only
+- TUI renders immediately with partial data
+
+**Phase 2 (background, after TUI renders):**
+- `client.GetSprintGroupsBatch(boardID, remainingSprints)` — remaining sprint issues
+- `client.GetBacklogIssues(boardID)` — backlog issues
+- Results are appended seamlessly via `blLazyLoadDoneMsg`
+
+Manual refresh (`R`) fetches everything at once via `GetSprintGroups`.
 
 **Example:**
 ```bash

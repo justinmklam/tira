@@ -58,7 +58,18 @@ Prefer `c.client.NewRequest`/`c.client.Do` when possible — it eliminates boile
 
 ### Concurrent Fetching
 
-`GetIssue` fires 3 goroutines concurrently (issue data, comments, status change date). `GetSprintGroups` fires N+1 goroutines (one per sprint + backlog). Use `sync.WaitGroup` to coordinate.
+`GetIssue` fires 3 goroutines concurrently (issue data, comments, status change date). `GetSprintGroupsBatch` fires N goroutines (one per sprint). Use `sync.WaitGroup` to coordinate.
+
+### Progressive Loading
+
+The board TUI uses a two-phase loading strategy to minimize time-to-first-render:
+
+1. **Initial load** (`fetchBoardDataCore`): Fetches sprint metadata (`GetSprintList`) + board columns concurrently, then fetches issues for the first 3 sprints only (`GetSprintGroupsBatch`). The TUI renders immediately.
+2. **Lazy load** (`lazyLoadCmd`): After the TUI renders, a background `tea.Cmd` fetches remaining sprint groups + backlog issues (`GetBacklogIssues`). Results arrive via `blLazyLoadDoneMsg` and are appended seamlessly.
+
+Manual refresh (`R` key) uses `fetchAllBoardDataCore` which fetches everything at once via `GetSprintGroups`.
+
+Status change dates are **not** fetched during board load — they are fetched lazily when an issue is selected for the sidebar via `GetIssue`.
 
 **Use channel-based result merging, not shared variables:**
 
@@ -219,25 +230,30 @@ func (m kanbanModel) viewAssignPicker() string {
 }
 ```
 
-**Duplicate fetch logic?** Extract a core function and wrap it:
+**Duplicate fetch logic?** Extract core functions and wrap them:
 
 ```go
-// Good: shared core function
-func fetchBoardDataCore(client api.Client, boardID int) (BoardInitData, error) {
-    // ... fetch logic
+// Good: shared core for initial load (progressive — first N sprints only)
+func fetchBoardDataCore(client api.Client, boardID int, projectFilter string) (BoardInitData, error) {
+    // ... fetches first 3 sprints, returns RemainingSprints for lazy loading
+}
+
+// Shared core for full reload (all sprints + backlog)
+func fetchAllBoardDataCore(client api.Client, boardID int, projectFilter string) (BoardInitData, error) {
+    // ... fetches everything via GetSprintGroups
 }
 
 // Initial fetch with spinner
-func FetchBoardData(client api.Client, boardID int) (BoardInitData, error) {
+func FetchBoardData(client api.Client, boardID int, projectFilter string) (BoardInitData, error) {
     return tui.RunWithSpinner("Fetching board data…", func() (BoardInitData, error) {
-        return fetchBoardDataCore(client, boardID)
+        return fetchBoardDataCore(client, boardID, projectFilter)
     })
 }
 
-// Refresh without spinner
+// Manual refresh — full reload without spinner
 func (m boardModel) refreshCmd() tea.Cmd {
     return func() tea.Msg {
-        data, err := fetchBoardDataCore(m.client, m.boardID)
+        data, err := fetchAllBoardDataCore(m.client, m.boardID, m.project)
         return boardRefreshDoneMsg{data: data, err: err}
     }
 }
