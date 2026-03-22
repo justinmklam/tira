@@ -106,6 +106,42 @@ func RenderIssue(issue *models.Issue) string
 func RenderIssue(issue *models.Issue) (string, error)
 ```
 
+### Caching
+
+The board TUI wraps the `jiraClient` with `api.NewCachedClient` (see `internal/api/cache.go`), which is a decorator that caches read responses in memory for the lifetime of the TUI session. Pressing `R` calls `Invalidate()` to clear the cache before refreshing.
+
+**When adding a new `Client` method:**
+
+- If it is a **read** method, add a cached implementation in `cachedClient` following the existing pattern:
+  ```go
+  func (c *cachedClient) GetFoo(key string) (*models.Foo, error) {
+      ckey := "foo:" + key
+      if v, ok := c.cget(ckey); ok {
+          return v.(*models.Foo), nil
+      }
+      result, err := c.inner.GetFoo(key)
+      if err != nil {
+          return nil, err
+      }
+      c.cset(ckey, result)
+      return result, nil
+  }
+  ```
+- If it is a **mutating** method, add a pass-through that invalidates affected cache entries on success:
+  ```go
+  func (c *cachedClient) UpdateFoo(key string, ...) error {
+      if err := c.inner.UpdateFoo(key, ...); err != nil {
+          return err
+      }
+      c.cdel("foo:" + key)
+      return nil
+  }
+  ```
+- If the mutation affects board sprint data (moves, ranking), use `c.cdelPrefix("sprint_groups:")` instead.
+- If the method has no useful caching (e.g. query-based search, one-off mutations), add a straight pass-through.
+
+Failing to add a `cachedClient` implementation will cause a compile error since `cachedClient` must satisfy the `Client` interface.
+
 ### Context Propagation (Future Work)
 
 Currently, `Client` interface methods do not accept `context.Context`. This is a known limitation that prevents:

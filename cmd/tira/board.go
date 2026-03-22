@@ -59,10 +59,11 @@ func runBoardCmd(startView app.BoardView) error {
 		log.Debug("project overridden", "original", cfg.Project, "override", project)
 	}
 
-	client, err := api.NewClient(cfg)
+	rawClient, err := api.NewClient(cfg)
 	if err != nil {
 		return err
 	}
+	client := api.NewCachedClient(rawClient)
 
 	// Validate project exists before fetching board data
 	if err := client.ValidateProject(project); err != nil {

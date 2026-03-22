@@ -625,6 +625,9 @@ func (m boardModel) canSwitchView() bool {
 
 func (m boardModel) refreshCmd() tea.Cmd {
 	return func() tea.Msg {
+		if inv, ok := m.client.(api.CacheInvalidator); ok {
+			inv.Invalidate()
+		}
 		data, err := fetchBoardDataCore(m.client, m.boardID, m.project)
 		if err != nil {
 			return boardRefreshDoneMsg{err: err}
