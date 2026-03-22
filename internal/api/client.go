@@ -456,28 +456,6 @@ func (c *jiraClient) fetchStatusChangeDate(key string) (string, error) {
 	return "", nil
 }
 
-// fetchBatchStatusChangeDates fetches changelogs for multiple issues in
-// parallel and returns a map of issue key to status change date.
-func (c *jiraClient) fetchBatchStatusChangeDates(keys []string) map[string]string {
-	result := make(map[string]string, len(keys))
-	var wg sync.WaitGroup
-	var mu sync.Mutex
-
-	for _, key := range keys {
-		wg.Add(1)
-		go func(k string) {
-			defer wg.Done()
-			if date, err := c.fetchStatusChangeDate(k); err == nil && date != "" {
-				mu.Lock()
-				result[k] = date
-				mu.Unlock()
-			}
-		}(key)
-	}
-	wg.Wait()
-	return result
-}
-
 func (c *jiraClient) extractADF(fields map[string]json.RawMessage, fieldID string) string {
 	raw, ok := fields[fieldID]
 	if !ok || string(raw) == "null" {
