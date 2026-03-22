@@ -788,14 +788,14 @@ func (m blModel) updateAssignPicker(msg tea.Msg) (tea.Model, tea.Cmd) {
 func blDoAssignCmd(client api.Client, keys []string, accountID string) tea.Cmd {
 	return func() tea.Msg {
 		errors := client.BulkSetAssignee(keys, accountID)
-		return blBulkDoneMsg{Errors: errors}
+		return blBulkDoneMsg{Keys: keys, Errors: errors}
 	}
 }
 
 func blAssignParentCmd(client api.Client, keys []string, parentKey string) tea.Cmd {
 	return func() tea.Msg {
 		errors := client.BulkSetParent(keys, parentKey)
-		return blBulkDoneMsg{Errors: errors}
+		return blBulkDoneMsg{Keys: keys, Errors: errors}
 	}
 }
 
@@ -843,7 +843,7 @@ func blSetStoryPointCmd(client api.Client, keys []string, storyPoints float64) t
 	return func() tea.Msg {
 		fields := models.IssueFields{StoryPoints: storyPoints}
 		errors := client.BulkUpdateIssue(keys, fields)
-		return blBulkDoneMsg{Errors: errors}
+		return blBulkDoneMsg{Keys: keys, Errors: errors}
 	}
 }
 
@@ -921,7 +921,9 @@ func blNewStatusPicker(client api.Client, issueKey, currentStatus string) tui.Pi
 func blTransitionStatusCmd(client api.Client, keys []string, transitionID string) tea.Cmd {
 	return func() tea.Msg {
 		errors := client.BulkTransitionStatus(keys, transitionID)
-		return blBulkDoneMsg{Errors: errors}
+		// FullRefresh: GetIssue does not return StatusID, so a targeted patch
+		// would leave the kanban column placement stale after a status change.
+		return blBulkDoneMsg{Keys: keys, Errors: errors, FullRefresh: true}
 	}
 }
 

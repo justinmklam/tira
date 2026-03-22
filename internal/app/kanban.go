@@ -43,9 +43,13 @@ type kanbanResult struct {
 }
 
 // kanbanBulkDoneMsg carries results from parallel bulk operations.
-// Errors is indexed by the original keys slice (nil = success).
+// Keys and Errors are parallel slices (nil error = success for that key).
+// FullRefresh is set for status transitions where GetIssue does not return
+// StatusID, so a targeted patch would leave column placement stale.
 type kanbanBulkDoneMsg struct {
-	Errors []error
+	Keys        []string
+	Errors      []error
+	FullRefresh bool
 }
 
 type kanbanModel struct {
@@ -136,6 +140,31 @@ func (m *kanbanModel) refreshData(boardCols []models.BoardColumn, issues []model
 	m.sprintName = sprintName
 }
 
+// patchIssue updates a single issue in place within the kanban columns.
+// Preserves agile-only fields not returned by GetIssue.
+func (m *kanbanModel) patchIssue(fresh models.Issue) {
+	for ci := range m.columns {
+		for ii := range m.columns[ci].issues {
+			if m.columns[ci].issues[ii].Key != fresh.Key {
+				continue
+			}
+			existing := m.columns[ci].issues[ii]
+			fresh.StatusID = existing.StatusID
+			fresh.EpicKey = existing.EpicKey
+			fresh.EpicName = existing.EpicName
+			fresh.ProjectKey = existing.ProjectKey
+			if fresh.StatusChangedDate == "" {
+				fresh.StatusChangedDate = existing.StatusChangedDate
+			}
+			m.columns[ci].issues[ii] = fresh
+		}
+	}
+	// Update detail overlay if it is showing this issue.
+	if m.detailIssue != nil && m.detailIssue.Key == fresh.Key {
+		m.detailIssue = &fresh
+	}
+}
+
 func (m kanbanModel) currentIssue() *models.Issue {
 	if len(m.columns) == 0 || len(m.columns[m.colIdx].issues) == 0 {
 		return nil
@@ -179,11 +208,20 @@ func (m kanbanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case kanbanBulkDoneMsg:
-		// Bulk operations completed. Refresh to show successful changes.
-		// Errors are logged but don't prevent refresh (partial success is possible).
-		m.result.refresh = true
-		// TODO: Display error count in UI if msg.Errors contains failures
-		return m, nil
+		if msg.FullRefresh {
+			// Status transitions need a full refresh: GetIssue does not return
+			// StatusID, so a targeted patch would leave column placement stale.
+			m.result.refresh = true
+			return m, nil
+		}
+		// For assignee changes, re-fetch only the affected issues.
+		var cmds []tea.Cmd
+		for i, key := range msg.Keys {
+			if i < len(msg.Errors) && msg.Errors[i] == nil {
+				cmds = append(cmds, issueRefreshCmd(m.client, key))
+			}
+		}
+		return m, tea.Batch(cmds...)
 	}
 
 	switch m.state {
@@ -350,14 +388,16 @@ func (m kanbanModel) updateStatusPicker(msg tea.Msg) (tea.Model, tea.Cmd) {
 func kanbanAssignCmd(client api.Client, keys []string, accountID string) tea.Cmd {
 	return func() tea.Msg {
 		errors := client.BulkSetAssignee(keys, accountID)
-		return kanbanBulkDoneMsg{Errors: errors}
+		return kanbanBulkDoneMsg{Keys: keys, Errors: errors}
 	}
 }
 
 func kanbanTransitionStatusCmd(client api.Client, keys []string, transitionID string) tea.Cmd {
 	return func() tea.Msg {
 		errors := client.BulkTransitionStatus(keys, transitionID)
-		return kanbanBulkDoneMsg{Errors: errors}
+		// FullRefresh: GetIssue does not return StatusID, so a targeted patch
+		// would leave the kanban column placement stale after a status change.
+		return kanbanBulkDoneMsg{Keys: keys, Errors: errors, FullRefresh: true}
 	}
 }
 

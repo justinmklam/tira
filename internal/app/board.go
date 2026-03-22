@@ -41,10 +41,24 @@ type BoardInitData struct {
 	BoardCols []models.BoardColumn
 }
 
-// boardRefreshDoneMsg is sent when an async refresh completes.
+// boardRefreshDoneMsg is sent when an async full-board refresh completes.
 type boardRefreshDoneMsg struct {
 	data BoardInitData
 	err  error
+}
+
+// issueRefreshDoneMsg is sent after a single-issue re-fetch (post-edit).
+type issueRefreshDoneMsg struct {
+	issue *models.Issue
+	err   error
+}
+
+// issueInsertDoneMsg is sent after fetching a newly created issue so it can be
+// inserted into the correct backlog sprint group without a full board reload.
+type issueInsertDoneMsg struct {
+	issue    *models.Issue
+	sprintID int // 0 = backlog
+	err      error
 }
 
 type boardModel struct {
@@ -207,6 +221,27 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// Single-issue re-fetch after an edit (faster than a full board refresh).
+	if msg, ok := msg.(issueRefreshDoneMsg); ok {
+		if msg.err == nil && msg.issue != nil {
+			m.backlog.patchIssue(*msg.issue)
+			m.kanban.patchIssue(*msg.issue)
+		}
+		return m, nil
+	}
+
+	// New issue inserted: add it to the correct backlog group and navigate to it.
+	if msg, ok := msg.(issueInsertDoneMsg); ok {
+		if msg.err == nil && msg.issue != nil {
+			m.backlog.insertIssue(*msg.issue, msg.sprintID)
+			if m.createResultKey != "" {
+				m.backlog.navigateToKey(m.createResultKey)
+				m.createResultKey = ""
+			}
+		}
+		return m, nil
+	}
+
 	// Board-level refresh result (may arrive at any time).
 	if msg, ok := msg.(boardRefreshDoneMsg); ok {
 		if msg.err == nil {
@@ -300,7 +335,7 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.editErr = fmt.Sprintf("Save failed: %v", msg.err)
 				return m, nil
 			}
-			return m, m.refreshCmd()
+			return m, issueRefreshCmd(m.client, m.editKey)
 		}
 		return m, nil
 
@@ -376,6 +411,7 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			if msg.issue != nil {
 				m.createResultKey = msg.issue.Key
+				return m, issueInsertCmd(m.client, msg.issue.Key, m.createSprintID)
 			}
 			return m, m.refreshCmd()
 		}
@@ -633,6 +669,25 @@ func (m boardModel) refreshCmd() tea.Cmd {
 			return boardRefreshDoneMsg{err: err}
 		}
 		return boardRefreshDoneMsg{data: data}
+	}
+}
+
+// issueRefreshCmd re-fetches a single issue after an edit. The cache entry for
+// the key is already invalidated by cachedClient.UpdateIssue, so this always
+// hits the API.
+func issueRefreshCmd(client api.Client, key string) tea.Cmd {
+	return func() tea.Msg {
+		issue, err := client.GetIssue(key)
+		return issueRefreshDoneMsg{issue: issue, err: err}
+	}
+}
+
+// issueInsertCmd fetches a newly created issue and returns an issueInsertDoneMsg
+// so the board can insert it into the correct sprint group without a full reload.
+func issueInsertCmd(client api.Client, key string, sprintID int) tea.Cmd {
+	return func() tea.Msg {
+		issue, err := client.GetIssue(key)
+		return issueInsertDoneMsg{issue: issue, sprintID: sprintID, err: err}
 	}
 }
 

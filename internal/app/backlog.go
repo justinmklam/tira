@@ -73,9 +73,14 @@ type blMoveMultiDoneMsg struct {
 type blRankDoneMsg struct{ err error }
 
 // blBulkDoneMsg carries results from parallel bulk operations.
-// Errors is indexed by the original keys slice (nil = success).
+// Keys and Errors are parallel slices (nil error = success for that key).
+// FullRefresh is set for operations (e.g. status transitions) where a targeted
+// per-issue re-fetch is insufficient — e.g. because GetIssue does not return
+// StatusID, so the kanban column placement would be stale.
 type blBulkDoneMsg struct {
-	Errors []error
+	Keys        []string
+	Errors      []error
+	FullRefresh bool
 }
 
 type yankMsg struct{}
@@ -268,6 +273,53 @@ func (m *blModel) refreshData(groups []models.SprintGroup) tea.Cmd {
 	}
 	m.sidebarIssueKey = ""
 	return nil
+}
+
+// patchIssue updates a single issue in place within the sprint groups and
+// rebuilds derived state (rows, sidebar). Preserves agile-only fields that
+// GetIssue does not return (StatusID, EpicKey, EpicName, ProjectKey,
+// StatusChangedDate) from the existing record.
+func (m *blModel) patchIssue(fresh models.Issue) {
+	for gi := range m.groups {
+		for ii := range m.groups[gi].Issues {
+			if m.groups[gi].Issues[ii].Key != fresh.Key {
+				continue
+			}
+			existing := m.groups[gi].Issues[ii]
+			// Preserve fields not returned by GetIssue.
+			fresh.StatusID = existing.StatusID
+			fresh.EpicKey = existing.EpicKey
+			fresh.EpicName = existing.EpicName
+			fresh.ProjectKey = existing.ProjectKey
+			if fresh.StatusChangedDate == "" {
+				fresh.StatusChangedDate = existing.StatusChangedDate
+			}
+			m.groups[gi].Issues[ii] = fresh
+		}
+	}
+	m.rows = blBuildRows(m.groups, m.collapsed, m.filter, m.filterEpic)
+	m.cursor = tui.Clamp(m.cursor, 0, max(len(m.rows)-1, 0))
+	// Update sidebar if it is already showing this issue.
+	if m.sidebarFullIssue != nil && m.sidebarFullIssue.Key == fresh.Key {
+		m.sidebarFullIssue = &fresh
+		m.sidebarContent = renderSidebarContent(&fresh, tui.DetailPaneWidth(m.width))
+	}
+}
+
+// insertIssue appends a newly created issue to the matching sprint group (or
+// the backlog group when sprintID == 0) and rebuilds the row list.
+func (m *blModel) insertIssue(issue models.Issue, sprintID int) {
+	for gi := range m.groups {
+		g := &m.groups[gi]
+		match := (sprintID == 0 && g.Sprint.State == "backlog") ||
+			(sprintID != 0 && g.Sprint.ID == sprintID)
+		if match {
+			g.Issues = append(g.Issues, issue)
+			break
+		}
+	}
+	m.rows = blBuildRows(m.groups, m.collapsed, m.filter, m.filterEpic)
+	m.cursor = tui.Clamp(m.cursor, 0, max(len(m.rows)-1, 0))
 }
 
 func (m blModel) viewHeight() int {
@@ -517,14 +569,22 @@ func (m blModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case blBulkDoneMsg:
-		// Bulk operations completed. Refresh to show successful changes.
-		// Errors are logged but don't prevent refresh (partial success is possible).
-		m.result.refresh = true
-		// Clear selection and disable visual mode after bulk actions.
 		m.selected = make(map[string]bool)
 		m.visualMode = false
-		// TODO: Display error count in UI if msg.Errors contains failures
-		return m, nil
+		if msg.FullRefresh {
+			// Status transitions need a full refresh: GetIssue does not return
+			// StatusID, so a targeted patch would leave the kanban column stale.
+			m.result.refresh = true
+			return m, nil
+		}
+		// For all other bulk ops, re-fetch only the affected issues.
+		var cmds []tea.Cmd
+		for i, key := range msg.Keys {
+			if i < len(msg.Errors) && msg.Errors[i] == nil {
+				cmds = append(cmds, issueRefreshCmd(m.client, key))
+			}
+		}
+		return m, tea.Batch(cmds...)
 
 	case blSprintDoneMsg:
 		m.sprintFormSubmitting = false
