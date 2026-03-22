@@ -261,6 +261,27 @@ func (c *cachedClient) GetActiveSprint(boardID int) ([]models.Issue, error) {
 	return c.inner.GetActiveSprint(boardID)
 }
 
+func (c *cachedClient) GetSprintList(boardID int) ([]models.Sprint, error) {
+	ckey := fmt.Sprintf("sprint_list:%d", boardID)
+	if v, ok := c.cget(ckey); ok {
+		return v.([]models.Sprint), nil
+	}
+	result, err := c.inner.GetSprintList(boardID)
+	if err != nil {
+		return nil, err
+	}
+	c.cset(ckey, result)
+	return result, nil
+}
+
+func (c *cachedClient) GetSprintGroupsBatch(boardID int, sprints []models.Sprint) ([]models.SprintGroup, error) {
+	return c.inner.GetSprintGroupsBatch(boardID, sprints)
+}
+
+func (c *cachedClient) GetBacklogIssues(boardID int) ([]models.Issue, error) {
+	return c.inner.GetBacklogIssues(boardID)
+}
+
 func (c *cachedClient) GetBacklog(projectKey string) ([]models.Sprint, error) {
 	return c.inner.GetBacklog(projectKey)
 }

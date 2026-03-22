@@ -92,7 +92,7 @@ All TUI models have been moved from `cmd/tira/` (package main) to `internal/app/
 
 ### ~~3.6 Duplicated parallel board data fetch~~
 
-**Fixed:** Extracted `fetchBoardDataCore(client, boardID)` helper function. Both `FetchBoardData` and `refreshCmd` now reuse this shared logic.
+**Fixed:** Extracted `fetchBoardDataCore(client, boardID, projectFilter)` for progressive initial load (first 3 sprints) and `fetchAllBoardDataCore(client, boardID, projectFilter)` for full reload. `FetchBoardData` uses the progressive version; `refreshCmd` uses the full version. Shared `filterGroupsByProject` helper extracted for both.
 
 ### ~~3.7 Unnecessary `resp, err := ...; return resp, err` (internal/debug/logger.go:106–108)~~
 

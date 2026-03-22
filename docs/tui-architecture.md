@@ -100,7 +100,11 @@ When a sub-model wants an action that crosses TUI boundaries (edit, comment, ref
 
 ### Refresh
 
-`m.refreshCmd()` returns a `tea.Cmd` that re-fetches sprint groups and board columns concurrently. On completion, sends `boardRefreshDoneMsg`. After a create, `m.createResultKey` is set so the backlog can navigate to the newly created issue.
+`m.refreshCmd()` returns a `tea.Cmd` that re-fetches all sprint groups and board columns concurrently via `fetchAllBoardDataCore` (no progressive loading — full reload). On completion, sends `boardRefreshDoneMsg`. After a create, `m.createResultKey` is set so the backlog can navigate to the newly created issue.
+
+### Progressive Loading
+
+On initial startup, only the first 3 sprints are fetched (via `fetchBoardDataCore`). After the TUI renders, `lazyLoadCmd` fires in the background to fetch remaining sprints + backlog. Results arrive as `blLazyLoadDoneMsg`, which calls `blModel.appendGroups()` to merge them into the model without disrupting the user's cursor position.
 
 ### URL Construction
 

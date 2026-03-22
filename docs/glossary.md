@@ -54,6 +54,9 @@ type Client interface {
     GetBoardColumns(boardID int) ([]models.BoardColumn, error)
     GetActiveSprint(boardID int) ([]models.Issue, error)
     GetSprintGroups(boardID int) ([]models.SprintGroup, error)
+    GetSprintList(boardID int) ([]models.Sprint, error)
+    GetSprintGroupsBatch(boardID int, sprints []models.Sprint) ([]models.SprintGroup, error)
+    GetBacklogIssues(boardID int) ([]models.Issue, error)
     MoveIssuesToSprint(sprintID int, keys []string) error
     MoveIssuesToBacklog(keys []string) error
     // ... and more

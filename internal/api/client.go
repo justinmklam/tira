@@ -26,6 +26,12 @@ type Client interface {
 	GetBoardColumns(boardID int) ([]models.BoardColumn, error)
 	GetActiveSprint(boardID int) ([]models.Issue, error)
 	GetSprintGroups(boardID int) ([]models.SprintGroup, error)
+	// GetSprintList returns sprint metadata (no issues) for a board.
+	GetSprintList(boardID int) ([]models.Sprint, error)
+	// GetSprintGroupsBatch fetches issues for the given sprints concurrently.
+	GetSprintGroupsBatch(boardID int, sprints []models.Sprint) ([]models.SprintGroup, error)
+	// GetBacklogIssues fetches backlog issues for a board.
+	GetBacklogIssues(boardID int) ([]models.Issue, error)
 	GetBacklog(projectKey string) ([]models.Sprint, error)
 	GetEpics(projectKey, query string) ([]models.Issue, error)
 	MoveIssuesToSprint(sprintID int, keys []string) error
@@ -448,28 +454,6 @@ func (c *jiraClient) fetchStatusChangeDate(key string) (string, error) {
 		}
 	}
 	return "", nil
-}
-
-// fetchBatchStatusChangeDates fetches changelogs for multiple issues in
-// parallel and returns a map of issue key to status change date.
-func (c *jiraClient) fetchBatchStatusChangeDates(keys []string) map[string]string {
-	result := make(map[string]string, len(keys))
-	var wg sync.WaitGroup
-	var mu sync.Mutex
-
-	for _, key := range keys {
-		wg.Add(1)
-		go func(k string) {
-			defer wg.Done()
-			if date, err := c.fetchStatusChangeDate(k); err == nil && date != "" {
-				mu.Lock()
-				result[k] = date
-				mu.Unlock()
-			}
-		}(key)
-	}
-	wg.Wait()
-	return result
 }
 
 func (c *jiraClient) extractADF(fields map[string]json.RawMessage, fieldID string) string {
@@ -932,7 +916,28 @@ func (c *jiraClient) GetBoardColumns(boardID int) ([]models.BoardColumn, error) 
 }
 
 func (c *jiraClient) GetSprintGroups(boardID int) ([]models.SprintGroup, error) {
-	// Fetch all active and future sprints.
+	sprints, err := c.GetSprintList(boardID)
+	if err != nil {
+		return nil, err
+	}
+
+	groups, err := c.GetSprintGroupsBatch(boardID, sprints)
+	if err != nil {
+		return nil, err
+	}
+
+	// Fetch backlog concurrently (not part of sprint list).
+	backlogIssues, err := c.GetBacklogIssues(boardID)
+	if err == nil {
+		groups = append(groups, models.SprintGroup{
+			Sprint: models.Sprint{Name: "Backlog", State: "backlog"},
+			Issues: backlogIssues,
+		})
+	}
+	return groups, nil
+}
+
+func (c *jiraClient) GetSprintList(boardID int) ([]models.Sprint, error) {
 	sprintURL := fmt.Sprintf("%s/rest/agile/1.0/board/%d/sprint?state=active,future&maxResults=50", c.baseURL, boardID)
 	resp, err := c.http.Get(sprintURL)
 	if err != nil {
@@ -960,17 +965,29 @@ func (c *jiraClient) GetSprintGroups(boardID int) ([]models.SprintGroup, error) 
 		return nil, fmt.Errorf("parsing sprints: %w", err)
 	}
 
+	sprints := make([]models.Sprint, len(sprintResp.Values))
+	for i, sp := range sprintResp.Values {
+		sprints[i] = models.Sprint{
+			ID:        sp.ID,
+			Name:      sp.Name,
+			State:     sp.State,
+			StartDate: trimDateStr(sp.StartDate),
+			EndDate:   trimDateStr(sp.EndDate),
+		}
+	}
+	return sprints, nil
+}
+
+func (c *jiraClient) GetSprintGroupsBatch(boardID int, sprints []models.Sprint) ([]models.SprintGroup, error) {
 	const issueFields = "summary,status,issuetype,priority,assignee,labels,parent,story_points,customfield_10016,project"
 
-	// Fetch all sprint issues and the backlog concurrently.
-	// Pre-allocate one slot per sprint; backlog is appended after.
-	groups := make([]models.SprintGroup, len(sprintResp.Values))
+	groups := make([]models.SprintGroup, len(sprints))
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	var firstErr error
 
-	for i, sp := range sprintResp.Values {
-		i, sp := i, sp // capture for goroutine
+	for i, sp := range sprints {
+		i, sp := i, sp
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -987,49 +1004,24 @@ func (c *jiraClient) GetSprintGroups(boardID int) ([]models.SprintGroup, error) 
 				}
 				return
 			}
-			groups[i] = models.SprintGroup{
-				Sprint: models.Sprint{
-					ID:        sp.ID,
-					Name:      sp.Name,
-					State:     sp.State,
-					StartDate: trimDateStr(sp.StartDate),
-					EndDate:   trimDateStr(sp.EndDate),
-				},
-				Issues: issues,
-			}
+			groups[i] = models.SprintGroup{Sprint: sp, Issues: issues}
 		}()
 	}
-
-	// Backlog fetch runs concurrently with sprint fetches.
-	var backlogGroup models.SprintGroup
-	var hasBacklog bool
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		backlogURL := fmt.Sprintf(
-			"%s/rest/agile/1.0/board/%d/backlog?maxResults=200&fields=%s",
-			c.baseURL, boardID, issueFields,
-		)
-		issues, err := c.fetchAgileIssues(backlogURL, "")
-		if err == nil {
-			mu.Lock()
-			backlogGroup = models.SprintGroup{
-				Sprint: models.Sprint{Name: "Backlog", State: "backlog"},
-				Issues: issues,
-			}
-			hasBacklog = true
-			mu.Unlock()
-		}
-	}()
 
 	wg.Wait()
 	if firstErr != nil {
 		return nil, firstErr
 	}
-	if hasBacklog {
-		groups = append(groups, backlogGroup)
-	}
 	return groups, nil
+}
+
+func (c *jiraClient) GetBacklogIssues(boardID int) ([]models.Issue, error) {
+	const issueFields = "summary,status,issuetype,priority,assignee,labels,parent,story_points,customfield_10016,project"
+	backlogURL := fmt.Sprintf(
+		"%s/rest/agile/1.0/board/%d/backlog?maxResults=200&fields=%s",
+		c.baseURL, boardID, issueFields,
+	)
+	return c.fetchAgileIssues(backlogURL, "")
 }
 
 // fetchAgileIssues fetches issues from any Jira Agile API endpoint that returns
@@ -1092,15 +1084,6 @@ func (c *jiraClient) fetchAgileIssues(url, sprintName string) ([]models.Issue, e
 		return nil, fmt.Errorf("parsing issues: %w", err)
 	}
 
-	// Extract issue keys for batch status change fetch.
-	keys := make([]string, 0, len(data.Issues))
-	for _, raw := range data.Issues {
-		keys = append(keys, raw.Key)
-	}
-
-	// Fetch status change dates in parallel.
-	statusDates := c.fetchBatchStatusChangeDates(keys)
-
 	issues := make([]models.Issue, 0, len(data.Issues))
 	for _, raw := range data.Issues {
 		issue := models.Issue{
@@ -1117,9 +1100,6 @@ func (c *jiraClient) fetchAgileIssues(url, sprintName string) ([]models.Issue, e
 		if raw.Fields.Assignee != nil {
 			issue.Assignee = raw.Fields.Assignee.DisplayName
 			issue.AssigneeID = raw.Fields.Assignee.AccountID
-		}
-		if date, ok := statusDates[raw.Key]; ok {
-			issue.StatusChangedDate = date
 		}
 		// Epic: parent issue when the parent type is "Epic".
 		if p := raw.Fields.Parent; p != nil && p.Fields.Issuetype.Name == "Epic" {

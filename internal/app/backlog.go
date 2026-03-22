@@ -306,6 +306,14 @@ func (m *blModel) patchIssue(fresh models.Issue) {
 	}
 }
 
+// appendGroups adds lazy-loaded sprint groups (remaining sprints + backlog)
+// to the backlog model and rebuilds the row list. Preserves cursor position.
+func (m *blModel) appendGroups(groups []models.SprintGroup) {
+	m.groups = append(m.groups, groups...)
+	m.rows = blBuildRows(m.groups, m.collapsed, m.filter, m.filterEpic)
+	// Cursor stays where it is — new groups are appended below the viewport.
+}
+
 // insertIssue appends a newly created issue to the matching sprint group (or
 // the backlog group when sprintID == 0) and rebuilds the row list.
 func (m *blModel) insertIssue(issue models.Issue, sprintID int) {
