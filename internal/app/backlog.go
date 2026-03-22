@@ -89,8 +89,9 @@ type blSprintDoneMsg struct {
 
 // sidebarIssueFetchedMsg is sent when the sidebar's full issue is fetched.
 type sidebarIssueFetchedMsg struct {
-	issue *models.Issue
-	err   error
+	issue   *models.Issue
+	content string
+	err     error
 }
 
 type blModel struct {
@@ -258,7 +259,7 @@ func (m *blModel) refreshData(groups []models.SprintGroup) tea.Cmd {
 	m.sidebarOffset = 0
 	if issue != nil {
 		m.sidebarIssueKey = issue.Key
-		return fetchSidebarIssueCmd(m.client, issue.Key)
+		return fetchSidebarIssueCmd(m.client, issue.Key, tui.DetailPaneWidth(m.width))
 	}
 	m.sidebarIssueKey = ""
 	return nil
@@ -426,7 +427,7 @@ func (m blModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.sidebarIssueKey == "" {
 			if cur := m.currentIssue(); cur != nil {
 				m.sidebarIssueKey = cur.Key
-				return m, fetchSidebarIssueCmd(m.client, cur.Key)
+				return m, fetchSidebarIssueCmd(m.client, cur.Key, detailW)
 			}
 		}
 		return m, nil
@@ -447,7 +448,7 @@ func (m blModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case sidebarIssueFetchedMsg:
 		if msg.err == nil && msg.issue != nil {
 			m.sidebarFullIssue = msg.issue
-			m.sidebarContent = renderSidebarContent(msg.issue, tui.DetailPaneWidth(m.width))
+			m.sidebarContent = msg.content
 			m.sidebarOffset = 0
 		}
 		return m, nil
@@ -705,26 +706,56 @@ func renderMarkdownWithGlamour(md string, wrapWidth int) string {
 }
 
 // renderIssueContent renders an issue's markdown through glamour at the given wrap width.
-// Used by the detail overlay.
+// Used by the detail overlay and sidebar.
 func renderIssueContent(issue *models.Issue, wrapWidth int) string {
 	return renderMarkdownWithGlamour(display.RenderIssue(issue), wrapWidth)
 }
 
+// renderIssueDetailView renders a common issue detail view with border and footer.
+// Used by both backlog and kanban detail overlays.
+func renderIssueDetailView(issue *models.Issue, detailView viewport.Model, width, height, overlayW, innerW int) string {
+	footer := tui.DimStyle.Render("  e: edit   c: comment   o: open in browser   esc/q: back   j/k: scroll")
+	body := detailView.View() + "\n" + footer
+
+	modal := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(tui.ColorBlue).
+		Width(innerW).
+		Render(body)
+
+	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, modal)
+}
+
 // renderSidebarContent returns the sidebar content for the given issue.
-// The issue key and summary are prepended as a Markdown H1 so glamour handles word wrapping.
+// It uses the same rendering as the detail overlay.
 func renderSidebarContent(issue *models.Issue, width int) string {
 	if issue == nil {
 		return tui.DimStyle.Render("No issue selected")
 	}
-	md := "# " + issue.Key + "  " + issue.Summary + "\n\n" + display.RenderIssue(issue)
-	return renderMarkdownWithGlamour(md, width-4)
+	return renderIssueContent(issue, width-4)
 }
 
 // fetchSidebarIssueCmd fetches the full issue from the Jira API for sidebar display.
-// Rendering happens in the Update handler so it uses the current terminal width.
-func fetchSidebarIssueCmd(client api.Client, key string) tea.Cmd {
+// Rendering happens here using the current pane width.
+func fetchSidebarIssueCmd(client api.Client, key string, width int) tea.Cmd {
 	return func() tea.Msg {
 		issue, err := client.GetIssue(key)
-		return sidebarIssueFetchedMsg{issue: issue, err: err}
+		if err != nil {
+			return sidebarIssueFetchedMsg{issue: issue, err: err}
+		}
+		content := renderIssueContent(issue, width-4)
+		return sidebarIssueFetchedMsg{issue: issue, content: content, err: err}
+	}
+}
+
+// fetchIssueCmd fetches the full issue from the Jira API for detail view overlay.
+// This is a shared function used by both backlog and kanban views.
+func fetchIssueCmd(client api.Client, key string, vpW int) tea.Cmd {
+	return func() tea.Msg {
+		issue, err := client.GetIssue(key)
+		if err != nil {
+			return issueFetchedMsg{err: err}
+		}
+		return issueFetchedMsg{issue: issue, content: renderIssueContent(issue, vpW)}
 	}
 }

@@ -12,6 +12,9 @@ import (
 func RenderIssue(issue *models.Issue) string {
 	var sb strings.Builder
 
+	// Issue title as H1 heading
+	fmt.Fprintf(&sb, "# %s  %s\n\n", issue.Key, issue.Summary)
+
 	// Metadata list — build rows first so we can align values.
 	type metaRow struct{ key, val string }
 	assignee := issue.Assignee

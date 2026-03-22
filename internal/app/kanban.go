@@ -361,16 +361,6 @@ func kanbanTransitionStatusCmd(client api.Client, keys []string, transitionID st
 	}
 }
 
-func fetchIssueCmd(client api.Client, key string, vpW int) tea.Cmd {
-	return func() tea.Msg {
-		issue, err := client.GetIssue(key)
-		if err != nil {
-			return issueFetchedMsg{err: err}
-		}
-		return issueFetchedMsg{issue: issue, content: renderIssueContent(issue, vpW)}
-	}
-}
-
 // kanbanNewStatusPicker creates a PickerModel whose search function returns
 // available status transitions for the given issue.
 // If currentStatus is non-empty, the picker will initially select the item

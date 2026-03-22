@@ -1130,7 +1130,7 @@ func (m blModel) updateSidebarContent() (blModel, tea.Cmd) {
 		// Show basic issue content while fetching
 		m.sidebarContent = renderSidebarContent(issue, tui.DetailPaneWidth(m.width))
 		m.sidebarOffset = 0
-		return m, fetchSidebarIssueCmd(m.client, issue.Key)
+		return m, fetchSidebarIssueCmd(m.client, issue.Key, tui.DetailPaneWidth(m.width))
 	}
 
 	// No issue selected

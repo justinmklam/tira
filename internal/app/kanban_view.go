@@ -56,18 +56,7 @@ func (m kanbanModel) viewDetail() string {
 	overlayW, _ := tui.OverlaySize(width, height)
 	innerW := overlayW - 2
 
-	header := tui.BoldBlue.Padding(0, 1).Width(innerW).
-		Render(tui.FixedWidth(m.detailIssue.Key+"  "+m.detailIssue.Summary, innerW-2))
-	footer := tui.DimStyle.Render("  e: edit   c: comment   o: open in browser   esc/q: back   j/k: scroll")
-	body := header + "\n" + m.detailView.View() + "\n" + footer
-
-	modal := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(tui.ColorBlue).
-		Width(innerW).
-		Render(body)
-
-	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, modal)
+	return renderIssueDetailView(m.detailIssue, m.detailView, width, height, overlayW, innerW)
 }
 
 func (m kanbanModel) viewBoard() string {
