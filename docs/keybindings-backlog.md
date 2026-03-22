@@ -18,6 +18,7 @@ Modelled on yazi's philosophy: modal only where the modality is obvious from con
 | `z` | Toggle collapse current sprint |
 | `Z` | Toggle collapse all sprints |
 | `/` | Filter tickets (fuzzy search by summary or key) |
+| `f` | Jump to issue by number (e.g. type `123` to jump to `DEV-123`) |
 | `<Enter>` | Toggle expand/collapse sprint or open ticket detail |
 | `<Esc>` | Clear filter / cancel current action / clear selection |
 
@@ -124,6 +125,7 @@ When the help overlay is open (`?`), use these keys to navigate:
 | Normal | — | — |
 | Visual | `v` | `<Enter>` to confirm, `<Esc>` to cancel |
 | Filter | `/` | `<Enter>` to apply, `<Esc>` to clear |
+| Key search | `f` | `<Enter>` to jump, `<Esc>` to cancel |
 | Detail view | `<Enter>` on issue | `<Esc>` or `q` to close |
 | Pickers (`s`, `P`, `A`, `F`) | Key press | `<Enter>` to select, `<Esc>` to cancel |
 
@@ -168,5 +170,4 @@ The following keybindings are planned but not yet implemented:
 | `V` | Select all tickets in current sprint |
 | `*` | Invert selection across all sprints |
 | `n` / `N` | Next / previous filter match |
-| `f` | Cycle filter presets: all → mine → unassigned |
 | `S` (for sort) | Cycle sort: default → priority → points → assignee |

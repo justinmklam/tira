@@ -140,6 +140,11 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.filterInput.SetValue(m.filter)
 		return m, m.filterInput.Focus()
 
+	case "f":
+		m.state = blKeySearch
+		m.keySearchInput.SetValue("")
+		return m, m.keySearchInput.Focus()
+
 	case "enter":
 		if m.cursor >= len(m.rows) {
 			return m, nil
@@ -1146,4 +1151,44 @@ func (m blModel) updateSidebarContent() (blModel, tea.Cmd) {
 	m.sidebarContent = renderSidebarContent(nil, tui.DetailPaneWidth(m.width))
 	m.sidebarOffset = 0
 	return m, nil
+}
+
+func (m blModel) updateKeySearch(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if key, ok := msg.(tea.KeyMsg); ok {
+		switch key.String() {
+		case "esc":
+			m.keySearchInput.Blur()
+			m.state = blList
+			return m, nil
+		case "enter":
+			query := strings.TrimSpace(m.keySearchInput.Value())
+			m.keySearchInput.Blur()
+			m.state = blList
+			if query != "" {
+				for i, row := range m.rows {
+					if row.kind == blRowIssue {
+						issue := m.groups[row.groupIdx].Issues[row.issueIdx]
+						keyNum := issue.Key
+						if idx := strings.LastIndex(issue.Key, "-"); idx >= 0 {
+							keyNum = issue.Key[idx+1:]
+						}
+						if strings.HasPrefix(keyNum, query) {
+							m.cursor = i
+							m = blScrollToFit(m)
+							var cmd tea.Cmd
+							m, cmd = m.updateSidebarContent()
+							return m, cmd
+						}
+					}
+				}
+			}
+			return m, nil
+		case "ctrl+c":
+			m.quitting = true
+			return m, nil
+		}
+	}
+	var cmd tea.Cmd
+	m.keySearchInput, cmd = m.keySearchInput.Update(msg)
+	return m, cmd
 }

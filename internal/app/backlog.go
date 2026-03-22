@@ -37,6 +37,7 @@ const (
 	blStatusPicker     // floating status picker
 	blEpicFilterPicker // floating epic filter picker
 	blSprintForm       // create or edit sprint (sprintFormEditID == 0 means create)
+	blKeySearch        // jump-to-issue-number search (f key)
 )
 
 type blRowKind int
@@ -113,6 +114,8 @@ type blModel struct {
 
 	filter      string
 	filterInput textinput.Model
+
+	keySearchInput textinput.Model
 
 	width  int
 	height int
@@ -219,6 +222,10 @@ func newBacklogModel(client api.Client, boardID int, groups []models.SprintGroup
 	spTi.Placeholder = "story points (e.g. 1, 2, 3, 5, 8)"
 	spTi.CharLimit = 10
 
+	ksTi := textinput.New()
+	ksTi.Placeholder = "issue number…"
+	ksTi.CharLimit = 20
+
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	s.Style = lipgloss.NewStyle().Foreground(tui.SpinnerColor)
@@ -233,6 +240,7 @@ func newBacklogModel(client api.Client, boardID int, groups []models.SprintGroup
 		collapsed:       collapsed,
 		filterInput:     ti,
 		storyPointInput: spTi,
+		keySearchInput:  ksTi,
 		loadSpinner:     s,
 		selected:        make(map[string]bool),
 		cutKeys:         make(map[string]bool),
@@ -651,6 +659,8 @@ func (m blModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateEpicFilterPicker(msg)
 	case blSprintForm:
 		return m.updateSprintForm(msg)
+	case blKeySearch:
+		return m.updateKeySearch(msg)
 	}
 	return m, nil
 }

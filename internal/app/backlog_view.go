@@ -147,11 +147,16 @@ func (m blModel) viewList() string {
 
 	// Footer spans both panes
 	var footer string
-	if m.state == blFilter {
+	switch m.state {
+	case blFilter:
 		footer = lipgloss.NewStyle().Foreground(tui.ColorBlue).Render("/") +
 			" " + m.filterInput.View() +
 			"  " + tui.DimStyle.Render("esc: clear  enter: apply")
-	} else {
+	case blKeySearch:
+		footer = lipgloss.NewStyle().Foreground(tui.ColorBlue).Render("f") +
+			" " + m.keySearchInput.View() +
+			"  " + tui.DimStyle.Render("esc: cancel  enter: jump")
+	default:
 		hints := []string{
 			"e: edit", "c: comment", "o: open", "y: copy", "s: status", "S: story pts",
 			"x: cut", "p: paste", ">/<: adj sprint", "B: backlog",
