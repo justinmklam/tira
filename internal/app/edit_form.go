@@ -2,7 +2,6 @@ package app
 
 import (
 	"fmt"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -12,7 +11,6 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/justinmklam/tira/internal/models"
 	"github.com/justinmklam/tira/internal/tui"
-	"github.com/lithammer/fuzzysearch/fuzzy"
 )
 
 // Field indices.
@@ -31,9 +29,8 @@ const (
 
 // Layout constants.
 const (
-	emLabelW   = 14 // visual width of the label column
-	emInputW   = 34 // visual width of single-line inputs (except summary)
-	emPanelGap = 2  // horizontal gap between input and suggestion panel
+	emLabelW = 14 // visual width of the label column
+	emInputW = 34 // visual width of single-line inputs (except summary)
 )
 
 var emFieldLabels = [efFieldCount]string{
@@ -47,11 +44,6 @@ type editModel struct {
 	acTA   textarea.Model
 
 	focused int
-
-	typeOpts     []string
-	priorityOpts []string
-	suggestions  []string
-	suggCursor   int
 
 	origAssignee   string
 	origAssigneeID string
@@ -67,15 +59,14 @@ type editModel struct {
 	validErr  string
 
 	wantAssigneePicker bool
+	wantTypePicker     bool
+	wantPriorityPicker bool
 }
 
 func newEditModel(issue *models.Issue, valid *models.ValidValues, width, height int) *editModel {
 	m := &editModel{
-		typeOpts:       valid.IssueTypes,
-		priorityOpts:   valid.Priorities,
 		origAssignee:   issue.Assignee,
 		origAssigneeID: issue.AssigneeID,
-		suggCursor:     -1,
 	}
 
 	placeholders := [efInputCount]string{
@@ -112,7 +103,6 @@ func newEditModel(issue *models.Issue, valid *models.ValidValues, width, height 
 
 	m.setSize(width, height)
 	m.inputs[0].Focus()
-	m.refreshSuggestions()
 	return m
 }
 
@@ -120,8 +110,7 @@ func (m *editModel) setSize(w, h int) {
 	m.width = w
 	m.height = h
 
-	// Summary gets the full available width; other inputs use the fixed width
-	// so the suggestion panel has room to appear to their right.
+	// Summary gets the full available width; other inputs use the fixed width.
 	summaryW := w - emLabelW - 2
 	if summaryW < 20 {
 		summaryW = 20
@@ -183,35 +172,13 @@ func (m *editModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.focused--
 			}
 			m.focusFocused()
-			m.refreshSuggestions()
 			return m, nil
 
 		case "tab":
 			m.blurFocused()
 			m.focused = (m.focused + 1) % efFieldCount
 			m.focusFocused()
-			m.refreshSuggestions()
 			return m, nil
-
-		case "up":
-			if m.hasSuggestions() && len(m.suggestions) > 0 {
-				if m.suggCursor <= 0 {
-					m.suggCursor = len(m.suggestions) - 1
-				} else {
-					m.suggCursor--
-				}
-				return m, nil
-			}
-
-		case "down":
-			if m.hasSuggestions() && len(m.suggestions) > 0 {
-				if m.suggCursor < 0 {
-					m.suggCursor = 0
-				} else {
-					m.suggCursor = (m.suggCursor + 1) % len(m.suggestions)
-				}
-				return m, nil
-			}
 
 		case "enter":
 			if m.focused < efInputCount {
@@ -220,24 +187,19 @@ func (m *editModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.wantAssigneePicker = true
 					return m, nil
 				}
-				// Accept highlighted suggestion (or first) if any; otherwise advance field.
-				if m.hasSuggestions() && len(m.suggestions) > 0 {
-					idx := m.suggCursor
-					if idx < 0 {
-						idx = 0
-					}
-					val := m.suggestions[idx]
-					if m.inputs[m.focused].Value() != val {
-						m.inputs[m.focused].SetValue(val)
-						m.suggCursor = -1
-						m.refreshSuggestions()
-						return m, nil
-					}
+				// Type field: open option picker instead of advancing.
+				if m.focused == efType {
+					m.wantTypePicker = true
+					return m, nil
+				}
+				// Priority field: open option picker instead of advancing.
+				if m.focused == efPriority {
+					m.wantPriorityPicker = true
+					return m, nil
 				}
 				m.blurFocused()
 				m.focused = (m.focused + 1) % efFieldCount
 				m.focusFocused()
-				m.refreshSuggestions()
 				return m, nil
 			}
 			// Textareas: fall through so enter inserts a newline.
@@ -254,11 +216,7 @@ func (m *editModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	var cmd tea.Cmd
 	if m.focused < efInputCount {
-		prev := m.inputs[m.focused].Value()
 		m.inputs[m.focused], cmd = m.inputs[m.focused].Update(msg)
-		if m.inputs[m.focused].Value() != prev {
-			m.refreshSuggestions()
-		}
 	} else if m.focused == efDescription {
 		m.descTA, cmd = m.descTA.Update(msg)
 	} else {
@@ -275,8 +233,6 @@ func (m *editModel) blurFocused() {
 	} else {
 		m.acTA.Blur()
 	}
-	m.suggestions = nil
-	m.suggCursor = -1
 }
 
 func (m *editModel) focusFocused() {
@@ -286,41 +242,6 @@ func (m *editModel) focusFocused() {
 		m.descTA.Focus()
 	} else {
 		m.acTA.Focus()
-	}
-}
-
-func (m *editModel) hasSuggestions() bool {
-	return m.focused == efType || m.focused == efPriority
-}
-
-func (m *editModel) refreshSuggestions() {
-	if !m.hasSuggestions() {
-		m.suggestions = nil
-		m.suggCursor = -1
-		return
-	}
-	var opts []string
-	switch m.focused {
-	case efType:
-		opts = m.typeOpts
-	case efPriority:
-		opts = m.priorityOpts
-	}
-	query := m.inputs[m.focused].Value()
-	if query == "" {
-		m.suggestions = make([]string, len(opts))
-		copy(m.suggestions, opts)
-		m.suggCursor = -1
-	} else {
-		ranks := fuzzy.RankFindFold(query, opts)
-		sort.Sort(ranks)
-		m.suggestions = make([]string, len(ranks))
-		for i, r := range ranks {
-			m.suggestions[i] = r.Target
-		}
-		if m.suggCursor >= len(m.suggestions) {
-			m.suggCursor = len(m.suggestions) - 1
-		}
 	}
 }
 
@@ -371,19 +292,6 @@ func (m *editModel) setAssignee(displayName, accountID string) {
 }
 
 func (m *editModel) View() string {
-	// Width available for the suggestion panel (to the right of label+input).
-	panelW := m.width - emLabelW - 1 - emInputW - emPanelGap
-	if panelW < 16 {
-		panelW = 0
-	}
-
-	// inputRowVisualW is used to right-pad rows before attaching the panel.
-	// Computed from the fixed-width inputs (not summary) since the panel only
-	// appears for Type, Priority, and Assignee.
-	inputRowVisualW := 1 + emLabelW + 1 + emInputW
-
-	// Build all content lines into a single slice so the suggestion panel can
-	// extend beyond the 6 input rows if needed.
 	var lines []string
 
 	for i := 0; i < efInputCount; i++ {
@@ -409,46 +317,8 @@ func (m *editModel) View() string {
 		msg := lipgloss.NewStyle().Foreground(tui.ColorRed).Bold(true).Render("  Discard unsaved changes? (y/n)")
 		lines = append(lines, msg)
 	} else {
-		lines = append(lines, tui.DimStyle.Render("  enter: next/complete  tab: next  shift+tab: back  ↑↓: select  ctrl+s: save  esc: cancel"))
-	}
-
-	// Overlay suggestion panel starting at the focused row.
-	if !m.confirmAbort && m.hasSuggestions() && len(m.suggestions) > 0 && panelW > 0 {
-		show := min(10, len(m.suggestions))
-		innerW := panelW - 2 // content width inside border
-
-		inner := make([]string, show)
-		for i := 0; i < show; i++ {
-			label := tui.FixedWidth(m.suggestions[i], innerW-2) // -2 for "▶ " / "  "
-			if i == m.suggCursor {
-				inner[i] = lipgloss.NewStyle().Foreground(tui.ColorBlue).Bold(true).Render("▶ " + label)
-			} else {
-				inner[i] = tui.DimStyle.Render("  " + label)
-			}
-		}
-		panel := lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(tui.ColorBlue).
-			Width(innerW).
-			Render(strings.Join(inner, "\n"))
-
-		panelLines := strings.Split(panel, "\n")
-		for i, pl := range panelLines {
-			rowIdx := m.focused + i
-			if rowIdx < len(lines) {
-				lines[rowIdx] = emPadToVisual(lines[rowIdx], inputRowVisualW+emPanelGap) + pl
-			}
-		}
+		lines = append(lines, tui.DimStyle.Render("  enter: open picker / next  tab: next  shift+tab: back  ctrl+s: save  esc: cancel"))
 	}
 
 	return strings.Join(lines, "\n") + "\n"
-}
-
-// emPadToVisual pads s with spaces until its visual width reaches w.
-func emPadToVisual(s string, w int) string {
-	cur := lipgloss.Width(s)
-	if cur >= w {
-		return s
-	}
-	return s + strings.Repeat(" ", w-cur)
 }

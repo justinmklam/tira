@@ -143,6 +143,34 @@ func saveCreateCmd(client api.Client, projectKey string, fields models.IssueFiel
 	}
 }
 
+// validateEditFields checks type and priority against the known valid values.
+// Assignee is intentionally excluded: the assignee list is capped at 50 results,
+// so rejecting a name not in that list would produce false positives for large orgs.
+// Assignee correctness is enforced by using the picker, not free-text entry.
+func validateEditFields(fields models.IssueFields, valid *models.ValidValues) string {
+	if valid == nil {
+		return ""
+	}
+	// Clear assignee so validator.Validate only checks type and priority.
+	check := fields
+	check.Assignee = ""
+	errs := validator.Validate(&check, valid)
+	if len(errs) == 0 {
+		return ""
+	}
+	return errs[0].Message
+}
+
+// newTypePicker builds an OptionPickerModel for selecting an issue type.
+func newTypePicker(typeOpts []string, initialValue string) tui.OptionPickerModel {
+	return tui.NewOptionPickerModel(typeOpts, initialValue)
+}
+
+// newPriorityPicker builds an OptionPickerModel for selecting a priority.
+func newPriorityPicker(priorityOpts []string, initialValue string) tui.OptionPickerModel {
+	return tui.NewOptionPickerModel(priorityOpts, initialValue)
+}
+
 // newAssigneePicker builds a PickerModel backed by a debounced assignee search.
 // projectKey may be derived from an issue key (e.g. "PROJ-1" → "PROJ").
 func newAssigneePicker(client api.Client, projectKey string) tui.PickerModel {

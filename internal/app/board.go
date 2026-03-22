@@ -30,6 +30,8 @@ const (
 	viewCreate         // create form active
 	viewCreateSaving   // create API call in flight
 	viewAssigneePicker // assignee fuzzy picker (edit form or direct assignment)
+	viewTypePicker     // issue type option picker (edit/create form)
+	viewPriorityPicker // priority option picker (edit/create form)
 	viewHelp           // help overlay
 	viewComment        // comment textarea active
 	viewCommentSaving  // comment API call in flight
@@ -107,6 +109,10 @@ type boardModel struct {
 	// In-TUI assignee picker state.
 	assigneePicker  tui.PickerModel
 	assigneeForEdit bool // true = inject result into editForm; false = used externally
+
+	// In-TUI type/priority picker state.
+	typePicker     tui.OptionPickerModel
+	priorityPicker tui.OptionPickerModel
 
 	// Help overlay state.
 	helpModel tui.HelpModel
@@ -263,6 +269,11 @@ func newBoardModel(client api.Client, boardID int, jiraURL, project string, clas
 		cmds = append(cmds, lazyLoadCmd(client, boardID, nil, project))
 	}
 
+	// Pre-warm the issue metadata cache so the edit form opens without blocking.
+	if project != "" {
+		cmds = append(cmds, metadataPreloadCmd(client, project))
+	}
+
 	initCmd := tea.Batch(cmds...)
 
 	return boardModel{
@@ -281,6 +292,21 @@ func newBoardModel(client api.Client, boardID int, jiraURL, project string, clas
 }
 
 func (m boardModel) Init() tea.Cmd { return m.initCmd }
+
+// metadataPreloadDoneMsg is sent when the background metadata preload finishes.
+type metadataPreloadDoneMsg struct{ err error }
+
+// metadataPreloadCmd warms the GetIssueMetadata cache entry so the edit form
+// opens without waiting on those network requests.
+func metadataPreloadCmd(client api.Client, projectKey string) tea.Cmd {
+	return func() tea.Msg {
+		_, err := client.GetIssueMetadata(projectKey)
+		if err != nil {
+			debug.LogError("metadataPreload: GetIssueMetadata", err)
+		}
+		return metadataPreloadDoneMsg{err: err}
+	}
+}
 
 // lazyLoadCmd fetches remaining sprint groups and backlog issues in the background.
 func lazyLoadCmd(client api.Client, boardID int, remainingSprints []models.Sprint, projectFilter string) tea.Cmd {
@@ -386,6 +412,11 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// Metadata preload completed — result is already cached; nothing else to do.
+	if _, ok := msg.(metadataPreloadDoneMsg); ok {
+		return m, nil
+	}
+
 	// --- Edit state machine ---
 	switch m.activeView {
 	case viewEditLoading:
@@ -423,6 +454,11 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.editForm = updated.(*editModel)
 		if m.editForm.completed {
 			fields := m.editForm.currentState().toIssueFields(m.editValid)
+			if errMsg := validateEditFields(fields, m.editValid); errMsg != "" {
+				m.editErr = errMsg
+				m.editForm.completed = false
+				return m, nil
+			}
 			m.activeView = viewEditSaving
 			m.editErr = ""
 			return m, tea.Batch(m.editSpinner.Tick, saveEditCmd(m.client, m.editKey, fields))
@@ -441,9 +477,18 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.assigneePicker = newAssigneePicker(m.client, projectKey)
 			m.assigneeForEdit = true
-			m.prevView = m.activeView
 			m.activeView = viewAssigneePicker
 			return m, m.assigneePicker.Init()
+		}
+		if m.editForm != nil && m.editForm.wantTypePicker {
+			m.editForm.wantTypePicker = false
+			m.typePicker = newTypePicker(m.editValid.IssueTypes, m.editForm.inputs[efType].Value())
+			m.activeView = viewTypePicker
+		}
+		if m.editForm != nil && m.editForm.wantPriorityPicker {
+			m.editForm.wantPriorityPicker = false
+			m.priorityPicker = newPriorityPicker(m.editValid.Priorities, m.editForm.inputs[efPriority].Value())
+			m.activeView = viewPriorityPicker
 		}
 		return m, cmd
 
@@ -454,13 +499,16 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.editSpinner, cmd = m.editSpinner.Update(msg)
 			return m, cmd
 		case editSaveDoneMsg:
-			m.editForm = nil
-			m.editIssue = nil
-			m.activeView = m.prevView
 			if msg.err != nil {
 				m.editErr = fmt.Sprintf("Save failed: %v", msg.err)
+				m.editForm.completed = false
+				m.activeView = viewEdit
 				return m, nil
 			}
+			m.editForm = nil
+			m.editIssue = nil
+			m.editErr = ""
+			m.activeView = m.prevView
 			return m, issueRefreshCmd(m.client, m.editKey)
 		}
 		return m, nil
@@ -498,6 +546,11 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.editForm = updated.(*editModel)
 		if m.editForm.completed {
 			fields := m.editForm.currentState().toIssueFields(m.editValid)
+			if errMsg := validateEditFields(fields, m.editValid); errMsg != "" {
+				m.editErr = errMsg
+				m.editForm.completed = false
+				return m, nil
+			}
 			m.activeView = viewCreateSaving
 			m.editErr = ""
 			return m, tea.Batch(m.editSpinner.Tick, saveCreateCmd(m.client, m.project, fields, m.createSprintID))
@@ -516,9 +569,18 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.assigneePicker = newAssigneePicker(m.client, projectKey)
 			m.assigneeForEdit = true
-			m.prevView = m.activeView
 			m.activeView = viewAssigneePicker
 			return m, m.assigneePicker.Init()
+		}
+		if m.editForm != nil && m.editForm.wantTypePicker {
+			m.editForm.wantTypePicker = false
+			m.typePicker = newTypePicker(m.editValid.IssueTypes, m.editForm.inputs[efType].Value())
+			m.activeView = viewTypePicker
+		}
+		if m.editForm != nil && m.editForm.wantPriorityPicker {
+			m.editForm.wantPriorityPicker = false
+			m.priorityPicker = newPriorityPicker(m.editValid.Priorities, m.editForm.inputs[efPriority].Value())
+			m.activeView = viewPriorityPicker
 		}
 		return m, cmd
 
@@ -529,12 +591,15 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.editSpinner, cmd = m.editSpinner.Update(msg)
 			return m, cmd
 		case createSaveDoneMsg:
-			m.editForm = nil
-			m.activeView = m.prevView
 			if msg.err != nil {
 				m.editErr = fmt.Sprintf("Create failed: %v", msg.err)
+				m.editForm.completed = false
+				m.activeView = viewCreate
 				return m, nil
 			}
+			m.editForm = nil
+			m.editErr = ""
+			m.activeView = m.prevView
 			if msg.issue != nil {
 				m.createResultKey = msg.issue.Key
 				return m, issueInsertCmd(m.client, msg.issue.Key, m.createSprintID)
@@ -545,14 +610,26 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case viewAssigneePicker:
 		if key, ok := msg.(tea.KeyMsg); ok && key.String() == "ctrl+c" {
-			m.activeView = m.prevView
-			m.editForm = nil
+			if m.assigneeForEdit {
+				m.editForm = nil
+				m.activeView = m.prevView
+			} else {
+				m.activeView = m.prevView
+			}
 			return m, nil
 		}
 		updated, cmd := m.assigneePicker.Update(msg)
 		m.assigneePicker = updated
 		if m.assigneePicker.Aborted {
-			m.activeView = m.prevView
+			if m.assigneeForEdit {
+				editFormView := viewEdit
+				if m.editKey == "" {
+					editFormView = viewCreate
+				}
+				m.activeView = editFormView
+			} else {
+				m.activeView = m.prevView
+			}
 			return m, nil
 		}
 		if m.assigneePicker.Completed {
@@ -563,9 +640,53 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				} else {
 					m.editForm.setAssignee("", "")
 				}
-				m.activeView = m.prevView
+				editFormView := viewEdit
+				if m.editKey == "" {
+					editFormView = viewCreate
+				}
+				m.activeView = editFormView
 				return m, nil
 			}
+		}
+		return m, cmd
+
+	case viewTypePicker:
+		updated, cmd := m.typePicker.Update(msg)
+		m.typePicker = updated
+		editFormView := viewEdit
+		if m.editKey == "" {
+			editFormView = viewCreate
+		}
+		if m.typePicker.Aborted {
+			m.activeView = editFormView
+			return m, nil
+		}
+		if m.typePicker.Completed {
+			if val := m.typePicker.SelectedItem(); val != "" && m.editForm != nil {
+				m.editForm.inputs[efType].SetValue(val)
+			}
+			m.activeView = editFormView
+			return m, nil
+		}
+		return m, cmd
+
+	case viewPriorityPicker:
+		updated, cmd := m.priorityPicker.Update(msg)
+		m.priorityPicker = updated
+		editFormView := viewEdit
+		if m.editKey == "" {
+			editFormView = viewCreate
+		}
+		if m.priorityPicker.Aborted {
+			m.activeView = editFormView
+			return m, nil
+		}
+		if m.priorityPicker.Completed {
+			if val := m.priorityPicker.SelectedItem(); val != "" && m.editForm != nil {
+				m.editForm.inputs[efPriority].SetValue(val)
+			}
+			m.activeView = editFormView
+			return m, nil
 		}
 		return m, cmd
 
