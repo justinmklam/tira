@@ -100,10 +100,29 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	// Log request
 	if IsEnabled() {
 		logRequest(req)
+	} else {
+		// Log even if not enabled (shouldn't happen, but useful for debugging)
+		mu.Lock()
+		if logger != nil {
+			logger.Printf("[Transport] RoundTrip called but IsEnabled()=false: %s %s\n", req.Method, req.URL.String())
+		}
+		mu.Unlock()
 	}
 
 	// Perform request
-	return t.Base.RoundTrip(req)
+	resp, err := t.Base.RoundTrip(req)
+
+	// Log response
+	if IsEnabled() {
+		mu.Lock()
+		if logger != nil {
+			logger.Printf("<-- %s %s (status: %s)\n", req.Method, req.URL.String(), resp.Status)
+			_ = file.Sync()
+		}
+		mu.Unlock()
+	}
+
+	return resp, err
 }
 
 func logRequest(req *http.Request) {
