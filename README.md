@@ -4,7 +4,7 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/justinmklam/tira)](https://goreportcard.com/report/github.com/justinmklam/tira)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
-A blazing fast terminal interface for Jira, written in Go. It provides a fast, extensible interface to managing issues, sprints, and boards.
+A blazing fast terminal interface for Jira, written in Go. It provides a fast, extensible interface for managing issues, sprints, and boards.
 
 > ![backlog](./docs/screenshots/backlog.png)
 > <sub>Backlog view with persistent issue sidebar.</sub>
@@ -14,21 +14,15 @@ A blazing fast terminal interface for Jira, written in Go. It provides a fast, e
 
 ## Features
 
-- **Interactive TUI**: Split-view backlog and kanban board with fuzzy search, multi-select, and drag-and-drop-like operations with vim-inspired keybindings
-- **View and edit issues**: Full issue detail view with comments, edit via `$EDITOR` or in-TUI form
-- **Create issues**: New issues via markdown template in your editor
-- **Multiple profiles**: Switch between Jira instances or accounts with `--profile`
-- **Fast and stateless**: No local database; auth via config file
+- Create and edit issues
+- Organize issues across sprints
+- Set issue status, assignee, story points, epics, and more
+- Fuzzy search picker for setting assignees and parent issues
+- Copy issue links to clipboard, or open them directly in your browser
+- Vim-inspired keybindings
+- Optimized for speed and responsiveness - no more fighting with the Jira web ui!
 
 ## Getting Started
-
-### Prerequisites
-
-- Go 1.25+
-- A Jira Cloud account with API access
-- Clipboard support (optional, for copying URLs):
-  - **macOS**: `pbcopy` (built-in)
-  - **Linux**: `xclip` (e.g. `sudo apt install xclip`)
 
 ### Installation
 
@@ -57,6 +51,8 @@ profiles:
     classic_project: true   # Optional, set to true for company-managed (classic) projects
 ```
 
+For clipboard support, install `xclip` (e.g. `sudo apt install xclip`) for Linux. macOS uses `pbcopy`, which is built in to the OS.
+
 ### Usage
 
 #### Board TUI
@@ -76,17 +72,22 @@ tira kanban
 | Key | Action |
 |-----|--------|
 | `Tab` | Toggle between backlog and kanban |
-| `j`/`k` | Move down/up |
-| `Enter` | Open issue detail / Toggle sprint collapse |
-| `e` | Edit issue (in-TUI form) |
+| `j`/`k` | Move cursor to next/prev issue |
+| `J`/`K` | Move cursor to next/prev sprint |
+| `Enter` | Open issue detail in fullscreen / Toggle sprint collapse |
+| `e` | Edit issue |
 | `c` | Add comment |
-| `/` | Filter issues |
-| `Space` | Select issue |
-| `v` | Visual mode (extend selection) |
-| `x` / `p` | Cut / Paste issues |
-| `s` | Change status |
+| `s` | Set status |
 | `A` | Set assignee |
 | `S` | Set story points |
+| `P` | Set parent |
+| `f<num>` | Jump to issue by number |
+| `/<keyword>` | Filter issues by keyword |
+| `F` | Open parent issue picker to filter issues by parent |
+| `Space` | Select issue |
+| `v` | Visual mode (multi-select) |
+| `x` / `p` | Cut / Paste selected issue(s) |
+| < / > | Move selected issue(s) to prev/next sprint |
 | `R` | Refresh from Jira |
 | `?` | Show help |
 | `q` | Quit |
