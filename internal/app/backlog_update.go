@@ -78,6 +78,20 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m, cmd = m.updateSidebarContent()
 		return blScrollToFit(m), cmd
 
+	case "d":
+		// Scroll issue list down by 1/4 page
+		m.cursor = tui.Clamp(m.cursor+m.viewHeight()/4, 0, len(m.rows)-1)
+		var cmd tea.Cmd
+		m, cmd = m.updateSidebarContent()
+		return blScrollToFit(m), cmd
+
+	case "u":
+		// Scroll issue list up by 1/4 page
+		m.cursor = tui.Clamp(m.cursor-m.viewHeight()/4, 0, len(m.rows)-1)
+		var cmd tea.Cmd
+		m, cmd = m.updateSidebarContent()
+		return blScrollToFit(m), cmd
+
 	case "ctrl+d":
 		// Scroll sidebar content down by 1/4 page
 		m.sidebarOffset += m.viewHeight() / 4
@@ -1119,7 +1133,8 @@ func blUpdateSprintCmd(client api.Client, sprintID int, name, startDate, endDate
 
 // updateSidebarContent updates the sidebar content based on the currently selected issue.
 // If the cursor is on a sprint header, it uses the last selected issue.
-// It triggers an async fetch of the full issue (with description) from the Jira API.
+// Fetches are debounced: a short delay fires before the API call, so rapid cursor
+// movement (holding j/k) only fetches the issue where the cursor settles.
 func (m blModel) updateSidebarContent() (blModel, tea.Cmd) {
 	issue := m.currentIssue()
 	// Track last issue for when cursor is on sprint header
@@ -1137,19 +1152,22 @@ func (m blModel) updateSidebarContent() (blModel, tea.Cmd) {
 		return m, nil
 	}
 
-	// If the issue key changed, trigger a fetch
-	if issue != nil && m.sidebarIssueKey != issue.Key {
-		m.sidebarIssueKey = issue.Key
-		m.sidebarFullIssue = nil
-		// Show basic issue content while fetching
+	// If the issue key changed, show a preview and start the debounce timer.
+	if issue != nil && m.sidebarPendingKey != issue.Key {
+		m.sidebarPendingKey = issue.Key
+		// Show basic issue content immediately while waiting for the full fetch.
 		m.sidebarContent = renderSidebarContent(issue, tui.DetailPaneWidth(m.width))
 		m.sidebarOffset = 0
-		return m, fetchSidebarIssueCmd(m.client, issue.Key)
+		key := issue.Key
+		return m, tea.Tick(150*time.Millisecond, func(time.Time) tea.Msg {
+			return blSidebarDebounceMsg{key: key}
+		})
 	}
 
-	// No issue selected
-	m.sidebarContent = renderSidebarContent(nil, tui.DetailPaneWidth(m.width))
-	m.sidebarOffset = 0
+	if issue == nil {
+		m.sidebarContent = renderSidebarContent(nil, tui.DetailPaneWidth(m.width))
+		m.sidebarOffset = 0
+	}
 	return m, nil
 }
 

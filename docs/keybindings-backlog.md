@@ -14,7 +14,8 @@ Modelled on yazi's philosophy: modal only where the modality is obvious from con
 | `J` / `}` | Jump to next sprint header |
 | `K` / `{` | Jump to previous sprint header |
 | `g` / `G` | Jump to first / last ticket in the list |
-| `<C-d>` / `<C-u>` | Half-page down / up |
+| `d` / `u` | Scroll issue list 1/4 page down / up |
+| `<C-d>` / `<C-u>` | Scroll sidebar 1/4 page down / up |
 | `z` | Toggle collapse current sprint |
 | `Z` | Toggle collapse all sprints |
 | `/` | Filter tickets (fuzzy search by summary or key) |
