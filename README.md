@@ -1,17 +1,24 @@
 # tira
 
-A lazygit-style CLI for Jira, built in Go with Charm tooling. This project provides a fast, scriptable, and extensible interface to Jira issues, sprints, and boards.
-
 ![Go Version](https://img.shields.io/badge/Go-1.25-blue)
+[![Go Report Card](https://goreportcard.com/badge/github.com/justinmklam/tira)](https://goreportcard.com/report/github.com/justinmklam/tira)
 ![License](https://img.shields.io/badge/License-MIT-green)
+
+A blazing fast terminal interface for Jira, written in Go. It provides a fast, extensible interface to managing issues, sprints, and boards.
+
+> ![backlog](./docs/screenshots/backlog.png)
+> <sub>Backlog view with persistent issue sidebar.</sub>
+
+> ![kanban](./docs/screenshots/kanban.png)
+> <sub>Kanban view.</sub>
 
 ## Features
 
-- **Interactive TUI** — Split-view backlog and kanban board with fuzzy search, multi-select, and drag-and-drop-like operations
-- **View and edit issues** — Full issue detail view with comments, edit via `$EDITOR` or in-TUI form
-- **Create issues** — New issues via markdown template in your editor
-- **Multiple profiles** — Switch between Jira instances or accounts with `--profile`
-- **Fast and stateless** — No local database; auth via config file
+- **Interactive TUI**: Split-view backlog and kanban board with fuzzy search, multi-select, and drag-and-drop-like operations with vim-inspired keybindings
+- **View and edit issues**: Full issue detail view with comments, edit via `$EDITOR` or in-TUI form
+- **Create issues**: New issues via markdown template in your editor
+- **Multiple profiles**: Switch between Jira instances or accounts with `--profile`
+- **Fast and stateless**: No local database; auth via config file
 
 ## Getting Started
 
@@ -21,21 +28,23 @@ A lazygit-style CLI for Jira, built in Go with Charm tooling. This project provi
 - A Jira Cloud account with API access
 - Clipboard support (optional, for copying URLs):
   - **macOS**: `pbcopy` (built-in)
-  - **Linux**: `xclip` (`sudo apt install xclip` or `sudo dnf install xclip`)
+  - **Linux**: `xclip` (e.g. `sudo apt install xclip`)
 
 ### Installation
 
-Clone the repository and build the CLI:
+Install the tool with curl:
 
 ```sh
-git clone https://github.com/justinmklam/tira.git
-cd tira
-go build -o tira ./cmd/tira
+curl -fsSL https://raw.githubusercontent.com/justinmklam/tira/main/bin/install.sh | bash
 ```
 
-### Configuration
+Or with go:
 
-Create `~/.config/tira/config.yaml` and add your profile(s):
+```sh
+go install github.com/justinmklam/tira@latest
+```
+
+Then create `~/.config/tira/config.yaml` and add a default profile:
 
 ```yaml
 profiles:
@@ -45,28 +54,8 @@ profiles:
     token: your_api_token_here
     project: MYPROJ
     board_id: 42
-    classic_project: true   # Set to true for company-managed (classic) projects
-  dev:
-    jira_url: https://dev-domain.atlassian.net
-    email: dev@example.com
-    token: dev_token_here
-    project: DEVPROJ
-    board_id: 43
+    classic_project: true   # Optional, set to true for company-managed (classic) projects
 ```
-
-**Required fields:**
-
-- `jira_url` — Your Jira Cloud instance URL
-- `email` — Your Jira Cloud email address
-- `token` — Your Jira API token (generate from <https://id.atlassian.com/manage-profile/security/api-tokens>)
-
-**Optional fields:**
-
-- `project` — Default project key
-- `board_id` — Required for `board`/`backlog`/`kanban` commands
-- `classic_project` — Affects browser URL construction only
-
-See [Configuration](docs/configuration.md) for details.
 
 ### Usage
 
@@ -75,14 +64,11 @@ See [Configuration](docs/configuration.md) for details.
 Launch the interactive board TUI:
 
 ```sh
-# Start in backlog view (default)
-./tira board
+# Start in backlog view
+tira backlog
 
 # Start in kanban view
-./tira kanban
-
-# Use specific profile
-./tira --profile dev backlog
+tira kanban
 ```
 
 **Common keybindings:**
@@ -112,50 +98,58 @@ See [Keybindings](docs/keybindings-backlog.md) for the complete reference.
 **View an issue:**
 
 ```sh
-./tira get MP-101
+tira get MP-101
 ```
 
 **Edit an issue in your editor:**
 
 ```sh
-./tira get MP-101 --edit
+tira get MP-101 --edit
 ```
 
 **Create a new issue:**
 
 ```sh
 # Interactive with defaults
-./tira create
+tira create
 
 # Specify project and type
-./tira create --project DEV --type Bug
+tira create --project DEV --type Bug
 ```
 
-**Use a specific profile:**
+## Build & Development
+
+Clone the repository and build the CLI:
 
 ```sh
-./tira --profile dev get DEV-101
-./tira --profile dev board
+make check        # Run all checks (fmt, vet, lint, test)
+make build        # Compile the binary
+make run          # Run the tui using your default profile
 ```
 
-### Flags
+For development, a second `dev` profile can be added to your `~/.config/tira.yaml`:
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--profile <name>` | `"default"` | Select which config profile to use |
-| `--debug` | `false` | Enable file-based debug logging to `./debug.log` |
-| `--no-color` | `false` | Disable color output |
+```yaml
+profiles:
+  ...
+  dev:
+    jira_url: https://dev-domain.atlassian.net
+    email: dev@example.com
+    token: dev_token_here
+    project: DEVPROJ
+    board_id: 43
+```
 
-### Commands
+Other useful commands:
 
-| Command | Description |
-|---------|-------------|
-| `board` | Launch TUI in backlog view |
-| `backlog` | Launch TUI in backlog view |
-| `kanban` | Launch TUI in kanban view |
-| `get <key>` | Fetch and display an issue |
-| `get <key> --edit` | Edit an issue via `$EDITOR` |
-| `create` | Create a new issue via `$EDITOR` |
+```sh
+make run-dev      # Run the tui using your dev profile, with debug enabled
+make test         # Run all tests
+make test-race    # Run tests with race detector
+make fmt          # Format code in-place
+make vet          # Run go vet
+make lint         # Run golangci-lint (requires golangci-lint installation)
+```
 
 ## Documentation
 
@@ -169,55 +163,16 @@ See [Keybindings](docs/keybindings-backlog.md) for the complete reference.
 | [Keybindings](docs/keybindings-backlog.md) | Complete keybinding reference |
 | [Glossary](docs/glossary.md) | Glossary and key types |
 
-## Build & Development
+## Acknowledgements
 
-```sh
-make build        # Compile the binary
-make test         # Run all tests
-make test-race    # Run tests with race detector
-make fmt          # Format code in-place
-make vet          # Run go vet
-make lint         # Run golangci-lint (requires golangci-lint installation)
-make check        # Run all checks (fmt, vet, lint, test)
-```
+This project was built with the excellent [bubbletea](https://github.com/charmbracelet/bubbletea) framework by [Charm](https://github.com/charmbracelet).
 
-Always run `make check` before pushing.
+Inspiration for this tool was taken from:
 
-## Project Structure
-
-```
-tira/
-├── cmd/tira/           # CLI layer (Cobra commands)
-├── internal/
-│   ├── app/            # TUI models (Bubbletea)
-│   ├── api/            # Jira API client
-│   ├── config/         # Configuration loading
-│   ├── models/         # Data types
-│   ├── tui/            # TUI helpers (zero internal deps)
-│   ├── display/        # Issue → Markdown renderer
-│   ├── editor/         # Template rendering
-│   ├── validator/      # Field validation
-│   └── debug/          # Debug logging
-├── docs/               # Documentation
-└── config.example.yaml # Example config
-```
-
-See [Architecture](docs/architecture.md) for the full package dependency graph.
-
-## Contributing
-
-Pull requests welcome! Key areas:
-
-- **Bug fixes** — Especially around edge cases in API response parsing
-- **New features** — Check [tira-plan.md](docs/tira-plan.md) for planned features
-- **Documentation** — Improve clarity or add missing sections
-- **Tests** — Add unit tests for API parsing, form logic, kanban mapping
-
-Before submitting a PR:
-
-1. Run `make check` to ensure all checks pass
-2. Update keybindings in [docs/keybindings-backlog.md](docs/keybindings-backlog.md) if adding new keys
-3. Update [docs/architecture.md](docs/architecture.md) if changing package structure
+- [lazygit](https://github.com/jesseduffield/lazygit)
+- [gh-dash](https://github.com/dlvhdr/gh-dash)
+- [k9s](https://github.com/derailed/k9s)
+- [oxker](https://github.com/mrjackwills/oxker)
 
 ## License
 
