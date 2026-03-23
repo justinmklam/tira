@@ -190,6 +190,17 @@ make lint         # Run golangci-lint (requires golangci-lint installation)
 
 Always run `make check` before pushing.
 
+## Acknowledgements
+
+This project was built with the excellent [bubbletea](https://github.com/charmbracelet/bubbletea) framework by [Charm](https://github.com/charmbracelet).
+
+Inspiration for this tool was taken from:
+
+- [lazygit](https://github.com/jesseduffield/lazygit)
+- [gh-dash](https://github.com/dlvhdr/gh-dash)
+- [k9s](https://github.com/derailed/k9s)
+- [oxker](https://github.com/mrjackwills/oxker)
+
 ## License
 
 MIT
