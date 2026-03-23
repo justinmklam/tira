@@ -1,6 +1,7 @@
 # tira
 
 ![Go Version](https://img.shields.io/badge/Go-1.25-blue)
+[![Go Report Card](https://goreportcard.com/badge/github.com/justinmklam/tira)](https://goreportcard.com/report/github.com/justinmklam/tira)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
 A blazing fast terminal interface for Jira, written in Go. It provides a fast, extensible interface to managing issues, sprints, and boards.
@@ -31,7 +32,7 @@ A blazing fast terminal interface for Jira, written in Go. It provides a fast, e
 
 ### Installation
 
-With curl:
+Install the tool with curl:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/justinmklam/tira/main/bin/install.sh | bash
@@ -43,9 +44,7 @@ Or with go:
 go install github.com/justinmklam/tira@latest
 ```
 
-### Configuration
-
-Create `~/.config/tira/config.yaml` and add a default profile:
+Then create `~/.config/tira/config.yaml` and add a default profile:
 
 ```yaml
 profiles:
@@ -55,22 +54,8 @@ profiles:
     token: your_api_token_here
     project: MYPROJ
     board_id: 42
-    classic_project: true   # Set to true for company-managed (classic) projects
+    classic_project: true   # Optional, set to true for company-managed (classic) projects
 ```
-
-**Required fields:**
-
-- `jira_url` — Your Jira Cloud instance URL
-- `email` — Your Jira Cloud email address
-- `token` — Your Jira API token (generate from <https://id.atlassian.com/manage-profile/security/api-tokens>)
-- `project` — Default project key
-- `board_id` — Required for `board`/`backlog`/`kanban` commands
-
-**Optional fields:**
-
-- `classic_project` — Affects browser URL construction only
-
-See [Configuration](docs/configuration.md) for details.
 
 ### Usage
 
@@ -132,25 +117,6 @@ tira create
 tira create --project DEV --type Bug
 ```
 
-**Use a specific profile:**
-
-```sh
-tira --profile dev get DEV-101
-tira --profile dev board
-```
-
-## Documentation
-
-| Document | Description |
-|----------|-------------|
-| [Architecture](docs/architecture.md) | System architecture and package structure |
-| [CLI Commands](docs/cli-commands.md) | Detailed CLI command documentation |
-| [Configuration](docs/configuration.md) | Configuration system details |
-| [TUI Architecture](docs/tui-architecture.md) | TUI model architecture |
-| [API Client](docs/api-client.md) | API client implementation |
-| [Keybindings](docs/keybindings-backlog.md) | Complete keybinding reference |
-| [Glossary](docs/glossary.md) | Glossary and key types |
-
 ## Build & Development
 
 Clone the repository and build the CLI:
@@ -174,7 +140,7 @@ profiles:
     board_id: 43
 ```
 
-Other commands:
+Other useful commands:
 
 ```sh
 make run-dev      # Run the tui using your dev profile, with debug enabled
@@ -185,7 +151,17 @@ make vet          # Run go vet
 make lint         # Run golangci-lint (requires golangci-lint installation)
 ```
 
-Always run `make check` before pushing.
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [Architecture](docs/architecture.md) | System architecture and package structure |
+| [CLI Commands](docs/cli-commands.md) | Detailed CLI command documentation |
+| [Configuration](docs/configuration.md) | Configuration system details |
+| [TUI Architecture](docs/tui-architecture.md) | TUI model architecture |
+| [API Client](docs/api-client.md) | API client implementation |
+| [Keybindings](docs/keybindings-backlog.md) | Complete keybinding reference |
+| [Glossary](docs/glossary.md) | Glossary and key types |
 
 ## Acknowledgements
 
