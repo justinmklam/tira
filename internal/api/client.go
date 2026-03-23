@@ -1143,8 +1143,8 @@ func (c *jiraClient) fetchAgileIssues(url, sprintName, spField string) ([]models
 	}
 
 	type agileFields struct {
-		Summary   string `json:"summary"`
-		Status    struct {
+		Summary string `json:"summary"`
+		Status  struct {
 			ID   string `json:"id"`
 			Name string `json:"name"`
 		} `json:"status"`
