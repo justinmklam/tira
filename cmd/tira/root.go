@@ -18,7 +18,7 @@ var (
 
 var rootCmd = &cobra.Command{
 	Use:   "tira",
-	Short: "A lazygit-style CLI for Jira",
+	Short: "A blazing fast terminal interface for Jira",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return cmd.Help()
 	},
