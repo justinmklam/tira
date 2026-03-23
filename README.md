@@ -31,6 +31,14 @@ A blazing fast terminal interface for Jira, written in Go. It provides a fast, e
 
 ### Installation
 
+With curl:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/justinmklam/tira/main/bin/install.sh | bash
+```
+
+Or with go:
+
 ```sh
 go install github.com/justinmklam/tira@latest
 ```
@@ -151,9 +159,9 @@ tira --profile dev board
 Clone the repository and build the CLI:
 
 ```sh
-git clone https://github.com/justinmklam/tira.git
-cd tira
-make build
+make check        # Run all checks (fmt, vet, lint, test)
+make build        # Compile the binary
+make run          # Run the tui using your default profile
 ```
 
 For development, a second `dev` profile can be added to your `~/.config/tira.yaml`:
@@ -169,18 +177,15 @@ profiles:
     board_id: 43
 ```
 
-Commands:
+Other commands:
 
 ```sh
-make build        # Compile the binary
-make run          # Run the tui using your default profile
 make run-dev      # Run the tui using your dev profile, with debug enabled
 make test         # Run all tests
 make test-race    # Run tests with race detector
 make fmt          # Format code in-place
 make vet          # Run go vet
 make lint         # Run golangci-lint (requires golangci-lint installation)
-make check        # Run all checks (fmt, vet, lint, test)
 ```
 
 Always run `make check` before pushing.
