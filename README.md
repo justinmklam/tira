@@ -79,14 +79,11 @@ See [Configuration](docs/configuration.md) for details.
 Launch the interactive board TUI:
 
 ```sh
-# Start in backlog view (default)
-tira board
+# Start in backlog view
+tira backlog
 
 # Start in kanban view
 tira kanban
-
-# Use specific profile
-tira --profile dev backlog
 ```
 
 **Common keybindings:**
