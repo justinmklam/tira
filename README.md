@@ -41,7 +41,7 @@ curl -fsSL https://raw.githubusercontent.com/justinmklam/tira/main/bin/install.s
 Or with go:
 
 ```sh
-go install github.com/justinmklam/tira@latest
+go install github.com/justinmklam/tira/cmd/tira@latest
 ```
 
 Then create `~/.config/tira/config.yaml` and add a default profile:
