@@ -87,11 +87,15 @@ func NewClient(cfg *config.Config) (Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("creating jira client: %w", err)
 	}
-	return &jiraClient{
+	jc := &jiraClient{
 		client:  c,
 		baseURL: strings.TrimRight(cfg.JiraURL, "/"),
 		http:    httpClient,
-	}, nil
+	}
+	// Pre-fetch the story points field ID in the background so it is ready
+	// before the first board or issue operation needs it.
+	go jc.resolveStoryPointsField()
+	return jc, nil
 }
 
 func (c *jiraClient) GetIssue(key string) (*models.Issue, error) {
@@ -563,7 +567,9 @@ func (c *jiraClient) UpdateIssue(key string, fields models.IssueFields) error {
 
 	// Story Points
 	if fields.StoryPoints > 0 {
-		f[c.resolveStoryPointsField()] = fields.StoryPoints
+		if spField := c.resolveStoryPointsField(); spField != "" {
+			f[spField] = fields.StoryPoints
+		}
 	}
 
 	if len(fields.Labels) > 0 {
@@ -638,7 +644,9 @@ func (c *jiraClient) CreateIssue(projectKey string, fields models.IssueFields) (
 
 	// Story Points
 	if fields.StoryPoints > 0 {
-		f[c.resolveStoryPointsField()] = fields.StoryPoints
+		if spField := c.resolveStoryPointsField(); spField != "" {
+			f[spField] = fields.StoryPoints
+		}
 	}
 
 	if len(fields.Labels) > 0 {
@@ -715,22 +723,23 @@ func (c *jiraClient) fetchAllFieldIDs() (map[string]string, error) {
 	return nameToID, nil
 }
 
-// resolveStoryPointsField returns the Jira field ID for story points.
+// resolveStoryPointsField returns the Jira field ID for story points, or an
+// empty string if the field is not present on this instance.
 //
 // Resolution order:
 //  1. schema.custom == "com.pyxis.greenhopper.jira:gh-story-points" — the
 //     Greenhopper plugin key that uniquely identifies the classic story points
 //     field regardless of how the admin has renamed it.
 //  2. Field name "story points" or "story point estimate" (next-gen projects).
-//  3. Hardcoded fallback "customfield_10016".
 //
-// The result is cached for the lifetime of the client.
+// The result is cached for the lifetime of the client. A background goroutine
+// is started in NewClient so the field ID is typically ready before the first
+// operation that needs it.
 func (c *jiraClient) resolveStoryPointsField() string {
 	c.spFieldOnce.Do(func() {
 		defs, err := c.fetchAllFieldDefs()
 		if err != nil {
 			debug.LogError("resolving story points field", err)
-			c.spFieldID = "customfield_10016"
 			return
 		}
 		// Priority 1: Greenhopper schema key — unaffected by admin renames.
@@ -749,8 +758,7 @@ func (c *jiraClient) resolveStoryPointsField() string {
 				}
 			}
 		}
-		// Priority 3: Safe default used by most Jira Cloud instances.
-		c.spFieldID = "customfield_10016"
+		debug.Logf("story points field not found on this Jira instance")
 	})
 	return c.spFieldID
 }
@@ -1049,9 +1057,19 @@ func (c *jiraClient) GetSprintList(boardID int) ([]models.Sprint, error) {
 	return sprints, nil
 }
 
+// agileIssueFields returns the fields query parameter for agile board endpoints.
+// spField is the resolved story points field ID and is omitted when empty.
+func agileIssueFields(spField string) string {
+	const base = "summary,status,issuetype,priority,assignee,labels,parent"
+	if spField == "" {
+		return base + ",project"
+	}
+	return base + "," + spField + ",project"
+}
+
 func (c *jiraClient) GetSprintGroupsBatch(boardID int, sprints []models.Sprint) ([]models.SprintGroup, error) {
 	spField := c.resolveStoryPointsField()
-	issueFields := "summary,status,issuetype,priority,assignee,labels,parent," + spField + ",project"
+	issueFields := agileIssueFields(spField)
 
 	groups := make([]models.SprintGroup, len(sprints))
 	var wg sync.WaitGroup
@@ -1089,10 +1107,9 @@ func (c *jiraClient) GetSprintGroupsBatch(boardID int, sprints []models.Sprint) 
 
 func (c *jiraClient) GetBacklogIssues(boardID int) ([]models.Issue, error) {
 	spField := c.resolveStoryPointsField()
-	issueFields := "summary,status,issuetype,priority,assignee,labels,parent," + spField + ",project"
 	backlogURL := fmt.Sprintf(
 		"%s/rest/agile/1.0/board/%d/backlog?maxResults=200&fields=%s",
-		c.baseURL, boardID, issueFields,
+		c.baseURL, boardID, agileIssueFields(spField),
 	)
 	return c.fetchAgileIssues(backlogURL, "", spField)
 }

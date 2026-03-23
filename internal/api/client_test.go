@@ -383,8 +383,9 @@ func TestResolveStoryPointsField_NameFallback(t *testing.T) {
 	}
 }
 
-func TestResolveStoryPointsField_HardcodedFallback(t *testing.T) {
-	// When neither schema nor name matches, fall back to the hardcoded default.
+func TestResolveStoryPointsField_NotFound(t *testing.T) {
+	// When neither schema nor name matches, return empty string — this Jira
+	// instance has no story points field configured.
 	fixture := `[
 		{"id": "customfield_99999", "name": "Some Other Field", "schema": {"custom": "com.example:other"}}
 	]`
@@ -398,8 +399,8 @@ func TestResolveStoryPointsField_HardcodedFallback(t *testing.T) {
 
 	client := newTestClient(server)
 	got := client.resolveStoryPointsField()
-	if got != "customfield_10016" {
-		t.Errorf("resolveStoryPointsField() = %q, want %q (hardcoded fallback)", got, "customfield_10016")
+	if got != "" {
+		t.Errorf("resolveStoryPointsField() = %q, want empty string (no story points field)", got)
 	}
 }
 
