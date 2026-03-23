@@ -313,7 +313,8 @@ func (c *jiraClient) fetchFullIssue(key string) (*models.Issue, error) {
 		result.SprintName = c.extractSprintName(rawFields, fieldID)
 	}
 
-	// Story points.
+	// Story points: look up by human-readable name first, then fall back to
+	// common custom field IDs for instances where the name differs.
 	for _, candidate := range []string{"story points", "story point estimate"} {
 		if fieldID, ok := nameToID[candidate]; ok {
 			if raw, ok := rawFields[fieldID]; ok {
@@ -323,6 +324,17 @@ func (c *jiraClient) fetchFullIssue(key string) (*models.Issue, error) {
 				}
 			}
 			break
+		}
+	}
+	if result.StoryPoints == 0 {
+		for _, fieldID := range []string{"customfield_10016", "customfield_10028", "customfield_10004"} {
+			if raw, ok := rawFields[fieldID]; ok {
+				var sp float64
+				if json.Unmarshal(raw, &sp) == nil && sp > 0 {
+					result.StoryPoints = sp
+					break
+				}
+			}
 		}
 	}
 
@@ -979,7 +991,7 @@ func (c *jiraClient) GetSprintList(boardID int) ([]models.Sprint, error) {
 }
 
 func (c *jiraClient) GetSprintGroupsBatch(boardID int, sprints []models.Sprint) ([]models.SprintGroup, error) {
-	const issueFields = "summary,status,issuetype,priority,assignee,labels,parent,story_points,customfield_10016,project"
+	const issueFields = "summary,status,issuetype,priority,assignee,labels,parent,story_points,customfield_10016,customfield_10028,customfield_10004,project"
 
 	groups := make([]models.SprintGroup, len(sprints))
 	var wg sync.WaitGroup
@@ -1016,7 +1028,7 @@ func (c *jiraClient) GetSprintGroupsBatch(boardID int, sprints []models.Sprint) 
 }
 
 func (c *jiraClient) GetBacklogIssues(boardID int) ([]models.Issue, error) {
-	const issueFields = "summary,status,issuetype,priority,assignee,labels,parent,story_points,customfield_10016,project"
+	const issueFields = "summary,status,issuetype,priority,assignee,labels,parent,story_points,customfield_10016,customfield_10028,customfield_10004,project"
 	backlogURL := fmt.Sprintf(
 		"%s/rest/agile/1.0/board/%d/backlog?maxResults=200&fields=%s",
 		c.baseURL, boardID, issueFields,
@@ -1071,9 +1083,11 @@ func (c *jiraClient) fetchAgileIssues(url, sprintName string) ([]models.Issue, e
 						} `json:"issuetype"`
 					} `json:"fields"`
 				} `json:"parent"`
-				// Story points — field ID varies by instance; try both.
+				// Story points — field ID varies by instance; try all common variants.
 				StoryPoints   *float64 `json:"story_points"`
 				CustomField16 *float64 `json:"customfield_10016"`
+				CustomField28 *float64 `json:"customfield_10028"`
+				CustomField04 *float64 `json:"customfield_10004"`
 				Project       struct {
 					Key string `json:"key"`
 				} `json:"project"`
@@ -1106,8 +1120,8 @@ func (c *jiraClient) fetchAgileIssues(url, sprintName string) ([]models.Issue, e
 			issue.EpicKey = p.Key
 			issue.EpicName = p.Fields.Summary
 		}
-		// Story points: prefer the direct alias, fall back to common custom field ID.
-		for _, sp := range []*float64{raw.Fields.StoryPoints, raw.Fields.CustomField16} {
+		// Story points: prefer the direct alias, fall back to common custom field IDs.
+		for _, sp := range []*float64{raw.Fields.StoryPoints, raw.Fields.CustomField16, raw.Fields.CustomField28, raw.Fields.CustomField04} {
 			if sp != nil && *sp > 0 {
 				issue.StoryPoints = *sp
 				break
