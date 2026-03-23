@@ -99,6 +99,10 @@ type sidebarIssueFetchedMsg struct {
 	err   error
 }
 
+// blSidebarDebounceMsg is sent after a short delay to trigger a sidebar fetch.
+// The fetch is skipped if sidebarPendingKey has changed since the tick was fired.
+type blSidebarDebounceMsg struct{ key string }
+
 type blModel struct {
 	state   blState
 	client  api.Client
@@ -167,10 +171,11 @@ type blModel struct {
 	quitting bool
 
 	// Sidebar state (always visible in split-pane view)
-	sidebarContent   string
-	sidebarOffset    int           // scroll offset for sidebar content
-	sidebarIssueKey  string        // key of issue being displayed in sidebar
-	sidebarFullIssue *models.Issue // full issue with description from API
+	sidebarContent    string
+	sidebarOffset     int           // scroll offset for sidebar content
+	sidebarIssueKey   string        // key of issue being displayed in sidebar
+	sidebarPendingKey string        // key waiting for debounce before fetch
+	sidebarFullIssue  *models.Issue // full issue with description from API
 
 	// lastIssue tracks the most recently selected issue (used when cursor is on sprint header)
 	lastIssue *models.Issue
@@ -299,6 +304,9 @@ func (m *blModel) patchIssue(fresh models.Issue) {
 			fresh.EpicKey = existing.EpicKey
 			fresh.EpicName = existing.EpicName
 			fresh.ProjectKey = existing.ProjectKey
+			if fresh.StoryPoints == 0 {
+				fresh.StoryPoints = existing.StoryPoints
+			}
 			if fresh.StatusChangedDate == "" {
 				fresh.StatusChangedDate = existing.StatusChangedDate
 			}
@@ -516,6 +524,14 @@ func (m blModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		vp.SetContent(msg.content)
 		m.detailView = vp
 		m.state = blDetail
+		return m, nil
+
+	case blSidebarDebounceMsg:
+		if msg.key == m.sidebarPendingKey {
+			m.sidebarIssueKey = msg.key
+			m.sidebarFullIssue = nil
+			return m, fetchSidebarIssueCmd(m.client, msg.key)
+		}
 		return m, nil
 
 	case sidebarIssueFetchedMsg:
