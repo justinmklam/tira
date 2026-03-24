@@ -339,3 +339,109 @@ func TestExtractParentSummary(t *testing.T) {
 		t.Errorf("extractParentSummary() = %q, want %q", got, "Parent Epic Summary")
 	}
 }
+
+func TestResolveStoryPointsField_GreenhopperSchema(t *testing.T) {
+	// When the Greenhopper schema.custom key is present, it should be preferred
+	// over name-based lookup regardless of the field name.
+	fixture := `[
+		{"id": "customfield_10021", "name": "Renamed SP", "schema": {"custom": "com.pyxis.greenhopper.jira:gh-story-points"}},
+		{"id": "customfield_10016", "name": "story points", "schema": {"custom": "com.atlassian.jira.plugin.system.customfieldtypes:float"}}
+	]`
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(fixture))
+	}))
+	defer server.Close()
+
+	client := newTestClient(server)
+	got := client.resolveStoryPointsField()
+	if got != "customfield_10021" {
+		t.Errorf("resolveStoryPointsField() = %q, want %q (Greenhopper schema key should take priority)", got, "customfield_10021")
+	}
+}
+
+func TestResolveStoryPointsField_NameFallback(t *testing.T) {
+	// When no Greenhopper schema key is present, fall back to name-based lookup.
+	fixture := `[
+		{"id": "customfield_10028", "name": "Story point estimate", "schema": {"custom": "com.atlassian.jira.plugin.system.customfieldtypes:float"}},
+		{"id": "customfield_99999", "name": "Other Field", "schema": {"custom": "com.example:other"}}
+	]`
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(fixture))
+	}))
+	defer server.Close()
+
+	client := newTestClient(server)
+	got := client.resolveStoryPointsField()
+	if got != "customfield_10028" {
+		t.Errorf("resolveStoryPointsField() = %q, want %q (name fallback)", got, "customfield_10028")
+	}
+}
+
+func TestResolveStoryPointsField_NotFound(t *testing.T) {
+	// When neither schema nor name matches, return empty string — this Jira
+	// instance has no story points field configured.
+	fixture := `[
+		{"id": "customfield_99999", "name": "Some Other Field", "schema": {"custom": "com.example:other"}}
+	]`
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(fixture))
+	}))
+	defer server.Close()
+
+	client := newTestClient(server)
+	got := client.resolveStoryPointsField()
+	if got != "" {
+		t.Errorf("resolveStoryPointsField() = %q, want empty string (no story points field)", got)
+	}
+}
+
+func TestFetchAgileIssues_DynamicStoryPointsField(t *testing.T) {
+	// Verify that fetchAgileIssues extracts story points using the provided field ID.
+	fixture := `{
+		"issues": [
+			{
+				"key": "PROJ-1",
+				"fields": {
+					"summary": "Test Issue",
+					"status": {"id": "1", "name": "To Do"},
+					"issuetype": {"name": "Story"},
+					"priority": {"name": "Medium"},
+					"labels": [],
+					"project": {"key": "PROJ"},
+					"customfield_10034": 8.0
+				}
+			}
+		]
+	}`
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(fixture))
+	}))
+	defer server.Close()
+
+	client := newTestClient(server)
+	issues, err := client.fetchAgileIssues(server.URL+"/rest/agile/1.0/sprint/1/issue", "Sprint 1", "customfield_10034")
+	if err != nil {
+		t.Fatalf("fetchAgileIssues() error = %v", err)
+	}
+	if len(issues) != 1 {
+		t.Fatalf("expected 1 issue, got %d", len(issues))
+	}
+	if issues[0].StoryPoints != 8.0 {
+		t.Errorf("StoryPoints = %v, want 8.0", issues[0].StoryPoints)
+	}
+	if issues[0].SprintName != "Sprint 1" {
+		t.Errorf("SprintName = %q, want %q", issues[0].SprintName, "Sprint 1")
+	}
+}

@@ -54,9 +54,18 @@ type Client interface {
 }
 
 type jiraClient struct {
-	client  *jira.Client
-	baseURL string
-	http    *http.Client
+	client      *jira.Client
+	baseURL     string
+	http        *http.Client
+	spFieldOnce sync.Once
+	spFieldID   string
+}
+
+// fieldDef holds metadata for a single Jira field returned by /rest/api/3/field.
+type fieldDef struct {
+	id           string
+	name         string // lower-cased
+	schemaCustom string // schema.custom plugin key, e.g. "com.pyxis.greenhopper.jira:gh-story-points"
 }
 
 func NewClient(cfg *config.Config) (Client, error) {
@@ -78,11 +87,15 @@ func NewClient(cfg *config.Config) (Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("creating jira client: %w", err)
 	}
-	return &jiraClient{
+	jc := &jiraClient{
 		client:  c,
 		baseURL: strings.TrimRight(cfg.JiraURL, "/"),
 		http:    httpClient,
-	}, nil
+	}
+	// Pre-fetch the story points field ID in the background so it is ready
+	// before the first board or issue operation needs it.
+	go jc.resolveStoryPointsField()
+	return jc, nil
 }
 
 func (c *jiraClient) GetIssue(key string) (*models.Issue, error) {
@@ -554,12 +567,8 @@ func (c *jiraClient) UpdateIssue(key string, fields models.IssueFields) error {
 
 	// Story Points
 	if fields.StoryPoints > 0 {
-		if id, ok := nameToID["story points"]; ok {
-			f[id] = fields.StoryPoints
-		} else if id, ok := nameToID["story point estimate"]; ok {
-			f[id] = fields.StoryPoints
-		} else {
-			f["story_points"] = fields.StoryPoints // fallback
+		if spField := c.resolveStoryPointsField(); spField != "" {
+			f[spField] = fields.StoryPoints
 		}
 	}
 
@@ -635,12 +644,8 @@ func (c *jiraClient) CreateIssue(projectKey string, fields models.IssueFields) (
 
 	// Story Points
 	if fields.StoryPoints > 0 {
-		if id, ok := nameToID["story points"]; ok {
-			f[id] = fields.StoryPoints
-		} else if id, ok := nameToID["story point estimate"]; ok {
-			f[id] = fields.StoryPoints
-		} else {
-			f["story_points"] = fields.StoryPoints // fallback
+		if spField := c.resolveStoryPointsField(); spField != "" {
+			f[spField] = fields.StoryPoints
 		}
 	}
 
@@ -669,7 +674,9 @@ func (c *jiraClient) CreateIssue(projectKey string, fields models.IssueFields) (
 	return &models.Issue{Key: created.Key}, nil
 }
 
-func (c *jiraClient) fetchAllFieldIDs() (map[string]string, error) {
+// fetchAllFieldDefs fetches the full field list from /rest/api/3/field including
+// schema metadata needed for deterministic story-points field resolution.
+func (c *jiraClient) fetchAllFieldDefs() ([]fieldDef, error) {
 	url := fmt.Sprintf("%s/rest/api/3/field", c.baseURL)
 	resp, err := c.http.Get(url)
 	if err != nil {
@@ -681,19 +688,79 @@ func (c *jiraClient) fetchAllFieldIDs() (map[string]string, error) {
 		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
 
-	var fields []struct {
-		ID   string `json:"id"`
-		Name string `json:"name"`
+	var raw []struct {
+		ID     string `json:"id"`
+		Name   string `json:"name"`
+		Schema struct {
+			Custom string `json:"custom"`
+		} `json:"schema"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&fields); err != nil {
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
 		return nil, err
 	}
 
-	nameToID := make(map[string]string, len(fields))
-	for _, f := range fields {
-		nameToID[strings.ToLower(f.Name)] = f.ID
+	defs := make([]fieldDef, len(raw))
+	for i, f := range raw {
+		defs[i] = fieldDef{
+			id:           f.ID,
+			name:         strings.ToLower(f.Name),
+			schemaCustom: f.Schema.Custom,
+		}
+	}
+	return defs, nil
+}
+
+// fetchAllFieldIDs returns a lowercase name → field ID map.
+func (c *jiraClient) fetchAllFieldIDs() (map[string]string, error) {
+	defs, err := c.fetchAllFieldDefs()
+	if err != nil {
+		return nil, err
+	}
+	nameToID := make(map[string]string, len(defs))
+	for _, d := range defs {
+		nameToID[d.name] = d.id
 	}
 	return nameToID, nil
+}
+
+// resolveStoryPointsField returns the Jira field ID for story points, or an
+// empty string if the field is not present on this instance.
+//
+// Resolution order:
+//  1. schema.custom == "com.pyxis.greenhopper.jira:gh-story-points" — the
+//     Greenhopper plugin key that uniquely identifies the classic story points
+//     field regardless of how the admin has renamed it.
+//  2. Field name "story points" or "story point estimate" (next-gen projects).
+//
+// The result is cached for the lifetime of the client. A background goroutine
+// is started in NewClient so the field ID is typically ready before the first
+// operation that needs it.
+func (c *jiraClient) resolveStoryPointsField() string {
+	c.spFieldOnce.Do(func() {
+		defs, err := c.fetchAllFieldDefs()
+		if err != nil {
+			debug.LogError("resolving story points field", err)
+			return
+		}
+		// Priority 1: Greenhopper schema key — unaffected by admin renames.
+		for _, d := range defs {
+			if d.schemaCustom == "com.pyxis.greenhopper.jira:gh-story-points" {
+				c.spFieldID = d.id
+				return
+			}
+		}
+		// Priority 2: Name-based lookup for next-gen "Story point estimate".
+		for _, candidate := range []string{"story points", "story point estimate"} {
+			for _, d := range defs {
+				if d.name == candidate {
+					c.spFieldID = d.id
+					return
+				}
+			}
+		}
+		debug.Logf("story points field not found on this Jira instance")
+	})
+	return c.spFieldID
 }
 
 func (c *jiraClient) GetValidValues(projectKey string) (*models.ValidValues, error) {
@@ -990,8 +1057,19 @@ func (c *jiraClient) GetSprintList(boardID int) ([]models.Sprint, error) {
 	return sprints, nil
 }
 
+// agileIssueFields returns the fields query parameter for agile board endpoints.
+// spField is the resolved story points field ID and is omitted when empty.
+func agileIssueFields(spField string) string {
+	const base = "summary,status,issuetype,priority,assignee,labels,parent"
+	if spField == "" {
+		return base + ",project"
+	}
+	return base + "," + spField + ",project"
+}
+
 func (c *jiraClient) GetSprintGroupsBatch(boardID int, sprints []models.Sprint) ([]models.SprintGroup, error) {
-	const issueFields = "summary,status,issuetype,priority,assignee,labels,parent,story_points,customfield_10016,customfield_10028,customfield_10004,project"
+	spField := c.resolveStoryPointsField()
+	issueFields := agileIssueFields(spField)
 
 	groups := make([]models.SprintGroup, len(sprints))
 	var wg sync.WaitGroup
@@ -1007,7 +1085,7 @@ func (c *jiraClient) GetSprintGroupsBatch(boardID int, sprints []models.Sprint) 
 				"%s/rest/agile/1.0/sprint/%d/issue?maxResults=200&fields=%s",
 				c.baseURL, sp.ID, issueFields,
 			)
-			issues, err := c.fetchAgileIssues(issueURL, sp.Name)
+			issues, err := c.fetchAgileIssues(issueURL, sp.Name, spField)
 			mu.Lock()
 			defer mu.Unlock()
 			if err != nil {
@@ -1028,17 +1106,19 @@ func (c *jiraClient) GetSprintGroupsBatch(boardID int, sprints []models.Sprint) 
 }
 
 func (c *jiraClient) GetBacklogIssues(boardID int) ([]models.Issue, error) {
-	const issueFields = "summary,status,issuetype,priority,assignee,labels,parent,story_points,customfield_10016,customfield_10028,customfield_10004,project"
+	spField := c.resolveStoryPointsField()
 	backlogURL := fmt.Sprintf(
 		"%s/rest/agile/1.0/board/%d/backlog?maxResults=200&fields=%s",
-		c.baseURL, boardID, issueFields,
+		c.baseURL, boardID, agileIssueFields(spField),
 	)
-	return c.fetchAgileIssues(backlogURL, "")
+	return c.fetchAgileIssues(backlogURL, "", spField)
 }
 
 // fetchAgileIssues fetches issues from any Jira Agile API endpoint that returns
-// an "issues" array (sprint issues, backlog, etc.).
-func (c *jiraClient) fetchAgileIssues(url, sprintName string) ([]models.Issue, error) {
+// an "issues" array (sprint issues, backlog, etc.).  spField is the resolved
+// story-points field ID (e.g. "customfield_10016") and must already be included
+// in the URL's fields parameter.
+func (c *jiraClient) fetchAgileIssues(url, sprintName, spField string) ([]models.Issue, error) {
 	resp, err := c.http.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("fetching issues: %w", err)
@@ -1054,77 +1134,79 @@ func (c *jiraClient) fetchAgileIssues(url, sprintName string) ([]models.Issue, e
 
 	var data struct {
 		Issues []struct {
-			Key    string `json:"key"`
-			Fields struct {
-				Summary string `json:"summary"`
-				Status  struct {
-					ID   string `json:"id"`
-					Name string `json:"name"`
-				} `json:"status"`
-				Issuetype struct {
-					Name string `json:"name"`
-				} `json:"issuetype"`
-				Priority struct {
-					Name string `json:"name"`
-				} `json:"priority"`
-				Assignee *struct {
-					DisplayName string `json:"displayName"`
-					AccountID   string `json:"accountId"`
-				} `json:"assignee"`
-				Labels []string `json:"labels"`
-				// Parent is used in next-gen projects; if the parent is an Epic it
-				// represents the epic link.
-				Parent *struct {
-					Key    string `json:"key"`
-					Fields struct {
-						Summary   string `json:"summary"`
-						Issuetype struct {
-							Name string `json:"name"`
-						} `json:"issuetype"`
-					} `json:"fields"`
-				} `json:"parent"`
-				// Story points — field ID varies by instance; try all common variants.
-				StoryPoints   *float64 `json:"story_points"`
-				CustomField16 *float64 `json:"customfield_10016"`
-				CustomField28 *float64 `json:"customfield_10028"`
-				CustomField04 *float64 `json:"customfield_10004"`
-				Project       struct {
-					Key string `json:"key"`
-				} `json:"project"`
-			} `json:"fields"`
+			Key    string          `json:"key"`
+			Fields json.RawMessage `json:"fields"`
 		} `json:"issues"`
 	}
 	if err := json.Unmarshal(body, &data); err != nil {
 		return nil, fmt.Errorf("parsing issues: %w", err)
 	}
 
+	type agileFields struct {
+		Summary string `json:"summary"`
+		Status  struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+		} `json:"status"`
+		Issuetype struct {
+			Name string `json:"name"`
+		} `json:"issuetype"`
+		Priority struct {
+			Name string `json:"name"`
+		} `json:"priority"`
+		Assignee *struct {
+			DisplayName string `json:"displayName"`
+			AccountID   string `json:"accountId"`
+		} `json:"assignee"`
+		Labels []string `json:"labels"`
+		Parent *struct {
+			Key    string `json:"key"`
+			Fields struct {
+				Summary   string `json:"summary"`
+				Issuetype struct {
+					Name string `json:"name"`
+				} `json:"issuetype"`
+			} `json:"fields"`
+		} `json:"parent"`
+		Project struct {
+			Key string `json:"key"`
+		} `json:"project"`
+	}
+
 	issues := make([]models.Issue, 0, len(data.Issues))
 	for _, raw := range data.Issues {
+		var af agileFields
+		if err := json.Unmarshal(raw.Fields, &af); err != nil {
+			continue
+		}
 		issue := models.Issue{
 			Key:        raw.Key,
-			Summary:    raw.Fields.Summary,
-			Status:     raw.Fields.Status.Name,
-			StatusID:   raw.Fields.Status.ID,
-			IssueType:  raw.Fields.Issuetype.Name,
-			Priority:   raw.Fields.Priority.Name,
+			Summary:    af.Summary,
+			Status:     af.Status.Name,
+			StatusID:   af.Status.ID,
+			IssueType:  af.Issuetype.Name,
+			Priority:   af.Priority.Name,
 			SprintName: sprintName,
-			Labels:     raw.Fields.Labels,
-			ProjectKey: raw.Fields.Project.Key,
+			Labels:     af.Labels,
+			ProjectKey: af.Project.Key,
 		}
-		if raw.Fields.Assignee != nil {
-			issue.Assignee = raw.Fields.Assignee.DisplayName
-			issue.AssigneeID = raw.Fields.Assignee.AccountID
+		if af.Assignee != nil {
+			issue.Assignee = af.Assignee.DisplayName
+			issue.AssigneeID = af.Assignee.AccountID
 		}
 		// Epic: parent issue when the parent type is "Epic".
-		if p := raw.Fields.Parent; p != nil && p.Fields.Issuetype.Name == "Epic" {
+		if p := af.Parent; p != nil && p.Fields.Issuetype.Name == "Epic" {
 			issue.EpicKey = p.Key
 			issue.EpicName = p.Fields.Summary
 		}
-		// Story points: prefer the direct alias, fall back to common custom field IDs.
-		for _, sp := range []*float64{raw.Fields.StoryPoints, raw.Fields.CustomField16, raw.Fields.CustomField28, raw.Fields.CustomField04} {
-			if sp != nil && *sp > 0 {
-				issue.StoryPoints = *sp
-				break
+		// Story points: extract from the resolved field ID.
+		var rawFields map[string]json.RawMessage
+		if json.Unmarshal(raw.Fields, &rawFields) == nil {
+			if spRaw, ok := rawFields[spField]; ok {
+				var sp float64
+				if json.Unmarshal(spRaw, &sp) == nil {
+					issue.StoryPoints = sp
+				}
 			}
 		}
 		issues = append(issues, issue)
