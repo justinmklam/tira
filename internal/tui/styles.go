@@ -50,18 +50,20 @@ func IssueTypeColor(issueType string) lipgloss.Color {
 	}
 }
 
+// epicPalette is the color palette used by EpicColor. It is overwritten by SetTheme.
+var epicPalette = []lipgloss.Color{"39", "208", "141", "43", "214", "99", "203", "118", "45", "220"}
+
 // EpicColor returns a consistent terminal color for an epic key by hashing it.
 // Returns empty string for empty keys.
 func EpicColor(epicKey string) lipgloss.Color {
 	if epicKey == "" {
 		return ""
 	}
-	palette := []lipgloss.Color{"39", "208", "141", "43", "214", "99", "203", "118", "45", "220"}
 	var sum int
 	for _, r := range epicKey {
 		sum += int(r)
 	}
-	return palette[sum%len(palette)]
+	return epicPalette[sum%len(epicPalette)]
 }
 
 // DaysInColumn calculates the number of days an issue has been in its current status.

@@ -14,7 +14,6 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/glamour"
-	"github.com/charmbracelet/glamour/styles"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/justinmklam/tira/internal/api"
 	"github.com/justinmklam/tira/internal/display"
@@ -796,7 +795,7 @@ func parseFloat(s string) (float64, error) {
 // renderMarkdownWithGlamour renders a markdown string through glamour at the given wrap width.
 func renderMarkdownWithGlamour(md string, wrapWidth int) string {
 	renderer, err := glamour.NewTermRenderer(
-		glamour.WithStyles(styles.DarkStyleConfig),
+		glamour.WithStyles(tui.GlamourStyleConfig),
 		glamour.WithWordWrap(wrapWidth),
 	)
 	if err != nil {
