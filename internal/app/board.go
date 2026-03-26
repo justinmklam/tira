@@ -760,8 +760,8 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Open in browser (only when sub-model is in its base navigation state).
-	if key, ok := msg.(tea.KeyMsg); ok && key.String() == "o" && m.canSwitchView() {
+	// Open in browser (works in both list and detail views).
+	if key, ok := msg.(tea.KeyMsg); ok && key.String() == "o" && m.canOpenInBrowser() {
 		var issueKey string
 		switch m.activeView {
 		case ViewBacklog:
@@ -892,6 +892,19 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+// canOpenInBrowser returns true when the "o" key should open an issue in the
+// browser — allowed in both list and detail views, but not during filtering,
+// pickers, or other input states.
+func (m boardModel) canOpenInBrowser() bool {
+	switch m.activeView {
+	case ViewBacklog:
+		return (m.backlog.state == blList && !m.backlog.visualMode) || m.backlog.state == blDetail
+	case ViewKanban:
+		return m.kanban.state == stateBoard || m.kanban.state == stateDetail
+	}
+	return false
 }
 
 // canSwitchView returns true when the active sub-model is in its base
