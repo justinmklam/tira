@@ -315,11 +315,11 @@ See [Configuration](configuration.md) for details.
 
 ### Color Constants
 
-Use `internal/tui` color constants (e.g. `tui.ColorBlue`) instead of raw string literals like `"12"`:
+Use `internal/tui` color constants (e.g. `tui.ColorAccent`) instead of raw string literals like `"12"`:
 
 ```go
 // Good
-style := lipgloss.NewStyle().Foreground(tui.ColorBlue)
+style := lipgloss.NewStyle().Foreground(tui.ColorAccent)
 
 // Bad
 style := lipgloss.NewStyle().Foreground("12")

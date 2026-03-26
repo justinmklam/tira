@@ -232,7 +232,7 @@ func newBacklogModel(client api.Client, boardID int, groups []models.SprintGroup
 
 	s := spinner.New()
 	s.Spinner = spinner.Dot
-	s.Style = lipgloss.NewStyle().Foreground(tui.SpinnerColor)
+	s.Style = lipgloss.NewStyle().Foreground(tui.ColorSpinner)
 
 	m := blModel{
 		state:           blList,
@@ -817,12 +817,12 @@ func renderIssueContent(issue *models.Issue, wrapWidth int) string {
 // renderIssueDetailView renders a common issue detail view with border and footer.
 // Used by both backlog and kanban detail overlays.
 func renderIssueDetailView(issue *models.Issue, detailView viewport.Model, width, height, overlayW, innerW int) string {
-	footer := tui.DimStyle.Render("  e: edit   c: comment   o: open in browser   esc/q: back   j/k: scroll")
+	footer := tui.MutedStyle.Render("  e: edit   c: comment   o: open in browser   esc/q: back   j/k: scroll")
 	body := detailView.View() + "\n" + footer
 
 	modal := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(tui.ColorBlue).
+		BorderForeground(tui.ColorAccent).
 		Width(innerW).
 		Render(body)
 
@@ -833,7 +833,7 @@ func renderIssueDetailView(issue *models.Issue, detailView viewport.Model, width
 // It uses the same rendering as the detail overlay.
 func renderSidebarContent(issue *models.Issue, width int) string {
 	if issue == nil {
-		return tui.DimStyle.Render("No issue selected")
+		return tui.MutedStyle.Render("No issue selected")
 	}
 	return renderIssueContent(issue, width-4)
 }

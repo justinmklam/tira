@@ -93,10 +93,10 @@ func (m *commentInputModel) View() string {
 
 	var hint string
 	if m.confirmAbort {
-		hint = lipgloss.NewStyle().Foreground(tui.ColorYellow).
+		hint = lipgloss.NewStyle().Foreground(tui.ColorWarning).
 			Render("  Discard comment? (y/n)")
 	} else {
-		hint = tui.DimStyle.Render("  ctrl+s: save   esc: cancel")
+		hint = tui.MutedStyle.Render("  ctrl+s: save   esc: cancel")
 	}
 	lines = append(lines, hint)
 	return strings.Join(lines, "\n")

@@ -211,15 +211,15 @@ func (m PickerModel) View(innerW, maxListRows int) string {
 
 	lines = append(lines, " "+m.Input.View())
 
-	sep := DimStyle.Render(strings.Repeat("─", innerW))
+	sep := MutedStyle.Render(strings.Repeat("─", innerW))
 	lines = append(lines, sep)
 
 	switch {
 	case m.Loading:
-		lines = append(lines, DimStyle.Render("  Searching…"))
+		lines = append(lines, MutedStyle.Render("  Searching…"))
 
 	case m.Err != "":
-		lines = append(lines, lipgloss.NewStyle().Foreground(ColorRed).Render("  Error: "+m.Err))
+		lines = append(lines, lipgloss.NewStyle().Foreground(ColorError).Render("  Error: "+m.Err))
 
 	default:
 		// Build display entries: optional NoneItem followed by results.
@@ -233,7 +233,7 @@ func (m PickerModel) View(innerW, maxListRows int) string {
 		}
 
 		if len(entries) == 0 {
-			lines = append(lines, DimStyle.Render("  No results"))
+			lines = append(lines, MutedStyle.Render("  No results"))
 		} else {
 			// Scroll window so the cursor stays visible.
 			start := 0
@@ -262,11 +262,11 @@ func (m PickerModel) View(innerW, maxListRows int) string {
 				label := FixedWidth(e.label, keyW)
 				sub := FixedWidth(e.subLabel, subW)
 				if i == m.Cursor {
-					row := lipgloss.NewStyle().Foreground(ColorBlue).Bold(true).Render("▶ "+label) +
-						" " + lipgloss.NewStyle().Foreground(ColorFgBright).Render(sub)
+					row := lipgloss.NewStyle().Foreground(ColorAccent).Bold(true).Render("▶ "+label) +
+						" " + lipgloss.NewStyle().Foreground(ColorForegroundBright).Render(sub)
 					lines = append(lines, row)
 				} else {
-					lines = append(lines, "  "+DimStyle.Render(label)+" "+DimStyle.Render(sub))
+					lines = append(lines, "  "+MutedStyle.Render(label)+" "+MutedStyle.Render(sub))
 				}
 			}
 		}

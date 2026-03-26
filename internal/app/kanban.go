@@ -112,7 +112,7 @@ func newKanbanModel(client api.Client, boardCols []models.BoardColumn, issues []
 	cols := buildColumns(boardCols, issues)
 	s := spinner.New()
 	s.Spinner = spinner.Dot
-	s.Style = lipgloss.NewStyle().Foreground(tui.SpinnerColor)
+	s.Style = lipgloss.NewStyle().Foreground(tui.ColorSpinner)
 	return kanbanModel{
 		state:       stateBoard,
 		client:      client,

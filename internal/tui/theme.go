@@ -11,18 +11,18 @@ import (
 
 // Theme defines a complete color palette for the TUI.
 type Theme struct {
-	Red      lipgloss.Color
-	Green    lipgloss.Color
-	Yellow   lipgloss.Color
-	Blue     lipgloss.Color
-	Magenta  lipgloss.Color
-	Orange   lipgloss.Color
-	White    lipgloss.Color
-	Fg       lipgloss.Color
-	FgBright lipgloss.Color
-	Dim      lipgloss.Color
-	Dimmer   lipgloss.Color
-	Bg       lipgloss.Color
+	Error            lipgloss.Color
+	Success          lipgloss.Color
+	Warning          lipgloss.Color
+	Accent           lipgloss.Color
+	Special          lipgloss.Color
+	Caution          lipgloss.Color
+	Highlight        lipgloss.Color
+	Foreground       lipgloss.Color
+	ForegroundBright lipgloss.Color
+	Muted            lipgloss.Color
+	Subtle           lipgloss.Color
+	Surface          lipgloss.Color
 
 	EpicPalette []lipgloss.Color
 }
@@ -33,35 +33,35 @@ var GlamourStyleConfig = styles.DarkStyleConfig
 
 var themes = map[string]Theme{
 	"default": {
-		Red:      lipgloss.Color("9"),
-		Green:    lipgloss.Color("10"),
-		Yellow:   lipgloss.Color("11"),
-		Blue:     lipgloss.Color("12"),
-		Magenta:  lipgloss.Color("13"),
-		Orange:   lipgloss.Color("208"),
-		White:    lipgloss.Color("15"),
-		Fg:       lipgloss.Color("252"),
-		FgBright: lipgloss.Color("255"),
-		Dim:      lipgloss.Color("244"),
-		Dimmer:   lipgloss.Color("240"),
-		Bg:       lipgloss.Color("237"),
+		Error:            lipgloss.Color("9"),
+		Success:          lipgloss.Color("10"),
+		Warning:          lipgloss.Color("11"),
+		Accent:           lipgloss.Color("12"),
+		Special:          lipgloss.Color("13"),
+		Caution:          lipgloss.Color("208"),
+		Highlight:        lipgloss.Color("15"),
+		Foreground:       lipgloss.Color("252"),
+		ForegroundBright: lipgloss.Color("255"),
+		Muted:            lipgloss.Color("244"),
+		Subtle:           lipgloss.Color("240"),
+		Surface:          lipgloss.Color("237"),
 		EpicPalette: []lipgloss.Color{
 			"39", "208", "141", "43", "214", "99", "203", "118", "45", "220",
 		},
 	},
 	"catppuccin": {
-		Red:      lipgloss.Color("#f38ba8"), // red
-		Green:    lipgloss.Color("#a6e3a1"), // green
-		Yellow:   lipgloss.Color("#f9e2af"), // yellow
-		Blue:     lipgloss.Color("#cba6f7"), // blue
-		Magenta:  lipgloss.Color("#f5c2e7"), // pink
-		Orange:   lipgloss.Color("#fab387"), // peach
-		White:    lipgloss.Color("#bac2de"), // subtext1
-		Fg:       lipgloss.Color("#cdd6f4"), // text
-		FgBright: lipgloss.Color("#cdd6f4"), // text
-		Dim:      lipgloss.Color("#6c7086"), // overlay0
-		Dimmer:   lipgloss.Color("#585b70"), // surface2
-		Bg:       lipgloss.Color("#313244"), // surface0
+		Error:            lipgloss.Color("#f38ba8"), // red
+		Success:          lipgloss.Color("#a6e3a1"), // green
+		Warning:          lipgloss.Color("#f9e2af"), // yellow
+		Accent:           lipgloss.Color("#cba6f7"), // mauve
+		Special:          lipgloss.Color("#f5c2e7"), // pink
+		Caution:          lipgloss.Color("#fab387"), // peach
+		Highlight:        lipgloss.Color("#bac2de"), // subtext1
+		Foreground:       lipgloss.Color("#cdd6f4"), // text
+		ForegroundBright: lipgloss.Color("#cdd6f4"), // text
+		Muted:            lipgloss.Color("#6c7086"), // overlay0
+		Subtle:           lipgloss.Color("#585b70"), // surface2
+		Surface:          lipgloss.Color("#313244"), // surface0
 		EpicPalette: []lipgloss.Color{
 			"#89b4fa", "#fab387", "#a6e3a1", "#94e2d5", "#f9e2af",
 			"#cba6f7", "#f38ba8", "#f5c2e7", "#74c7ec", "#f5e0dc",
@@ -84,28 +84,28 @@ func SetTheme(name string) error {
 		return fmt.Errorf("unknown theme %q (available: %v)", name, ThemeNames())
 	}
 
-	ColorRed = t.Red
-	ColorGreen = t.Green
-	ColorYellow = t.Yellow
-	ColorBlue = t.Blue
-	ColorMagenta = t.Magenta
-	ColorOrange = t.Orange
-	ColorWhite = t.White
-	ColorFg = t.Fg
-	ColorFgBright = t.FgBright
-	ColorDim = t.Dim
-	ColorDimmer = t.Dimmer
-	ColorBg = t.Bg
-	SpinnerColor = t.Blue
+	ColorError = t.Error
+	ColorSuccess = t.Success
+	ColorWarning = t.Warning
+	ColorAccent = t.Accent
+	ColorSpecial = t.Special
+	ColorCaution = t.Caution
+	ColorHighlight = t.Highlight
+	ColorForeground = t.Foreground
+	ColorForegroundBright = t.ForegroundBright
+	ColorMuted = t.Muted
+	ColorSubtle = t.Subtle
+	ColorSurface = t.Surface
+	ColorSpinner = t.Accent
 
 	if len(t.EpicPalette) > 0 {
 		epicPalette = t.EpicPalette
 	}
 
 	// Rebuild pre-built styles with new colors.
-	DimStyle = lipgloss.NewStyle().Foreground(ColorDim)
-	BoldBlue = lipgloss.NewStyle().Bold(true).Foreground(ColorBlue)
-	SelectedBg = lipgloss.NewStyle().Background(ColorBg)
+	MutedStyle = lipgloss.NewStyle().Foreground(ColorMuted)
+	BoldAccent = lipgloss.NewStyle().Bold(true).Foreground(ColorAccent)
+	SurfaceBg = lipgloss.NewStyle().Background(ColorSurface)
 
 	if gs, ok := glamourStyles[name]; ok {
 		GlamourStyleConfig = gs

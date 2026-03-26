@@ -163,7 +163,7 @@ func openAndValidate(content string, valid *models.ValidValues) (*models.IssueFi
 
 // printValidationErrors renders a styled error summary to stderr.
 func printValidationErrors(errs []validator.ValidationError) {
-	style := lipgloss.NewStyle().Foreground(tui.ColorRed)
+	style := lipgloss.NewStyle().Foreground(tui.ColorError)
 	fmt.Fprintln(os.Stderr, style.Render("Validation errors:"))
 	for _, e := range errs {
 		fmt.Fprintf(os.Stderr, "  • %s\n", e.Message)
@@ -173,8 +173,8 @@ func printValidationErrors(errs []validator.ValidationError) {
 // printFieldDiff shows which fields changed.
 func printFieldDiff(issue *models.Issue, fields *models.IssueFields) {
 	label := lipgloss.NewStyle().Bold(true)
-	old := lipgloss.NewStyle().Foreground(tui.ColorRed)
-	new_ := lipgloss.NewStyle().Foreground(tui.ColorGreen)
+	old := lipgloss.NewStyle().Foreground(tui.ColorError)
+	new_ := lipgloss.NewStyle().Foreground(tui.ColorSuccess)
 
 	type change struct{ field, from, to string }
 	var changes []change

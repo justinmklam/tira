@@ -9,14 +9,14 @@ func TestIssueTypeColor(t *testing.T) {
 		input string
 		want  string
 	}{
-		{"Bug", string(ColorRed)},
-		{"bug", string(ColorRed)},
-		{"Story", string(ColorGreen)},
-		{"Task", string(ColorBlue)},
-		{"Epic", string(ColorMagenta)},
-		{"Sub-task", string(ColorYellow)},
-		{"subtask", string(ColorYellow)},
-		{"Unknown", string(ColorDim)},
+		{"Bug", string(ColorError)},
+		{"bug", string(ColorError)},
+		{"Story", string(ColorSuccess)},
+		{"Task", string(ColorAccent)},
+		{"Epic", string(ColorSpecial)},
+		{"Sub-task", string(ColorWarning)},
+		{"subtask", string(ColorWarning)},
+		{"Unknown", string(ColorMuted)},
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {

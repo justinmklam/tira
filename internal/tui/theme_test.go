@@ -22,14 +22,14 @@ func TestSetTheme_Default(t *testing.T) {
 		t.Fatalf("SetTheme(\"default\"): %v", err)
 	}
 
-	if ColorRed != lipgloss.Color("9") {
-		t.Errorf("ColorRed = %q, want %q", ColorRed, "9")
+	if ColorError != lipgloss.Color("9") {
+		t.Errorf("ColorError = %q, want %q", ColorError, "9")
 	}
-	if ColorBlue != lipgloss.Color("12") {
-		t.Errorf("ColorBlue = %q, want %q", ColorBlue, "12")
+	if ColorAccent != lipgloss.Color("12") {
+		t.Errorf("ColorAccent = %q, want %q", ColorAccent, "12")
 	}
-	if ColorBg != lipgloss.Color("237") {
-		t.Errorf("ColorBg = %q, want %q", ColorBg, "237")
+	if ColorSurface != lipgloss.Color("237") {
+		t.Errorf("ColorSurface = %q, want %q", ColorSurface, "237")
 	}
 }
 
@@ -40,14 +40,14 @@ func TestSetTheme_Catppuccin(t *testing.T) {
 		t.Fatalf("SetTheme(\"catppuccin\"): %v", err)
 	}
 
-	if ColorRed != lipgloss.Color("#f38ba8") {
-		t.Errorf("ColorRed = %q, want %q", ColorRed, "#f38ba8")
+	if ColorError != lipgloss.Color("#f38ba8") {
+		t.Errorf("ColorError = %q, want %q", ColorError, "#f38ba8")
 	}
-	if ColorBlue != lipgloss.Color("#89b4fa") {
-		t.Errorf("ColorBlue = %q, want %q", ColorBlue, "#89b4fa")
+	if ColorAccent != lipgloss.Color("#cba6f7") {
+		t.Errorf("ColorAccent = %q, want %q", ColorAccent, "#cba6f7")
 	}
-	if SpinnerColor != lipgloss.Color("#89b4fa") {
-		t.Errorf("SpinnerColor = %q, want %q", SpinnerColor, "#89b4fa")
+	if ColorSpinner != lipgloss.Color("#cba6f7") {
+		t.Errorf("ColorSpinner = %q, want %q", ColorSpinner, "#cba6f7")
 	}
 }
 
@@ -64,11 +64,11 @@ func TestSetTheme_RebuildStyles(t *testing.T) {
 		t.Fatalf("SetTheme: %v", err)
 	}
 
-	// DimStyle should use the catppuccin Dim color.
-	got := DimStyle.GetForeground()
+	// MutedStyle should use the catppuccin Muted color.
+	got := MutedStyle.GetForeground()
 	want := lipgloss.Color("#6c7086")
 	if got != want {
-		t.Errorf("DimStyle foreground = %v, want %v", got, want)
+		t.Errorf("MutedStyle foreground = %v, want %v", got, want)
 	}
 }
 

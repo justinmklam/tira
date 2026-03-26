@@ -82,20 +82,20 @@ func (m kanbanModel) viewBoard() string {
 
 	activeColStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(tui.ColorBlue).
+		BorderForeground(tui.ColorAccent).
 		Padding(0, 1).
 		Width(innerWidth)
 	inactiveColStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(tui.ColorDimmer).
+		BorderForeground(tui.ColorSubtle).
 		Padding(0, 1).
 		Width(innerWidth)
 
-	colHeaderStyle := lipgloss.NewStyle().Bold(true).Foreground(tui.ColorFgBright)
-	keyStyle := lipgloss.NewStyle().Bold(true).Foreground(tui.ColorBlue)
-	selKeyStyle := lipgloss.NewStyle().Bold(true).Foreground(tui.ColorWhite).Background(tui.ColorBg)
-	selSumStyle := lipgloss.NewStyle().Foreground(tui.ColorFg).Background(tui.ColorBg)
-	assigneeStyle := lipgloss.NewStyle().Foreground(tui.ColorDim)
+	colHeaderStyle := lipgloss.NewStyle().Bold(true).Foreground(tui.ColorForegroundBright)
+	keyStyle := lipgloss.NewStyle().Bold(true).Foreground(tui.ColorAccent)
+	selKeyStyle := lipgloss.NewStyle().Bold(true).Foreground(tui.ColorHighlight).Background(tui.ColorSurface)
+	selSumStyle := lipgloss.NewStyle().Foreground(tui.ColorForeground).Background(tui.ColorSurface)
+	assigneeStyle := lipgloss.NewStyle().Foreground(tui.ColorMuted)
 	daysStyle := lipgloss.NewStyle().Bold(true)
 
 	var renderedCols []string
@@ -104,10 +104,10 @@ func (m kanbanModel) viewBoard() string {
 
 		title := strings.ToUpper(col.name) + fmt.Sprintf(" (%d)", len(col.issues))
 		lines = append(lines, colHeaderStyle.Render(title))
-		lines = append(lines, tui.DimStyle.Render(strings.Repeat("─", innerWidth)))
+		lines = append(lines, tui.MutedStyle.Render(strings.Repeat("─", innerWidth)))
 
 		if len(col.issues) == 0 {
-			lines = append(lines, tui.DimStyle.Render("  (empty)"))
+			lines = append(lines, tui.MutedStyle.Render("  (empty)"))
 		}
 
 		for ri, issue := range col.issues {
@@ -151,7 +151,7 @@ func (m kanbanModel) viewBoard() string {
 			} else {
 				lines = append(lines,
 					"  "+keyStyle.Render(issue.Key),
-					"  "+tui.DimStyle.Render(summary),
+					"  "+tui.MutedStyle.Render(summary),
 				)
 				if assigneeStr != "" || days > 0 {
 					var metaParts []string
@@ -161,7 +161,7 @@ func (m kanbanModel) viewBoard() string {
 					if days > 0 {
 						metaParts = append(metaParts, daysStyle.Foreground(daysColor).Render(daysStr))
 					}
-					lines = append(lines, "  "+tui.DimStyle.Render(strings.Join(metaParts, " • ")))
+					lines = append(lines, "  "+tui.MutedStyle.Render(strings.Join(metaParts, " • ")))
 				}
 			}
 		}
@@ -177,18 +177,18 @@ func (m kanbanModel) viewBoard() string {
 
 	var header string
 	if m.sprintName != "" {
-		header = tui.BoldBlue.Padding(0, 1).
+		header = tui.BoldAccent.Padding(0, 1).
 			Render("Kanban: "+m.sprintName) + "\n"
 	}
 
 	hintsStr := "  hjkl: navigate   enter: view   e: edit   c: comment   s: status   o: open   tab: backlog   q: quit"
 	var footerStr string
 	if m.state == stateLoading {
-		spinnerStr := m.loadSpinner.View() + tui.DimStyle.Render(" Loading…")
+		spinnerStr := m.loadSpinner.View() + tui.MutedStyle.Render(" Loading…")
 		padded := tui.FixedWidth(hintsStr, width-lipgloss.Width(spinnerStr)-2)
-		footerStr = tui.DimStyle.Render(padded) + "  " + spinnerStr
+		footerStr = tui.MutedStyle.Render(padded) + "  " + spinnerStr
 	} else {
-		footerStr = tui.DimStyle.Render(hintsStr)
+		footerStr = tui.MutedStyle.Render(hintsStr)
 	}
 
 	// Build board content (header + board)

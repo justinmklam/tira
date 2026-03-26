@@ -64,7 +64,7 @@ func RunWithSpinner[T any](label string, fn func() (T, error)) (T, error) {
 
 	s := spinner.New()
 	s.Spinner = spinner.Dot
-	s.Style = lipgloss.NewStyle().Foreground(SpinnerColor)
+	s.Style = lipgloss.NewStyle().Foreground(ColorSpinner)
 
 	p := tea.NewProgram(spinnerModel[T]{
 		spinner: s,
