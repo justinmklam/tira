@@ -15,6 +15,7 @@ type Config struct {
 	Project        string `mapstructure:"project"`
 	BoardID        int    `mapstructure:"board_id"`
 	ClassicProject bool   `mapstructure:"classic_project"`
+	Theme          string `mapstructure:"theme"`
 }
 
 func Load(profileName string, searchPaths ...string) (*Config, error) {

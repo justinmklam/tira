@@ -51,16 +51,16 @@ func TestDaysColor_Thresholds(t *testing.T) {
 		days int
 		want string
 	}{
-		{0, string(ColorGreen)},
-		{1, string(ColorGreen)},
-		{2, string(ColorGreen)},
-		{3, string(ColorYellow)},
-		{5, string(ColorYellow)},
-		{6, string(ColorOrange)},
-		{9, string(ColorOrange)},
-		{10, string(ColorRed)},
-		{15, string(ColorRed)},
-		{100, string(ColorRed)},
+		{0, string(ColorSuccess)},
+		{1, string(ColorSuccess)},
+		{2, string(ColorSuccess)},
+		{3, string(ColorWarning)},
+		{5, string(ColorWarning)},
+		{6, string(ColorCaution)},
+		{9, string(ColorCaution)},
+		{10, string(ColorError)},
+		{15, string(ColorError)},
+		{100, string(ColorError)},
 	}
 	for _, tt := range tests {
 		t.Run(string(rune(tt.days+'0')), func(t *testing.T) {

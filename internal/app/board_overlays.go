@@ -16,25 +16,25 @@ func (m boardModel) View() string {
 
 	switch m.activeView {
 	case viewEditLoading:
-		msg := m.editSpinner.View() + tui.DimStyle.Render(" Fetching issue…")
+		msg := m.editSpinner.View() + tui.MutedStyle.Render(" Fetching issue…")
 		return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, msg)
 
 	case viewEdit:
 		return m.viewEditForm(w, h)
 
 	case viewEditSaving:
-		msg := m.editSpinner.View() + tui.DimStyle.Render(" Saving…")
+		msg := m.editSpinner.View() + tui.MutedStyle.Render(" Saving…")
 		return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, msg)
 
 	case viewCreateLoading:
-		msg := m.editSpinner.View() + tui.DimStyle.Render(" Loading…")
+		msg := m.editSpinner.View() + tui.MutedStyle.Render(" Loading…")
 		return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, msg)
 
 	case viewCreate:
 		return m.viewEditForm(w, h)
 
 	case viewCreateSaving:
-		msg := m.editSpinner.View() + tui.DimStyle.Render(" Creating issue…")
+		msg := m.editSpinner.View() + tui.MutedStyle.Render(" Creating issue…")
 		return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, msg)
 
 	case viewAssigneePicker:
@@ -53,7 +53,7 @@ func (m boardModel) View() string {
 		return m.viewCommentForm(w, h)
 
 	case viewCommentSaving:
-		msg := m.editSpinner.View() + tui.DimStyle.Render(" Saving comment…")
+		msg := m.editSpinner.View() + tui.MutedStyle.Render(" Saving comment…")
 		return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, msg)
 
 	case ViewKanban:
@@ -85,17 +85,17 @@ func (m boardModel) viewEditForm(w, h int) string {
 			titleStr = m.editIssue.Key + "  " + m.editIssue.Summary
 		}
 	}
-	header := tui.BoldBlue.Padding(0, 1).Width(innerW).
+	header := tui.BoldAccent.Padding(0, 1).Width(innerW).
 		Render(tui.FixedWidth(titleStr, innerW-2))
 
 	body := header + "\n" + m.editForm.View()
 	if m.editErr != "" {
-		body += "\n" + lipgloss.NewStyle().Foreground(tui.ColorRed).Render("  "+m.editErr)
+		body += "\n" + lipgloss.NewStyle().Foreground(tui.ColorError).Render("  "+m.editErr)
 	}
 
 	modal := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(tui.ColorBlue).
+		BorderForeground(tui.ColorAccent).
 		Width(innerW).
 		Render(body)
 
@@ -139,7 +139,7 @@ func (m boardModel) viewHelpOverlay(w, h int) string {
 
 	modal := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(tui.ColorBlue).
+		BorderForeground(tui.ColorAccent).
 		Width(innerW).
 		Render(helpContent)
 
@@ -154,17 +154,17 @@ func (m boardModel) viewCommentForm(w, h int) string {
 	innerW := overlayW - 2
 
 	titleStr := "Add Comment → " + m.commentKey + "  " + m.commentSummary
-	header := tui.BoldBlue.Padding(0, 1).Width(innerW).
+	header := tui.BoldAccent.Padding(0, 1).Width(innerW).
 		Render(tui.FixedWidth(titleStr, innerW-2))
 
 	body := header + "\n" + m.commentForm.View()
 	if m.commentErr != "" {
-		body += "\n" + lipgloss.NewStyle().Foreground(tui.ColorRed).Render("  "+m.commentErr)
+		body += "\n" + lipgloss.NewStyle().Foreground(tui.ColorError).Render("  "+m.commentErr)
 	}
 
 	modal := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(tui.ColorBlue).
+		BorderForeground(tui.ColorAccent).
 		Width(innerW).
 		Render(body)
 

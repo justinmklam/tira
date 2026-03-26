@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/log"
 	"github.com/justinmklam/tira/internal/config"
 	"github.com/justinmklam/tira/internal/debug"
+	"github.com/justinmklam/tira/internal/tui"
 	"github.com/spf13/cobra"
 )
 
@@ -43,6 +44,12 @@ var rootCmd = &cobra.Command{
 		if err != nil {
 			debug.LogError("config.Load", err)
 			return err
+		}
+
+		if cfg.Theme != "" {
+			if err := tui.SetTheme(cfg.Theme); err != nil {
+				return fmt.Errorf("invalid theme %q: %w", cfg.Theme, err)
+			}
 		}
 
 		log.Debug("config loaded", "profile", profile, "url", cfg.JiraURL, "project", cfg.Project)

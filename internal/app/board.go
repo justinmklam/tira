@@ -255,7 +255,7 @@ func newBoardModel(client api.Client, boardID int, jiraURL, project string, clas
 
 	s := spinner.New()
 	s.Spinner = spinner.Dot
-	s.Style = lipgloss.NewStyle().Foreground(tui.SpinnerColor)
+	s.Style = lipgloss.NewStyle().Foreground(tui.ColorSpinner)
 
 	backlog, backlogCmd := newBacklogModel(client, boardID, data.Groups, project, jiraURL)
 

@@ -295,29 +295,29 @@ func (m *editModel) View() string {
 	var lines []string
 
 	for i := 0; i < efInputCount; i++ {
-		label := tui.DimStyle.Render(tui.FixedWidth(emFieldLabels[i], emLabelW))
+		label := tui.MutedStyle.Render(tui.FixedWidth(emFieldLabels[i], emLabelW))
 		lines = append(lines, " "+label+" "+m.inputs[i].View())
 	}
 
 	lines = append(lines, "")
-	lines = append(lines, " "+tui.DimStyle.Render("Description"))
+	lines = append(lines, " "+tui.MutedStyle.Render("Description"))
 	lines = append(lines, strings.Split(m.descTA.View(), "\n")...)
 
 	lines = append(lines, "")
-	lines = append(lines, " "+tui.DimStyle.Render("Acceptance Criteria"))
+	lines = append(lines, " "+tui.MutedStyle.Render("Acceptance Criteria"))
 	lines = append(lines, strings.Split(m.acTA.View(), "\n")...)
 
 	if m.validErr != "" {
 		lines = append(lines, "")
-		lines = append(lines, lipgloss.NewStyle().Foreground(tui.ColorRed).Render("  "+m.validErr))
+		lines = append(lines, lipgloss.NewStyle().Foreground(tui.ColorError).Render("  "+m.validErr))
 	}
 
 	lines = append(lines, "")
 	if m.confirmAbort {
-		msg := lipgloss.NewStyle().Foreground(tui.ColorRed).Bold(true).Render("  Discard unsaved changes? (y/n)")
+		msg := lipgloss.NewStyle().Foreground(tui.ColorError).Bold(true).Render("  Discard unsaved changes? (y/n)")
 		lines = append(lines, msg)
 	} else {
-		lines = append(lines, tui.DimStyle.Render("  enter: open picker / next  tab: next  shift+tab: back  ctrl+s: save  esc: cancel"))
+		lines = append(lines, tui.MutedStyle.Render("  enter: open picker / next  tab: next  shift+tab: back  ctrl+s: save  esc: cancel"))
 	}
 
 	return strings.Join(lines, "\n") + "\n"

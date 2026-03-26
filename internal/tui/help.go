@@ -129,14 +129,14 @@ func (m HelpModel) getContentLines(innerW int) []string {
 	var lines []string
 
 	// Title
-	title := BoldBlue.Render("Keybindings Help")
+	title := BoldAccent.Render("Keybindings Help")
 	lines = append(lines, title)
 	lines = append(lines, "")
 
 	// Render each section
 	for _, section := range sections {
 		// Section title
-		sectionTitle := lipgloss.NewStyle().Bold(true).Foreground(ColorMagenta).Render(section.Title)
+		sectionTitle := lipgloss.NewStyle().Bold(true).Foreground(ColorSpecial).Render(section.Title)
 		lines = append(lines, sectionTitle)
 
 		// Keybindings
@@ -149,7 +149,7 @@ func (m HelpModel) getContentLines(innerW int) []string {
 
 		for _, kb := range section.Keybindings {
 			keyStr := FixedWidth(kb.Key, maxKeyW)
-			keyStyled := lipgloss.NewStyle().Foreground(ColorYellow).Render(keyStr)
+			keyStyled := lipgloss.NewStyle().Foreground(ColorWarning).Render(keyStr)
 			line := keyStyled + "  " + kb.Description
 			lines = append(lines, line)
 		}

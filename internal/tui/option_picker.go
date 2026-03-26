@@ -68,7 +68,7 @@ func (m OptionPickerModel) Update(msg tea.Msg) (OptionPickerModel, tea.Cmd) {
 // This signature is compatible with RenderPickerOverlay's pickerView parameter.
 func (m OptionPickerModel) View(innerW, maxRows int) string {
 	if len(m.Items) == 0 {
-		return DimStyle.Render("  (no options)")
+		return MutedStyle.Render("  (no options)")
 	}
 
 	start := 0
@@ -85,9 +85,9 @@ func (m OptionPickerModel) View(innerW, maxRows int) string {
 	for i := start; i < end; i++ {
 		label := FixedWidth(m.Items[i], labelW)
 		if i == m.Cursor {
-			lines = append(lines, lipgloss.NewStyle().Foreground(ColorBlue).Bold(true).Render("▶ "+label))
+			lines = append(lines, lipgloss.NewStyle().Foreground(ColorAccent).Bold(true).Render("▶ "+label))
 		} else {
-			lines = append(lines, DimStyle.Render("  "+label))
+			lines = append(lines, MutedStyle.Render("  "+label))
 		}
 	}
 	return strings.Join(lines, "\n")

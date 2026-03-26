@@ -71,7 +71,7 @@ func (m blModel) viewDetail() string {
 // blColumnHeader returns a dim header row aligned with issue row columns.
 func blColumnHeader(width int) string {
 	summaryW := blSummaryWidth(width)
-	return tui.DimStyle.Render(
+	return tui.MutedStyle.Render(
 		"  " +
 			tui.FixedWidth("KEY", blKeyW) + "  " +
 			tui.FixedWidth("SUMMARY", summaryW) + "  " +
@@ -96,18 +96,18 @@ func (m blModel) viewList() string {
 	listPaneW := tui.ListPaneWidth(width)
 
 	// Top bar spans both panes
-	topBar := tui.BoldBlue.Padding(0, 1).Render("Backlog")
+	topBar := tui.BoldAccent.Padding(0, 1).Render("Backlog")
 	if m.yankMessage != "" {
-		topBar += " " + lipgloss.NewStyle().Bold(true).Foreground(tui.ColorGreen).Render(m.yankMessage)
+		topBar += " " + lipgloss.NewStyle().Bold(true).Foreground(tui.ColorSuccess).Render(m.yankMessage)
 	} else if m.visualMode {
-		topBar += " " + lipgloss.NewStyle().Bold(true).Foreground(tui.ColorMagenta).Render("VISUAL")
+		topBar += " " + lipgloss.NewStyle().Bold(true).Foreground(tui.ColorSpecial).Render("VISUAL")
 	} else if m.filterEpic != "" {
-		topBar += " " + lipgloss.NewStyle().Foreground(tui.ColorMagenta).Render("epic: "+m.filterEpic)
+		topBar += " " + lipgloss.NewStyle().Foreground(tui.ColorSpecial).Render("epic: "+m.filterEpic)
 	} else if m.filter != "" {
-		topBar += " " + lipgloss.NewStyle().Foreground(tui.ColorYellow).Render("/ "+m.filter)
+		topBar += " " + lipgloss.NewStyle().Foreground(tui.ColorWarning).Render("/ "+m.filter)
 	}
 	if len(m.cutKeys) > 0 {
-		topBar += " " + lipgloss.NewStyle().Foreground(tui.ColorOrange).Render(fmt.Sprintf("✂ %d cut", len(m.cutKeys)))
+		topBar += " " + lipgloss.NewStyle().Foreground(tui.ColorCaution).Render(fmt.Sprintf("✂ %d cut", len(m.cutKeys)))
 	}
 
 	// Column header for list pane
@@ -129,7 +129,7 @@ func (m blModel) viewList() string {
 	listContent := strings.Join(lines, "\n")
 
 	// Header line: column header on left, divider separating sidebar
-	div := lipgloss.NewStyle().Foreground(tui.ColorDimmer).Render("│")
+	div := lipgloss.NewStyle().Foreground(tui.ColorSubtle).Render("│")
 	headerLine := lipgloss.NewStyle().Width(listPaneW).Render(colHeader) + div
 
 	// Sidebar content with scroll
@@ -149,13 +149,13 @@ func (m blModel) viewList() string {
 	var footer string
 	switch m.state {
 	case blFilter:
-		footer = lipgloss.NewStyle().Foreground(tui.ColorBlue).Render("/") +
+		footer = lipgloss.NewStyle().Foreground(tui.ColorAccent).Render("/") +
 			" " + m.filterInput.View() +
-			"  " + tui.DimStyle.Render("esc: clear  enter: apply")
+			"  " + tui.MutedStyle.Render("esc: clear  enter: apply")
 	case blKeySearch:
-		footer = lipgloss.NewStyle().Foreground(tui.ColorBlue).Render("f") +
+		footer = lipgloss.NewStyle().Foreground(tui.ColorAccent).Render("f") +
 			" " + m.keySearchInput.View() +
-			"  " + tui.DimStyle.Render("esc: cancel  enter: jump")
+			"  " + tui.MutedStyle.Render("esc: cancel  enter: jump")
 	default:
 		hints := []string{
 			"e: edit", "c: comment", "o: open", "y: copy", "s: status", "S: story pts",
@@ -169,15 +169,15 @@ func (m blModel) viewList() string {
 		}
 		switch {
 		case m.state == blLoading:
-			spinnerStr := m.loadSpinner.View() + tui.DimStyle.Render(" Loading…")
+			spinnerStr := m.loadSpinner.View() + tui.MutedStyle.Render(" Loading…")
 			leftWidth := listPaneW - lipgloss.Width(spinnerStr) - 2
-			footer = tui.DimStyle.Render(tui.FixedWidth(left, leftWidth)) + "  " + spinnerStr
+			footer = tui.MutedStyle.Render(tui.FixedWidth(left, leftWidth)) + "  " + spinnerStr
 		case m.moving:
-			spinnerStr := m.loadSpinner.View() + tui.DimStyle.Render(" Moving…")
+			spinnerStr := m.loadSpinner.View() + tui.MutedStyle.Render(" Moving…")
 			leftWidth := listPaneW - lipgloss.Width(spinnerStr) - 2
-			footer = tui.DimStyle.Render(tui.FixedWidth(left, leftWidth)) + "  " + spinnerStr
+			footer = tui.MutedStyle.Render(tui.FixedWidth(left, leftWidth)) + "  " + spinnerStr
 		default:
-			footer = tui.DimStyle.Render(left)
+			footer = tui.MutedStyle.Render(left)
 		}
 	}
 
@@ -211,16 +211,16 @@ func (m blModel) renderSprintRow(row blRow, isSelected bool, activeGroupIdx, wid
 		icon = "▶"
 	}
 
-	stateColor := tui.ColorDimmer
+	stateColor := tui.ColorSubtle
 	switch group.Sprint.State {
 	case "active":
-		stateColor = tui.ColorGreen
+		stateColor = tui.ColorSuccess
 	case "future":
-		stateColor = tui.ColorBlue
+		stateColor = tui.ColorAccent
 	}
 	accentColor := stateColor
 	if row.groupIdx == activeGroupIdx {
-		accentColor = tui.ColorYellow
+		accentColor = tui.ColorWarning
 	}
 	accentStyle := lipgloss.NewStyle().Foreground(accentColor).Bold(true)
 	accent := accentStyle.Render("▌")
@@ -234,11 +234,11 @@ func (m blModel) renderSprintRow(row blRow, isSelected bool, activeGroupIdx, wid
 	}
 	stateBadge := lipgloss.NewStyle().Foreground(stateColor).Render(dateBadge)
 
-	nameStyle := lipgloss.NewStyle().Bold(true).Foreground(tui.ColorFg)
+	nameStyle := lipgloss.NewStyle().Bold(true).Foreground(tui.ColorForeground)
 	namePart := nameStyle.Render(icon + " " + group.Sprint.Name)
 
 	countStr := fmt.Sprintf("%d issues", len(group.Issues))
-	count := tui.DimStyle.Render(countStr)
+	count := tui.MutedStyle.Render(countStr)
 
 	left := accent + " " + namePart + "  " + stateBadge
 	leftLen := lipgloss.Width(left)
@@ -252,8 +252,8 @@ func (m blModel) renderSprintRow(row blRow, isSelected bool, activeGroupIdx, wid
 
 	if isSelected {
 		highlight := lipgloss.NewStyle().
-			Background(tui.ColorBg).
-			Foreground(tui.ColorFgBright).
+			Background(tui.ColorSurface).
+			Foreground(tui.ColorForegroundBright).
 			Bold(true)
 		return highlight.Width(width).Render(line)
 	}
@@ -303,32 +303,32 @@ func (m blModel) renderIssueRow(row blRow, isSelected bool, width int) string {
 	isCut := m.cutKeys[issue.Key]
 
 	if isSelected {
-		bg := tui.SelectedBg
+		bg := tui.SurfaceBg
 		var cursorStr string
 		switch {
 		case isCut:
-			cursorStr = bg.Bold(true).Foreground(tui.ColorOrange).Render("✂ ")
+			cursorStr = bg.Bold(true).Foreground(tui.ColorCaution).Render("✂ ")
 		case isChecked:
-			cursorStr = bg.Foreground(tui.ColorYellow).Render("● ")
+			cursorStr = bg.Foreground(tui.ColorWarning).Render("● ")
 		default:
 			cursorStr = bg.Render("  ")
 		}
-		keyColor := tui.ColorWhite
+		keyColor := tui.ColorHighlight
 		if isChecked {
-			keyColor = tui.ColorYellow
+			keyColor = tui.ColorWarning
 		} else if isCut {
-			keyColor = tui.ColorOrange
+			keyColor = tui.ColorCaution
 		}
 		keyPart := bg.Bold(true).Foreground(keyColor).Render(key)
-		summaryPart := bg.Foreground(tui.ColorWhite).Render("  " + summary + "  ")
-		epicStyle := bg.Foreground(tui.ColorDim)
+		summaryPart := bg.Foreground(tui.ColorHighlight).Render("  " + summary + "  ")
+		epicStyle := bg.Foreground(tui.ColorMuted)
 		if epicColor != "" {
 			epicStyle = bg.Foreground(epicColor)
 		}
 		epicPart := epicStyle.Render(epic + " ")
 		typePart := bg.Bold(true).Foreground(typeColor).Render(issueType + " ")
-		spPart := bg.Foreground(tui.ColorFg).Render(sp + " ")
-		assigneePart := bg.Foreground(tui.ColorFg).Render(assignee)
+		spPart := bg.Foreground(tui.ColorForeground).Render(sp + " ")
+		assigneePart := bg.Foreground(tui.ColorForeground).Render(assignee)
 		return cursorStr + keyPart + summaryPart + epicPart + typePart + spPart + assigneePart
 	}
 
@@ -336,24 +336,24 @@ func (m blModel) renderIssueRow(row blRow, isSelected bool, width int) string {
 	var keyPart string
 	switch {
 	case isCut:
-		cursorStr = lipgloss.NewStyle().Foreground(tui.ColorOrange).Render("✂ ")
-		keyPart = lipgloss.NewStyle().Bold(true).Foreground(tui.ColorOrange).Render(key)
+		cursorStr = lipgloss.NewStyle().Foreground(tui.ColorCaution).Render("✂ ")
+		keyPart = lipgloss.NewStyle().Bold(true).Foreground(tui.ColorCaution).Render(key)
 	case isChecked:
-		cursorStr = lipgloss.NewStyle().Foreground(tui.ColorYellow).Render("● ")
-		keyPart = lipgloss.NewStyle().Bold(true).Foreground(tui.ColorYellow).Render(key)
+		cursorStr = lipgloss.NewStyle().Foreground(tui.ColorWarning).Render("● ")
+		keyPart = lipgloss.NewStyle().Bold(true).Foreground(tui.ColorWarning).Render(key)
 	default:
 		cursorStr = "  "
-		keyPart = lipgloss.NewStyle().Bold(true).Foreground(tui.ColorBlue).Render(key)
+		keyPart = lipgloss.NewStyle().Bold(true).Foreground(tui.ColorAccent).Render(key)
 	}
-	summaryPart := lipgloss.NewStyle().Foreground(tui.ColorFgBright).Render("  " + summary + "  ")
-	epicStyle := lipgloss.NewStyle().Foreground(tui.ColorDim)
+	summaryPart := lipgloss.NewStyle().Foreground(tui.ColorForegroundBright).Render("  " + summary + "  ")
+	epicStyle := lipgloss.NewStyle().Foreground(tui.ColorMuted)
 	if epicColor != "" {
 		epicStyle = lipgloss.NewStyle().Foreground(epicColor)
 	}
 	epicPart := epicStyle.Render(epic + " ")
 	typePart := lipgloss.NewStyle().Bold(true).Foreground(typeColor).Render(issueType + " ")
-	spPart := lipgloss.NewStyle().Foreground(tui.ColorDim).Render(sp + " ")
-	assigneePart := tui.DimStyle.Render(assignee)
+	spPart := lipgloss.NewStyle().Foreground(tui.ColorMuted).Render(sp + " ")
+	assigneePart := tui.MutedStyle.Render(assignee)
 	return cursorStr + keyPart + summaryPart + epicPart + typePart + spPart + assigneePart
 }
 
@@ -398,7 +398,7 @@ func (m blModel) viewParentPicker() string {
 		noun = "issues"
 	}
 	title := fmt.Sprintf("Set Parent  (%d %s)", n, noun)
-	header := tui.BoldBlue.Padding(0, 1).Width(innerW).
+	header := tui.BoldAccent.Padding(0, 1).Width(innerW).
 		Render(tui.FixedWidth(title, innerW-2))
 
 	// List rows fit in roughly half the terminal height.
@@ -407,16 +407,16 @@ func (m blModel) viewParentPicker() string {
 		listH = 4
 	}
 
-	footer := tui.DimStyle.Render("  ↑/↓ ctrl+p/n: navigate   enter: select   esc: cancel")
+	footer := tui.MutedStyle.Render("  ↑/↓ ctrl+p/n: navigate   enter: select   esc: cancel")
 
 	body := header + "\n" +
 		m.parentPicker.View(innerW, listH) + "\n" +
-		tui.DimStyle.Render(strings.Repeat("─", innerW)) + "\n" +
+		tui.MutedStyle.Render(strings.Repeat("─", innerW)) + "\n" +
 		footer
 
 	modal := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(tui.ColorBlue).
+		BorderForeground(tui.ColorAccent).
 		Width(innerW).
 		Render(body)
 
@@ -448,21 +448,21 @@ func (m blModel) viewStoryPointInput() string {
 		noun = "issues"
 	}
 	title := fmt.Sprintf("Set Story Points  (%d %s)", n, noun)
-	header := tui.BoldBlue.Padding(0, 1).Width(innerW).
+	header := tui.BoldAccent.Padding(0, 1).Width(innerW).
 		Render(tui.FixedWidth(title, innerW-2))
 
 	inputLine := "  " + m.storyPointInput.View()
 
-	footer := tui.DimStyle.Render("  enter: set   esc: cancel")
+	footer := tui.MutedStyle.Render("  enter: set   esc: cancel")
 
 	body := header + "\n" +
 		inputLine + "\n" +
-		tui.DimStyle.Render(strings.Repeat("─", innerW)) + "\n" +
+		tui.MutedStyle.Render(strings.Repeat("─", innerW)) + "\n" +
 		footer
 
 	modal := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(tui.ColorBlue).
+		BorderForeground(tui.ColorAccent).
 		Width(innerW).
 		Render(body)
 
@@ -492,7 +492,7 @@ func (m blModel) viewEpicFilterPicker() string {
 	if m.filterEpic != "" {
 		title = "Filter by Epic  (current: " + m.filterEpic + ")"
 	}
-	header := tui.BoldBlue.Padding(0, 1).Width(innerW).
+	header := tui.BoldAccent.Padding(0, 1).Width(innerW).
 		Render(tui.FixedWidth(title, innerW-2))
 
 	listH := height/2 - 6
@@ -500,16 +500,16 @@ func (m blModel) viewEpicFilterPicker() string {
 		listH = 4
 	}
 
-	footer := tui.DimStyle.Render("  ↑/↓ ctrl+p/n: navigate   enter: select   esc: cancel")
+	footer := tui.MutedStyle.Render("  ↑/↓ ctrl+p/n: navigate   enter: select   esc: cancel")
 
 	body := header + "\n" +
 		m.epicFilterPicker.View(innerW, listH) + "\n" +
-		tui.DimStyle.Render(strings.Repeat("─", innerW)) + "\n" +
+		tui.MutedStyle.Render(strings.Repeat("─", innerW)) + "\n" +
 		footer
 
 	modal := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(tui.ColorBlue).
+		BorderForeground(tui.ColorAccent).
 		Width(innerW).
 		Render(body)
 
@@ -553,12 +553,12 @@ func (m blModel) viewSprintForm() string {
 	if isEdit {
 		title = "Edit Sprint"
 	}
-	header := tui.BoldBlue.Padding(0, 1).Width(innerW).
+	header := tui.BoldAccent.Padding(0, 1).Width(innerW).
 		Render(tui.FixedWidth(title, innerW-2))
 
 	const labelW = 16
-	labelStyle := tui.DimStyle
-	activeStyle := lipgloss.NewStyle().Foreground(tui.ColorFg)
+	labelStyle := tui.MutedStyle
+	activeStyle := lipgloss.NewStyle().Foreground(tui.ColorForeground)
 
 	label := func(text string, active bool) string {
 		s := labelStyle
@@ -584,23 +584,23 @@ func (m blModel) viewSprintForm() string {
 			endDate = e
 		}
 	}
-	endLine := "  " + tui.DimStyle.Render(fmt.Sprintf("%-*s", labelW, "End Date")) +
-		tui.DimStyle.Render(endDate)
+	endLine := "  " + tui.MutedStyle.Render(fmt.Sprintf("%-*s", labelW, "End Date")) +
+		tui.MutedStyle.Render(endDate)
 
 	var errorLine string
 	if m.sprintFormError != "" {
-		errorLine = "\n  " + lipgloss.NewStyle().Foreground(tui.ColorRed).Render("✗ "+m.sprintFormError)
+		errorLine = "\n  " + lipgloss.NewStyle().Foreground(tui.ColorError).Render("✗ "+m.sprintFormError)
 	}
 
 	var footer string
 	if m.sprintFormSubmitting {
-		footer = "  " + m.loadSpinner.View() + tui.DimStyle.Render(" Saving…")
+		footer = "  " + m.loadSpinner.View() + tui.MutedStyle.Render(" Saving…")
 	} else {
 		action := "create"
 		if isEdit {
 			action = "save"
 		}
-		footer = tui.DimStyle.Render(fmt.Sprintf("  tab/shift+tab: next field   ctrl+s: %s   esc: cancel", action))
+		footer = tui.MutedStyle.Render(fmt.Sprintf("  tab/shift+tab: next field   ctrl+s: %s   esc: cancel", action))
 	}
 
 	body := header + "\n" +
@@ -611,12 +611,12 @@ func (m blModel) viewSprintForm() string {
 		endLine +
 		errorLine + "\n" +
 		"\n" +
-		tui.DimStyle.Render(strings.Repeat("─", innerW)) + "\n" +
+		tui.MutedStyle.Render(strings.Repeat("─", innerW)) + "\n" +
 		footer
 
 	modal := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(tui.ColorBlue).
+		BorderForeground(tui.ColorAccent).
 		Width(innerW).
 		Render(body)
 

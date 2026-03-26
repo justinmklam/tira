@@ -35,7 +35,7 @@ func Clamp(v, lo, hi int) int {
 // SplitPanes renders left and right string blocks side-by-side, separated by
 // a dim vertical bar, each block padded/trimmed to exactly height lines.
 func SplitPanes(left, right string, leftWidth, height int) string {
-	div := lipgloss.NewStyle().Foreground(ColorDimmer).Render("│")
+	div := lipgloss.NewStyle().Foreground(ColorSubtle).Render("│")
 	leftLines := strings.Split(left, "\n")
 	rightLines := strings.Split(right, "\n")
 	rows := make([]string, height)
@@ -136,7 +136,7 @@ func RenderPickerOverlay(pickerView func(innerW, listH int) string, title string
 	}
 	innerW := pickerW - 2
 
-	header := BoldBlue.Padding(0, 1).Width(innerW).
+	header := BoldAccent.Padding(0, 1).Width(innerW).
 		Render(FixedWidth(title, innerW-2))
 
 	listH := height/2 - 6
@@ -144,16 +144,16 @@ func RenderPickerOverlay(pickerView func(innerW, listH int) string, title string
 		listH = 4
 	}
 
-	footer := DimStyle.Render("  ↑/↓ ctrl+p/n: navigate   enter: select   esc: cancel")
+	footer := MutedStyle.Render("  ↑/↓ ctrl+p/n: navigate   enter: select   esc: cancel")
 
 	body := header + "\n" +
 		pickerView(innerW, listH) + "\n" +
-		DimStyle.Render(strings.Repeat("─", innerW)) + "\n" +
+		MutedStyle.Render(strings.Repeat("─", innerW)) + "\n" +
 		footer
 
 	modal := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(ColorBlue).
+		BorderForeground(ColorAccent).
 		Width(innerW).
 		Render(body)
 
