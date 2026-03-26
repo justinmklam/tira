@@ -37,7 +37,7 @@ profiles:
     project: MYPROJ
     board_id: 42
     classic_project: true   # for company-managed (classic) projects
-    theme: catppuccin       # color theme (default, catppuccin)
+    theme: catppuccin       # color theme (default, tokyonight, catppuccin)
   dev:
     jira_url: https://dev-domain.atlassian.net
     email: dev-email@example.com
@@ -57,7 +57,7 @@ profiles:
 - `project` — Default project key (e.g., `MYPROJ`)
 - `board_id` — Default board ID for the `board`/`backlog`/`kanban` commands
 - `classic_project` — Set to `true` for company-managed (classic) projects; affects browser URL construction only
-- `theme` — Color theme for the TUI. Available themes: `default`, `catppuccin`. If omitted, uses terminal's default ANSI 256 colors
+- `theme` — Color theme for the TUI. Available themes: `default`, `tokyonight`, `catppuccin`. If omitted, uses terminal's default ANSI 256 colors
 
 ## Loading Configuration
 

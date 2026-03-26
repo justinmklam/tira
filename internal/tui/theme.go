@@ -49,6 +49,24 @@ var themes = map[string]Theme{
 			"39", "208", "141", "43", "214", "99", "203", "118", "45", "220",
 		},
 	},
+	"tokyonight": {
+		Error:            lipgloss.Color("#f7768e"), // red
+		Success:          lipgloss.Color("#9ece6a"), // green
+		Warning:          lipgloss.Color("#e0af68"), // yellow
+		Accent:           lipgloss.Color("#f7768e"), // blue
+		Special:          lipgloss.Color("#bb9af7"), // magenta
+		Caution:          lipgloss.Color("#ff9e64"), // orange
+		Highlight:        lipgloss.Color("#a9b1d6"), // white
+		Foreground:       lipgloss.Color("#c0caf5"), // foreground
+		ForegroundBright: lipgloss.Color("#c0caf5"), // bright white
+		Muted:            lipgloss.Color("#414868"), // bright black
+		Subtle:           lipgloss.Color("#283457"), // comment
+		Surface:          lipgloss.Color("#283457"), // selection
+		EpicPalette: []lipgloss.Color{
+			"#7aa2f7", "#ff9e64", "#9ece6a", "#7dcfff", "#e0af68",
+			"#bb9af7", "#f7768e", "#73daca", "#2ac3de", "#ff007c",
+		},
+	},
 	"catppuccin": {
 		Error:            lipgloss.Color("#f38ba8"), // red
 		Success:          lipgloss.Color("#a6e3a1"), // green
@@ -72,6 +90,7 @@ var themes = map[string]Theme{
 // glamourStyles maps theme names to glamour style configs for markdown rendering.
 var glamourStyles = map[string]ansi.StyleConfig{
 	"default":    styles.DarkStyleConfig,
+	"tokyonight": styles.TokyoNightStyleConfig,
 	"catppuccin": catppuccinGlamourStyle,
 }
 
