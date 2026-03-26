@@ -53,7 +53,7 @@ var themes = map[string]Theme{
 		Error:            lipgloss.Color("#f7768e"), // red
 		Success:          lipgloss.Color("#9ece6a"), // green
 		Warning:          lipgloss.Color("#e0af68"), // yellow
-		Accent:           lipgloss.Color("#f7768e"), // blue
+		Accent:           lipgloss.Color("#f7768e"), // red
 		Special:          lipgloss.Color("#bb9af7"), // magenta
 		Caution:          lipgloss.Color("#ff9e64"), // orange
 		Highlight:        lipgloss.Color("#a9b1d6"), // white
@@ -129,6 +129,10 @@ func SetTheme(name string) error {
 	if gs, ok := glamourStyles[name]; ok {
 		GlamourStyleConfig = gs
 	}
+
+	// Override glamour heading color to match the active theme's Accent.
+	accentStr := string(t.Accent)
+	GlamourStyleConfig.Heading.Color = &accentStr
 
 	return nil
 }
