@@ -176,6 +176,8 @@ Inspiration for this tool was taken from:
 - [k9s](https://github.com/derailed/k9s)
 - [oxker](https://github.com/mrjackwills/oxker)
 
+Developed with the help of [Claude](https://claude.ai/) and [Qwen](https://github.com/QwenLM/qwen-code). Thanks pals.
+
 ## License
 
 MIT
