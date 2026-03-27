@@ -6,13 +6,11 @@
 
 A blazing fast terminal interface for Jira, written in Go. It provides a fast, extensible interface for managing issues, sprints, and boards.
 
-![demo](./docs/screenshots/demo.mov)
+![backlog](./docs/screenshots/backlog.png)
 
-> ![backlog](./docs/screenshots/backlog.png)
-> <sub>Backlog view with persistent issue sidebar.</sub>
+![kanban](./docs/screenshots/kanban.png)
 
-> ![kanban](./docs/screenshots/kanban.png)
-> <sub>Kanban view.</sub>
+<video src="docs/screenshots/demo.mov" width="320" height="240" controls></video>
 
 ## Features
 
