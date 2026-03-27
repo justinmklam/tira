@@ -1,7 +1,7 @@
 # tira
 
 ![Go Version](https://img.shields.io/badge/Go-1.25-blue)
-![Go Report Card](https://goreportcard.com/badge/github.com/justinmklam/tira)
+[![Go Report Card](https://goreportcard.com/badge/github.com/justinmklam/tira)](https://goreportcard.com/report/github.com/justinmklam/tira)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
 A terminal interface for Jira. Fast, keyboard-driven, and built for people who find the web UI insufferable.
