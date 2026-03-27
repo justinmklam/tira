@@ -12,7 +12,7 @@ import (
 
 // Column widths for backlog issue rows.
 const (
-	blKeyW    = 8
+	blKeyW    = 10
 	blEpicW   = 12
 	blTypeW   = 8
 	blSpW     = 5
