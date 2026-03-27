@@ -4,13 +4,14 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/justinmklam/tira)](https://goreportcard.com/report/github.com/justinmklam/tira)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
-A blazing fast terminal interface for Jira, written in Go. It provides a fast, extensible interface for managing issues, sprints, and boards.
+A terminal interface for Jira. Fast, keyboard-driven, and built for people who find the web UI insufferable.
 
 ![backlog](./docs/screenshots/backlog.png)
 
 ![kanban](./docs/screenshots/kanban.png)
 
-<video src="docs/screenshots/demo.mov" width="320" height="240" controls></video>
+Demo:
+<video src="https://github.com/user-attachments/assets/65dfa774-d51a-4980-a965-76393f43c00f" width="320" height="240" controls></video>
 
 ## Features
 
