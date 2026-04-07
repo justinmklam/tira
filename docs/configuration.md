@@ -51,13 +51,50 @@ profiles:
 **Required fields** — missing any causes a fatal error at startup:
 - `jira_url` — Your Jira Cloud instance URL (e.g., `https://yourorg.atlassian.net`)
 - `email` — Your Jira Cloud email address
-- `token` — Your Jira API token (generate from https://id.atlassian.com/manage-profile/security/api-tokens)
+- `token` — Your Jira API token (generate from https://id.atlassian.com/manage-profile/security/api-tokens). Can also be set via `JIRA_TOKEN` or `JIRA_API_TOKEN` environment variables (see below)
 
 **Optional fields:**
 - `project` — Default project key (e.g., `MYPROJ`)
 - `board_id` — Default board ID for the `board`/`backlog`/`kanban` commands
 - `classic_project` — Set to `true` for company-managed (classic) projects; affects browser URL construction only
 - `theme` — Color theme for the TUI. Available themes: `default`, `tokyonight`, `catppuccin`. If omitted, uses terminal's default ANSI 256 colors
+
+## Environment Variables
+
+All configuration fields can be overridden via environment variables with the `TIRA_` prefix. Additionally, the API token supports `JIRA_TOKEN` and `JIRA_API_TOKEN` for compatibility with other tools. Environment variables take precedence over values in the config file.
+
+| Config Field | Environment Variable |
+|--------------|---------------------|
+| `jira_url` | `TIRA_JIRA_URL` |
+| `email` | `TIRA_EMAIL` |
+| `token` | `TIRA_TOKEN`, `JIRA_TOKEN`, `JIRA_API_TOKEN` |
+| `project` | `TIRA_PROJECT` |
+| `board_id` | `TIRA_BOARD_ID` |
+| `classic_project` | `TIRA_CLASSIC_PROJECT` |
+| `theme` | `TIRA_THEME` |
+
+The token is resolved in this order:
+1. `TIRA_TOKEN` environment variable
+2. Config file `token` field
+3. `JIRA_TOKEN` environment variable
+4. `JIRA_API_TOKEN` environment variable
+
+**Example usage:**
+
+```bash
+# Use token from environment, rest from config file
+export JIRA_TOKEN="your-api-token-here"
+tira board
+
+# Override multiple fields
+export TIRA_JIRA_URL="https://myorg.atlassian.net"
+export TIRA_EMAIL="me@myorg.com"
+export TIRA_TOKEN="my-token"
+export TIRA_PROJECT="MYPROJ"
+tira backlog
+```
+
+This is useful for CI/CD pipelines or shared environments where you don't want to commit tokens to config files.
 
 ## Loading Configuration
 
@@ -109,9 +146,7 @@ Use different profiles for different Jira instances or accounts:
 ./tira --profile staging get STG-101
 ```
 
-## Environment Variables
-
-The configuration system uses Viper but does **not** currently support environment variable overrides. All configuration must be in the YAML file.
+Note that environment variable values apply across all profiles — they are not profile-specific. To use different env var values per profile, switch profiles with the `--profile` flag.
 
 ## See Also
 
