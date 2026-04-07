@@ -464,7 +464,7 @@ func TestValidateProject_404Error(t *testing.T) {
 	}
 
 	errMsg := err.Error()
-	if !containsAll(errMsg, []string{"DEV2", "404", server.URL + "/rest/api/3/project/DEV2", server.URL + "/browse/DEV2", "project key", "permission", "exist"}) {
+	if !containsAll(errMsg, []string{"DEV2", "404", server.URL + "/rest/api/3/project/DEV2", server.URL + "/browse/DEV2", "Project key", "permission", "exist"}) {
 		t.Errorf("ValidateProject() error message should contain helpful guidance.\nGot: %s", errMsg)
 	}
 }
