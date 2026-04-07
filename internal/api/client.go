@@ -425,9 +425,14 @@ func (c *jiraClient) ValidateProject(projectKey string) error {
 	if err != nil {
 		return err
 	}
+	apiURL := fmt.Sprintf("%s/rest/api/3/project/%s", c.baseURL, projectKey)
+	webURL := fmt.Sprintf("%s/browse/%s", c.baseURL, projectKey)
 	_, err = c.client.Do(req, nil)
 	if err != nil {
-		return fmt.Errorf("project %q not found or not accessible: %w", projectKey, err)
+		if strings.Contains(err.Error(), "404") {
+			return fmt.Errorf("project %q not found (HTTP 404)\n  API URL: %s\n  Web URL: %s\n  Possible causes:\n  1. Project key is wrong — check your config\n  2. Your API token lacks permission to access this project\n  3. The project does not exist in your Jira instance", projectKey, apiURL, webURL)
+		}
+		return fmt.Errorf("project %q not accessible\n  API URL: %s\n  Web URL: %s\n  Error: %w", projectKey, apiURL, webURL, err)
 	}
 	return nil
 }
