@@ -51,13 +51,39 @@ profiles:
 **Required fields** — missing any causes a fatal error at startup:
 - `jira_url` — Your Jira Cloud instance URL (e.g., `https://yourorg.atlassian.net`)
 - `email` — Your Jira Cloud email address
-- `token` — Your Jira API token (generate from https://id.atlassian.com/manage-profile/security/api-tokens)
+- `token` — Your Jira API token (generate from https://id.atlassian.com/manage-profile/security/api-tokens). Can also be set via `JIRA_TOKEN` or `JIRA_API_TOKEN` environment variables (see below)
 
 **Optional fields:**
 - `project` — Default project key (e.g., `MYPROJ`)
 - `board_id` — Default board ID for the `board`/`backlog`/`kanban` commands
 - `classic_project` — Set to `true` for company-managed (classic) projects; affects browser URL construction only
 - `theme` — Color theme for the TUI. Available themes: `default`, `tokyonight`, `catppuccin`. If omitted, uses terminal's default ANSI 256 colors
+
+## Environment Variables
+
+The Jira API token can be set via environment variables instead of storing it in the config file. This is useful for CI/CD pipelines or shared environments.
+
+| Environment Variable | Description |
+|---------------------|-------------|
+| `JIRA_TOKEN` | Jira API token (checked first) |
+| `JIRA_API_TOKEN` | Jira API token (fallback) |
+
+The token is resolved in this order:
+1. `token` field in the config file profile
+2. `JIRA_TOKEN` environment variable
+3. `JIRA_API_TOKEN` environment variable
+
+**Example usage:**
+
+```bash
+# Use token from environment, rest from config file
+export JIRA_TOKEN="your-api-token-here"
+tira board
+
+# Or use the alternative variable name
+export JIRA_API_TOKEN="your-api-token-here"
+tira --profile dev backlog
+```
 
 ## Loading Configuration
 
@@ -109,9 +135,7 @@ Use different profiles for different Jira instances or accounts:
 ./tira --profile staging get STG-101
 ```
 
-## Environment Variables
-
-The configuration system uses Viper but does **not** currently support environment variable overrides. All configuration must be in the YAML file.
+Note that environment variable tokens (`JIRA_TOKEN` / `JIRA_API_TOKEN`) are shared across all profiles — they are not profile-specific.
 
 ## See Also
 
