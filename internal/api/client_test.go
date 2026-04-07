@@ -5,11 +5,15 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	jira "github.com/andygrunwald/go-jira/v2/cloud"
 )
 
 // newTestClient creates a jiraClient pointing at a test server.
 func newTestClient(server *httptest.Server) *jiraClient {
+	jc, _ := jira.NewClient(server.URL, server.Client())
 	return &jiraClient{
+		client:  jc,
 		baseURL: server.URL,
 		http:    server.Client(),
 	}
@@ -444,4 +448,60 @@ func TestFetchAgileIssues_DynamicStoryPointsField(t *testing.T) {
 	if issues[0].SprintName != "Sprint 1" {
 		t.Errorf("SprintName = %q, want %q", issues[0].SprintName, "Sprint 1")
 	}
+}
+
+func TestValidateProject_404Error(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"errorMessages": ["Project not found"], "errors": {}}`))
+	}))
+	defer server.Close()
+
+	client := newTestClient(server)
+	err := client.ValidateProject("DEV2")
+	if err == nil {
+		t.Fatal("ValidateProject() expected error, got nil")
+	}
+
+	errMsg := err.Error()
+	if !containsAll(errMsg, []string{"DEV2", "404", server.URL + "/rest/api/3/project/DEV2", server.URL + "/browse/DEV2", "Project key", "permission", "exist"}) {
+		t.Errorf("ValidateProject() error message should contain helpful guidance.\nGot: %s", errMsg)
+	}
+}
+
+func TestValidateProject_Success(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"key": "DEV", "name": "Development"}`))
+	}))
+	defer server.Close()
+
+	client := newTestClient(server)
+	err := client.ValidateProject("DEV")
+	if err != nil {
+		t.Fatalf("ValidateProject() unexpected error: %v", err)
+	}
+}
+
+// containsAll checks if a string contains all substrings in a list
+func containsAll(s string, substrings []string) bool {
+	for _, sub := range substrings {
+		if !contains(s, sub) {
+			return false
+		}
+	}
+	return true
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && findSubstring(s, substr))
+}
+
+func findSubstring(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }
