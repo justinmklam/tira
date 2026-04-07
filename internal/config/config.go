@@ -58,13 +58,11 @@ func Load(profileName string, searchPaths ...string) (*Config, error) {
 		return nil, fmt.Errorf("failed to unmarshal profile %q: %w", profileName, err)
 	}
 
-	// Allow token to be set via environment variables as a fallback
-	if cfg.Token == "" {
-		if token := os.Getenv("JIRA_TOKEN"); token != "" {
-			cfg.Token = token
-		} else if token := os.Getenv("JIRA_API_TOKEN"); token != "" {
-			cfg.Token = token
-		}
+	// Allow token to be set via environment variables (takes precedence over config file)
+	if token := os.Getenv("JIRA_TOKEN"); token != "" {
+		cfg.Token = token
+	} else if token := os.Getenv("JIRA_API_TOKEN"); token != "" {
+		cfg.Token = token
 	}
 
 	if cfg.JiraURL == "" || cfg.Email == "" || cfg.Token == "" {

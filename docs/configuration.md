@@ -69,9 +69,9 @@ The Jira API token can be set via environment variables instead of storing it in
 | `JIRA_API_TOKEN` | Jira API token (fallback) |
 
 The token is resolved in this order:
-1. `token` field in the config file profile
-2. `JIRA_TOKEN` environment variable
-3. `JIRA_API_TOKEN` environment variable
+1. `JIRA_TOKEN` environment variable
+2. `JIRA_API_TOKEN` environment variable
+3. `token` field in the config file profile
 
 **Example usage:**
 
