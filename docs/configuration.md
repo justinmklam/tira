@@ -61,17 +61,23 @@ profiles:
 
 ## Environment Variables
 
-The Jira API token can be set via environment variables instead of storing it in the config file. This is useful for CI/CD pipelines or shared environments.
+All configuration fields can be overridden via environment variables with the `TIRA_` prefix. Additionally, the API token supports `JIRA_TOKEN` and `JIRA_API_TOKEN` for compatibility with other tools. Environment variables take precedence over values in the config file.
 
-| Environment Variable | Description |
-|---------------------|-------------|
-| `JIRA_TOKEN` | Jira API token (checked first) |
-| `JIRA_API_TOKEN` | Jira API token (fallback) |
+| Config Field | Environment Variable |
+|--------------|---------------------|
+| `jira_url` | `TIRA_JIRA_URL` |
+| `email` | `TIRA_EMAIL` |
+| `token` | `TIRA_TOKEN`, `JIRA_TOKEN`, `JIRA_API_TOKEN` |
+| `project` | `TIRA_PROJECT` |
+| `board_id` | `TIRA_BOARD_ID` |
+| `classic_project` | `TIRA_CLASSIC_PROJECT` |
+| `theme` | `TIRA_THEME` |
 
 The token is resolved in this order:
-1. `JIRA_TOKEN` environment variable
-2. `JIRA_API_TOKEN` environment variable
-3. `token` field in the config file profile
+1. `TIRA_TOKEN` environment variable
+2. Config file `token` field
+3. `JIRA_TOKEN` environment variable
+4. `JIRA_API_TOKEN` environment variable
 
 **Example usage:**
 
@@ -80,10 +86,15 @@ The token is resolved in this order:
 export JIRA_TOKEN="your-api-token-here"
 tira board
 
-# Or use the alternative variable name
-export JIRA_API_TOKEN="your-api-token-here"
-tira --profile dev backlog
+# Override multiple fields
+export TIRA_JIRA_URL="https://myorg.atlassian.net"
+export TIRA_EMAIL="me@myorg.com"
+export TIRA_TOKEN="my-token"
+export TIRA_PROJECT="MYPROJ"
+tira backlog
 ```
+
+This is useful for CI/CD pipelines or shared environments where you don't want to commit tokens to config files.
 
 ## Loading Configuration
 
@@ -135,7 +146,7 @@ Use different profiles for different Jira instances or accounts:
 ./tira --profile staging get STG-101
 ```
 
-Note that environment variable tokens (`JIRA_TOKEN` / `JIRA_API_TOKEN`) are shared across all profiles — they are not profile-specific.
+Note that environment variable values apply across all profiles — they are not profile-specific. To use different env var values per profile, switch profiles with the `--profile` flag.
 
 ## See Also
 

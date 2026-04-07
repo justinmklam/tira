@@ -2,7 +2,7 @@ profiles:
   default:
     jira_url: https://your-domain.atlassian.net
     email: your-email@example.com
-    # token can also be set via JIRA_TOKEN or JIRA_API_TOKEN environment variables (recommended for security)
+    # token can also be set via TIRA_TOKEN, JIRA_TOKEN, or JIRA_API_TOKEN env vars (recommended for security)
     token: your-api-token
     project: MYPROJ
     board_id: 42

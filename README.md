@@ -53,12 +53,17 @@ profiles:
     classic_project: true   # Optional, set to true for company-managed (classic) projects
 ```
 
-Alternatively, set your token via environment variable (takes precedence over the config file):
+Alternatively, set values via environment variables (takes precedence over the config file):
 
 ```bash
 export JIRA_TOKEN="your_api_token_here"
 # or
 export JIRA_API_TOKEN="your_api_token_here"
+# Full overrides:
+export TIRA_JIRA_URL="https://myorg.atlassian.net"
+export TIRA_EMAIL="me@myorg.com"
+export TIRA_TOKEN="my-token"
+export TIRA_PROJECT="MYPROJ"
 ```
 
 For clipboard support, install `xclip` (e.g. `sudo apt install xclip`) for Linux. macOS uses `pbcopy`, which is built in to the OS.

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 
 	"github.com/spf13/viper"
 )
@@ -58,11 +60,38 @@ func Load(profileName string, searchPaths ...string) (*Config, error) {
 		return nil, fmt.Errorf("failed to unmarshal profile %q: %w", profileName, err)
 	}
 
-	// Allow token to be set via environment variables (takes precedence over config file)
-	if token := os.Getenv("JIRA_TOKEN"); token != "" {
-		cfg.Token = token
-	} else if token := os.Getenv("JIRA_API_TOKEN"); token != "" {
-		cfg.Token = token
+	// Override with TIRA_* env vars if set (take precedence over config file)
+	if v := os.Getenv("TIRA_JIRA_URL"); v != "" {
+		cfg.JiraURL = v
+	}
+	if v := os.Getenv("TIRA_EMAIL"); v != "" {
+		cfg.Email = v
+	}
+	if v := os.Getenv("TIRA_TOKEN"); v != "" {
+		cfg.Token = v
+	}
+	if v := os.Getenv("TIRA_PROJECT"); v != "" {
+		cfg.Project = v
+	}
+	if v := os.Getenv("TIRA_BOARD_ID"); v != "" {
+		if id, err := strconv.Atoi(v); err == nil {
+			cfg.BoardID = id
+		}
+	}
+	if v := os.Getenv("TIRA_CLASSIC_PROJECT"); v != "" {
+		cfg.ClassicProject = strings.EqualFold(v, "true")
+	}
+	if v := os.Getenv("TIRA_THEME"); v != "" {
+		cfg.Theme = v
+	}
+
+	// Fallback for token: JIRA_TOKEN or JIRA_API_TOKEN
+	if cfg.Token == "" {
+		if v := os.Getenv("JIRA_TOKEN"); v != "" {
+			cfg.Token = v
+		} else if v := os.Getenv("JIRA_API_TOKEN"); v != "" {
+			cfg.Token = v
+		}
 	}
 
 	if cfg.JiraURL == "" || cfg.Email == "" || cfg.Token == "" {
