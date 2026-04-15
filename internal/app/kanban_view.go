@@ -98,6 +98,8 @@ func (m kanbanModel) viewBoard() string {
 	assigneeStyle := lipgloss.NewStyle().Foreground(tui.ColorMuted)
 	daysStyle := lipgloss.NewStyle().Bold(true)
 
+	avail := m.availableIssueLines()
+
 	var renderedCols []string
 	for ci, col := range m.columns {
 		var lines []string
@@ -110,7 +112,20 @@ func (m kanbanModel) viewBoard() string {
 			lines = append(lines, tui.MutedStyle.Render("  (empty)"))
 		}
 
-		for ri, issue := range col.issues {
+		scroll := 0
+		if ci < len(m.colScrolls) {
+			scroll = m.colScrolls[ci]
+		}
+
+		linesUsed := 0
+		for ri := scroll; ri < len(col.issues); ri++ {
+			issue := col.issues[ri]
+			ilines := kanbanItemLines(issue)
+			if linesUsed+ilines > avail {
+				break
+			}
+			linesUsed += ilines
+
 			isSelected := ci == m.colIdx && ri == m.rowIdxs[ci]
 			maxSummary := innerWidth - 4
 			if maxSummary < 1 {

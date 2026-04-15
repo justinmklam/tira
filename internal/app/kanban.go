@@ -65,6 +65,7 @@ type kanbanModel struct {
 	columns    []kanbanColumn
 	colIdx     int
 	rowIdxs    []int
+	colScrolls []int // top-item index per column for vertical scrolling
 	sprintName string
 
 	// Loading state
@@ -108,6 +109,65 @@ func buildColumns(boardCols []models.BoardColumn, issues []models.Issue) []kanba
 	return cols
 }
 
+// kanbanItemLines returns the number of rendered lines an issue occupies in a column.
+// Issues with an assignee or a non-zero days-in-column value render a third meta line.
+func kanbanItemLines(issue models.Issue) int {
+	days := tui.DaysInColumn(issue.StatusChangedDate)
+	if issue.Assignee != "" || days > 0 {
+		return 3
+	}
+	return 2
+}
+
+// availableIssueLines returns how many lines are available for issue rows within
+// a column, given the current terminal height and fixed chrome (borders, headers,
+// footer).
+func (m kanbanModel) availableIssueLines() int {
+	h := m.height
+	if h == 0 {
+		h = 40
+	}
+	// Fixed overhead per column: border-top(1) + col-title(1) + separator(1) + border-bottom(1) = 4
+	// Global overhead: footer(1) + optional sprint header(1)
+	deduct := 5 // 4 column + 1 footer
+	if m.sprintName != "" {
+		deduct = 6 // +1 sprint header
+	}
+	avail := h - deduct
+	if avail < 2 {
+		avail = 2
+	}
+	return avail
+}
+
+// ensureScrolled adjusts colScrolls[ci] so that the cursor row at rowIdxs[ci]
+// is within the visible window.
+func (m *kanbanModel) ensureScrolled(ci int) {
+	if ci >= len(m.columns) || len(m.columns[ci].issues) == 0 {
+		return
+	}
+	avail := m.availableIssueLines()
+	row := m.rowIdxs[ci]
+	issues := m.columns[ci].issues
+
+	// Cursor above visible window: scroll up immediately.
+	if row < m.colScrolls[ci] {
+		m.colScrolls[ci] = row
+		return
+	}
+
+	// Count lines from scroll offset to cursor (inclusive).
+	lines := 0
+	for i := m.colScrolls[ci]; i <= row && i < len(issues); i++ {
+		lines += kanbanItemLines(issues[i])
+	}
+	// Advance scroll until cursor fits within avail lines.
+	for lines > avail && m.colScrolls[ci] < row {
+		lines -= kanbanItemLines(issues[m.colScrolls[ci]])
+		m.colScrolls[ci]++
+	}
+}
+
 func newKanbanModel(client api.Client, boardCols []models.BoardColumn, issues []models.Issue, sprintName, project string) kanbanModel {
 	cols := buildColumns(boardCols, issues)
 	s := spinner.New()
@@ -119,6 +179,7 @@ func newKanbanModel(client api.Client, boardCols []models.BoardColumn, issues []
 		project:     project,
 		columns:     cols,
 		rowIdxs:     make([]int, len(cols)),
+		colScrolls:  make([]int, len(cols)),
 		sprintName:  sprintName,
 		loadSpinner: s,
 	}
@@ -127,17 +188,31 @@ func newKanbanModel(client api.Client, boardCols []models.BoardColumn, issues []
 // refreshData replaces the kanban columns with new data, preserving cursor
 // positions (clamped to the new column sizes).
 func (m *kanbanModel) refreshData(boardCols []models.BoardColumn, issues []models.Issue, sprintName string) {
-	prev := m.rowIdxs
+	prevRows := m.rowIdxs
+	prevScrolls := m.colScrolls
 	m.columns = buildColumns(boardCols, issues)
+	m.sprintName = sprintName
+
 	newRowIdxs := make([]int, len(m.columns))
 	for i := range newRowIdxs {
-		if i < len(prev) && len(m.columns[i].issues) > 0 {
-			newRowIdxs[i] = tui.Clamp(prev[i], 0, len(m.columns[i].issues)-1)
+		if i < len(prevRows) && len(m.columns[i].issues) > 0 {
+			newRowIdxs[i] = tui.Clamp(prevRows[i], 0, len(m.columns[i].issues)-1)
 		}
 	}
 	m.rowIdxs = newRowIdxs
+
+	newScrolls := make([]int, len(m.columns))
+	for i := range newScrolls {
+		if i < len(prevScrolls) && len(m.columns[i].issues) > 0 {
+			newScrolls[i] = tui.Clamp(prevScrolls[i], 0, len(m.columns[i].issues)-1)
+		}
+	}
+	m.colScrolls = newScrolls
+
 	m.colIdx = tui.Clamp(m.colIdx, 0, max(len(m.columns)-1, 0))
-	m.sprintName = sprintName
+	for ci := range m.columns {
+		m.ensureScrolled(ci)
+	}
 }
 
 // patchIssue updates a single issue in place within the kanban columns.
@@ -179,6 +254,9 @@ func (m kanbanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		for ci := range m.columns {
+			m.ensureScrolled(ci)
+		}
 		if m.state == stateDetail {
 			vpW, vpH := tui.OverlayViewportSize(m.width, m.height)
 			m.detailView.Width = vpW
@@ -250,10 +328,12 @@ func (m kanbanModel) updateBoard(msg tea.Msg) (tea.Model, tea.Cmd) {
 		col := m.columns[m.colIdx]
 		if m.rowIdxs[m.colIdx] < len(col.issues)-1 {
 			m.rowIdxs[m.colIdx]++
+			m.ensureScrolled(m.colIdx)
 		}
 	case "k":
 		if m.rowIdxs[m.colIdx] > 0 {
 			m.rowIdxs[m.colIdx]--
+			m.ensureScrolled(m.colIdx)
 		}
 	case "h":
 		if m.colIdx > 0 {
