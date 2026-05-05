@@ -62,6 +62,9 @@ type issueRefreshDoneMsg struct {
 	err   error
 }
 
+// editorEditDoneMsg is sent after the $EDITOR edit flow completes.
+type editorEditDoneMsg struct{ key string }
+
 // blLazyLoadDoneMsg is sent when the remaining sprint groups and backlog
 // finish loading in the background after initial render.
 type blLazyLoadDoneMsg struct {
@@ -364,6 +367,11 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.kanban.patchIssue(*msg.issue)
 		}
 		return m, nil
+	}
+
+	// $EDITOR edit flow completed — re-fetch the issue to update the board.
+	if msg, ok := msg.(editorEditDoneMsg); ok {
+		return m, issueRefreshCmd(m.client, msg.key)
 	}
 
 	// New issue inserted: add it to the correct backlog group and navigate to it.
@@ -871,6 +879,21 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.editKey = key
 			m.activeView = viewEditLoading
 			return m, tea.Batch(m.editSpinner.Tick, fetchEditDataCmd(m.client, key))
+		}
+		if m.kanban.result.editorEditKey != "" {
+			key := m.kanban.result.editorEditKey
+			traceLog("board ViewKanban: editorEditKey=%s calling tea.Exec", key)
+			m.kanban.result.editorEditKey = ""
+			if m.kanban.state == stateDetail {
+				m.kanban.state = stateBoard
+				m.kanban.detailIssue = nil
+			}
+			return m, tea.Exec(newEditorEditExecCmd(m.client, key, m.project), func(err error) tea.Msg {
+				if err != nil {
+					debug.LogError("editorEdit", err)
+				}
+				return editorEditDoneMsg{key: key}
+			})
 		}
 		if m.kanban.result.commentKey != "" {
 			key := m.kanban.result.commentKey

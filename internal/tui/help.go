@@ -83,7 +83,7 @@ func HelpSections() []HelpSection {
 		{
 			Title: "Editing (Backlog)",
 			Keybindings: []HelpKeybinding{
-				{Key: "e", Description: "Edit ticket in $EDITOR (full template flow)"},
+				{Key: "e", Description: "Edit ticket in TUI form (on issue) / edit sprint (on sprint header)"},
 				{Key: "c", Description: "Add comment — inline text input (ctrl+s to save, esc to cancel)"},
 				{Key: "S", Description: "Set story points — inline numeric input"},
 				{Key: "s", Description: "Change status — picker"},
@@ -96,13 +96,13 @@ func HelpSections() []HelpSection {
 				{Key: "O", Description: "Open all selected tickets in browser"},
 				{Key: "y", Description: "Copy ticket URL to clipboard (cursor issue)"},
 				{Key: "C-n", Description: "Create new sprint — form with name, start date, duration"},
-				{Key: "E", Description: "Edit sprint under cursor (name, start date, duration)"},
 			},
 		},
 		{
 			Title: "Editing (Kanban)",
 			Keybindings: []HelpKeybinding{
-				{Key: "e", Description: "Edit ticket in $EDITOR (full template flow)"},
+				{Key: "e", Description: "Edit ticket in TUI form"},
+				{Key: "E", Description: "Edit ticket in $EDITOR (full template flow)"},
 				{Key: "c", Description: "Add comment — inline text input (ctrl+s to save, esc to cancel)"},
 				{Key: "s", Description: "Change status — picker"},
 				{Key: "A", Description: "Set assignee — fuzzy picker"},

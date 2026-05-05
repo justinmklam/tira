@@ -37,6 +37,7 @@ type issueFetchedMsg struct {
 
 type kanbanResult struct {
 	editKey        string // non-empty when the user pressed e
+	editorEditKey  string // non-empty when the user pressed E (opens $EDITOR)
 	commentKey     string // non-empty when the user pressed c
 	commentSummary string
 	refresh        bool
@@ -354,6 +355,14 @@ func (m kanbanModel) updateBoard(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.result = kanbanResult{editKey: issue.Key}
 			return m, nil
 		}
+	case "E":
+		traceLog("kanban updateBoard: E pressed colIdx=%d nCols=%d", m.colIdx, len(m.columns))
+		if issue := m.currentIssue(); issue != nil {
+			traceLog("kanban updateBoard: currentIssue=%s setting editorEditKey", issue.Key)
+			m.result = kanbanResult{editorEditKey: issue.Key}
+			return m, nil
+		}
+		traceLog("kanban updateBoard: currentIssue nil")
 	case "c":
 		if issue := m.currentIssue(); issue != nil {
 			m.result = kanbanResult{commentKey: issue.Key, commentSummary: issue.Summary}
@@ -396,6 +405,11 @@ func (m kanbanModel) updateDetail(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "e":
 			if m.detailIssue != nil {
 				m.result = kanbanResult{editKey: m.detailIssue.Key}
+				return m, nil
+			}
+		case "E":
+			if m.detailIssue != nil {
+				m.result = kanbanResult{editorEditKey: m.detailIssue.Key}
 				return m, nil
 			}
 		case "c":

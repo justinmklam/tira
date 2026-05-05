@@ -183,6 +183,13 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.result = blResult{editKey: issue.Key}
 			return m, nil
 		}
+		if m.cursor < len(m.rows) && m.rows[m.cursor].kind == blRowSprint {
+			sprint := m.groups[m.rows[m.cursor].groupIdx].Sprint
+			if sprint.State != "backlog" && sprint.ID != 0 {
+				m = m.openSprintEditForm(sprint)
+				return m, m.sprintFormName.Focus()
+			}
+		}
 
 	case "o":
 		if issue := m.currentIssue(); issue != nil {
@@ -404,15 +411,6 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case "ctrl+n":
 		m = m.openSprintCreateForm()
 		return m, m.sprintFormName.Focus()
-
-	case "E":
-		if m.cursor < len(m.rows) && m.rows[m.cursor].kind == blRowSprint {
-			sprint := m.groups[m.rows[m.cursor].groupIdx].Sprint
-			if sprint.State != "backlog" && sprint.ID != 0 {
-				m = m.openSprintEditForm(sprint)
-				return m, m.sprintFormName.Focus()
-			}
-		}
 	}
 
 	return m, nil

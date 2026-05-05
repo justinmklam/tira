@@ -61,7 +61,7 @@ Modelled on yazi's philosophy: modal only where the modality is obvious from con
 
 | Key | Action |
 |-----|--------|
-| `e` | Edit ticket in `$EDITOR` (full template flow) |
+| `e` | Edit ticket in TUI form (on issue) / edit sprint (on sprint header) |
 | `S` | Set story points — inline numeric input |
 | `s` | Change status — picker |
 | `a` | Create new ticket in current sprint |
@@ -74,7 +74,6 @@ Modelled on yazi's philosophy: modal only where the modality is obvious from con
 | `O` | Open all selected tickets in browser |
 | `y` | Copy ticket URL to clipboard (cursor issue) |
 | `<C-n>` | Create a new sprint — form with name, start date, duration |
-| `E` | Edit the sprint under the cursor (name, start date, duration) |
 
 Sprint form: `tab`/`shift+tab` to move between fields, `ctrl+s` to save, `esc` to cancel.
 
@@ -86,7 +85,8 @@ Quick pickers (`s`, `P`, `A`, `F`) open a small overlay, navigate with `j`/`k`, 
 
 | Key | Action |
 |-----|--------|
-| `e` | Edit ticket in `$EDITOR` (full template flow) |
+| `e` | Edit ticket in TUI form |
+| `E` | Edit ticket in `$EDITOR` (full template flow) |
 | `s` | Change status — picker |
 | `A` | Set assignee — fuzzy picker |
 | `o` | Open ticket in browser |
