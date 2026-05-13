@@ -4,20 +4,21 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/justinmklam/tira/internal/tui"
 )
 
-func (m kanbanModel) View() string {
+func (m kanbanModel) View() tea.View {
 	switch m.state {
 	case stateDetail:
-		return m.viewDetail()
+		return tea.NewView(m.viewDetail())
 	case stateAssignPicker:
-		return m.viewAssignPicker()
+		return tea.NewView(m.viewAssignPicker())
 	case stateStatusPicker:
-		return m.viewStatusPicker()
+		return tea.NewView(m.viewStatusPicker())
 	default:
-		return m.viewBoard()
+		return tea.NewView(m.viewBoard())
 	}
 }
 

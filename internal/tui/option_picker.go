@@ -3,8 +3,8 @@ package tui
 import (
 	"strings"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 // OptionPickerModel is a simple static list picker with no text input.
@@ -43,7 +43,7 @@ func (m OptionPickerModel) SelectedItem() string {
 
 // Update handles key input.
 func (m OptionPickerModel) Update(msg tea.Msg) (OptionPickerModel, tea.Cmd) {
-	key, ok := msg.(tea.KeyMsg)
+	key, ok := msg.(tea.KeyPressMsg)
 	if !ok {
 		return m, nil
 	}

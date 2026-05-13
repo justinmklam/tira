@@ -9,8 +9,8 @@ import (
 
 	"golang.org/x/term"
 
-	"github.com/charmbracelet/huh"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/huh/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/justinmklam/tira/internal/api"
 	"github.com/justinmklam/tira/internal/debug"
 	"github.com/justinmklam/tira/internal/display"

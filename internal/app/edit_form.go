@@ -5,10 +5,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/textarea"
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/textarea"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/justinmklam/tira/internal/models"
 	"github.com/justinmklam/tira/internal/tui"
 )
@@ -75,7 +75,7 @@ func newEditModel(issue *models.Issue, valid *models.ValidValues, width, height 
 	for i := range m.inputs {
 		ti := textinput.New()
 		ti.Prompt = ""
-		ti.Width = emInputW
+		ti.SetWidth(emInputW)
 		ti.Placeholder = placeholders[i]
 		m.inputs[i] = ti
 	}
@@ -115,9 +115,9 @@ func (m *editModel) setSize(w, h int) {
 	if summaryW < 20 {
 		summaryW = 20
 	}
-	m.inputs[efSummary].Width = summaryW
+	m.inputs[efSummary].SetWidth(summaryW)
 	for i := 1; i < efInputCount; i++ {
-		m.inputs[i].Width = emInputW
+		m.inputs[i].SetWidth(emInputW)
 	}
 
 	taW := max(w-4, 10)
@@ -139,7 +139,7 @@ func (m *editModel) setSize(w, h int) {
 	m.acTA.SetHeight(taH)
 }
 
-func (m *editModel) Init() tea.Cmd { return textinput.Blink }
+func (m *editModel) Init() tea.Cmd { return func() tea.Msg { return textinput.Blink() } }
 
 func (m *editModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if key, ok := msg.(tea.KeyMsg); ok {
@@ -291,7 +291,7 @@ func (m *editModel) setAssignee(displayName, accountID string) {
 	m.origAssigneeID = accountID
 }
 
-func (m *editModel) View() string {
+func (m *editModel) View() tea.View {
 	var lines []string
 
 	for i := 0; i < efInputCount; i++ {
@@ -320,5 +320,5 @@ func (m *editModel) View() string {
 		lines = append(lines, tui.MutedStyle.Render("  enter: open picker / next  tab: next  shift+tab: back  ctrl+s: save  esc: cancel"))
 	}
 
-	return strings.Join(lines, "\n") + "\n"
+	return tea.NewView(strings.Join(lines, "\n") + "\n")
 }

@@ -6,7 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/justinmklam/tira/internal/tui"
 )
 
@@ -27,24 +28,24 @@ func blSummaryWidth(totalWidth int) int {
 	return w
 }
 
-func (m blModel) View() string {
+func (m blModel) View() tea.View {
 	switch m.state {
 	case blDetail:
-		return m.viewDetail()
+		return tea.NewView(m.viewDetail())
 	case blParentPicker:
-		return m.viewParentPicker()
+		return tea.NewView(m.viewParentPicker())
 	case blAssignPicker:
-		return m.viewAssignPicker()
+		return tea.NewView(m.viewAssignPicker())
 	case blStoryPointInput:
-		return m.viewStoryPointInput()
+		return tea.NewView(m.viewStoryPointInput())
 	case blStatusPicker:
-		return m.viewStatusPicker()
+		return tea.NewView(m.viewStatusPicker())
 	case blEpicFilterPicker:
-		return m.viewEpicFilterPicker()
+		return tea.NewView(m.viewEpicFilterPicker())
 	case blSprintForm:
-		return m.viewSprintForm()
+		return tea.NewView(m.viewSprintForm())
 	default:
-		return m.viewList()
+		return tea.NewView(m.viewList())
 	}
 }
 
@@ -322,7 +323,7 @@ func (m blModel) renderIssueRow(row blRow, isSelected bool, width int) string {
 		keyPart := bg.Bold(true).Foreground(keyColor).Render(key)
 		summaryPart := bg.Foreground(tui.ColorHighlight).Render("  " + summary + "  ")
 		epicStyle := bg.Foreground(tui.ColorMuted)
-		if epicColor != "" {
+		if epicColor != nil {
 			epicStyle = bg.Foreground(epicColor)
 		}
 		epicPart := epicStyle.Render(epic + " ")
@@ -347,7 +348,7 @@ func (m blModel) renderIssueRow(row blRow, isSelected bool, width int) string {
 	}
 	summaryPart := lipgloss.NewStyle().Foreground(tui.ColorForegroundBright).Render("  " + summary + "  ")
 	epicStyle := lipgloss.NewStyle().Foreground(tui.ColorMuted)
-	if epicColor != "" {
+	if epicColor != nil {
 		epicStyle = lipgloss.NewStyle().Foreground(epicColor)
 	}
 	epicPart := epicStyle.Render(epic + " ")

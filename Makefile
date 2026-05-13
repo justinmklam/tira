@@ -4,7 +4,7 @@
 
 # Build the binary
 build:
-	GOTOOLCHAIN=local go build -o tira ./cmd/tira
+	go build -o tira ./cmd/tira
 
 run:
 	./tira backlog

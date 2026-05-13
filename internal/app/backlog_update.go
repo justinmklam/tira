@@ -5,15 +5,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
 	"github.com/justinmklam/tira/internal/api"
 	"github.com/justinmklam/tira/internal/models"
 	"github.com/justinmklam/tira/internal/tui"
 )
 
 func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
-	key, ok := msg.(tea.KeyMsg)
+	key, ok := msg.(tea.KeyPressMsg)
 	if !ok {
 		return m, nil
 	}
@@ -208,7 +208,7 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.result = blResult{refresh: true}
 		return m, nil
 
-	case " ":
+	case "space":
 		if issue := m.currentIssue(); issue != nil {
 			if m.selected[issue.Key] {
 				delete(m.selected, issue.Key)
@@ -419,7 +419,7 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m blModel) updateFilter(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if key, ok := msg.(tea.KeyMsg); ok {
+	if key, ok := msg.(tea.KeyPressMsg); ok {
 		switch key.String() {
 		case "esc":
 			m.filter = ""
@@ -450,7 +450,7 @@ func (m blModel) updateFilter(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m blModel) updateDetail(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if key, ok := msg.(tea.KeyMsg); ok {
+	if key, ok := msg.(tea.KeyPressMsg); ok {
 		switch key.String() {
 		case "esc", "q":
 			m.state = blList
@@ -686,7 +686,7 @@ func blReorderUp(issues []models.Issue, moveSet map[string]bool, blockerKey stri
 
 func (m blModel) updateParentPicker(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Let the app quit even from inside the picker.
-	if key, ok := msg.(tea.KeyMsg); ok && key.String() == "ctrl+c" {
+	if key, ok := msg.(tea.KeyPressMsg); ok && key.String() == "ctrl+c" {
 		m.quitting = true
 		return m, nil
 	}
@@ -751,7 +751,7 @@ func blNewEpicFilterPicker(client api.Client, projectKey, currentFilter string) 
 }
 
 func (m blModel) updateEpicFilterPicker(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if key, ok := msg.(tea.KeyMsg); ok && key.String() == "ctrl+c" {
+	if key, ok := msg.(tea.KeyPressMsg); ok && key.String() == "ctrl+c" {
 		m.quitting = true
 		return m, nil
 	}
@@ -779,7 +779,7 @@ func (m blModel) updateEpicFilterPicker(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m blModel) updateAssignPicker(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if key, ok := msg.(tea.KeyMsg); ok && key.String() == "ctrl+c" {
+	if key, ok := msg.(tea.KeyPressMsg); ok && key.String() == "ctrl+c" {
 		m.quitting = true
 		return m, nil
 	}
@@ -819,12 +819,12 @@ func blAssignParentCmd(client api.Client, keys []string, parentKey string) tea.C
 }
 
 func (m blModel) updateStoryPointInput(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if key, ok := msg.(tea.KeyMsg); ok && key.String() == "ctrl+c" {
+	if key, ok := msg.(tea.KeyPressMsg); ok && key.String() == "ctrl+c" {
 		m.quitting = true
 		return m, nil
 	}
 
-	if key, ok := msg.(tea.KeyMsg); ok {
+	if key, ok := msg.(tea.KeyPressMsg); ok {
 		switch key.String() {
 		case "esc":
 			m.state = blList
@@ -867,7 +867,7 @@ func blSetStoryPointCmd(client api.Client, keys []string, storyPoints float64) t
 }
 
 func (m blModel) updateStatusPicker(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if key, ok := msg.(tea.KeyMsg); ok && key.String() == "ctrl+c" {
+	if key, ok := msg.(tea.KeyPressMsg); ok && key.String() == "ctrl+c" {
 		m.quitting = true
 		return m, nil
 	}
@@ -953,19 +953,19 @@ func (m blModel) openSprintCreateForm() blModel {
 	nameInput := textinput.New()
 	nameInput.Placeholder = "sprint name"
 	nameInput.CharLimit = 100
-	nameInput.Width = 40
+	nameInput.SetWidth(40)
 	nameInput.SetValue(nextSprintName(m.groups))
 
 	startInput := textinput.New()
 	startInput.Placeholder = "YYYY-MM-DD"
 	startInput.CharLimit = 10
-	startInput.Width = 12
+	startInput.SetWidth(12)
 	startInput.SetValue(today)
 
 	durInput := textinput.New()
 	durInput.Placeholder = "weeks"
 	durInput.CharLimit = 3
-	durInput.Width = 5
+	durInput.SetWidth(5)
 	durInput.SetValue("2")
 
 	m.sprintFormName = nameInput
@@ -990,19 +990,19 @@ func (m blModel) openSprintEditForm(sprint models.Sprint) blModel {
 	nameInput := textinput.New()
 	nameInput.Placeholder = "sprint name"
 	nameInput.CharLimit = 100
-	nameInput.Width = 40
+	nameInput.SetWidth(40)
 	nameInput.SetValue(sprint.Name)
 
 	startInput := textinput.New()
 	startInput.Placeholder = "YYYY-MM-DD"
 	startInput.CharLimit = 10
-	startInput.Width = 12
+	startInput.SetWidth(12)
 	startInput.SetValue(startDate)
 
 	durInput := textinput.New()
 	durInput.Placeholder = "weeks"
 	durInput.CharLimit = 3
-	durInput.Width = 5
+	durInput.SetWidth(5)
 	durInput.SetValue(strconv.Itoa(weeks))
 
 	m.sprintFormName = nameInput
@@ -1052,7 +1052,7 @@ func (m blModel) validateSprintForm() string {
 }
 
 func (m blModel) updateSprintForm(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if key, ok := msg.(tea.KeyMsg); ok {
+	if key, ok := msg.(tea.KeyPressMsg); ok {
 		// While submitting, only allow quitting.
 		if m.sprintFormSubmitting {
 			if key.String() == "ctrl+c" {
@@ -1111,7 +1111,7 @@ func (m blModel) updateSprintForm(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.sprintFormDuration, cmd = m.sprintFormDuration.Update(msg)
 	}
 	// Clear error when the user types.
-	if _, ok := msg.(tea.KeyMsg); ok {
+	if _, ok := msg.(tea.KeyPressMsg); ok {
 		m.sprintFormError = ""
 	}
 	return m, cmd
@@ -1172,7 +1172,7 @@ func (m blModel) updateSidebarContent() (blModel, tea.Cmd) {
 }
 
 func (m blModel) updateKeySearch(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if key, ok := msg.(tea.KeyMsg); ok {
+	if key, ok := msg.(tea.KeyPressMsg); ok {
 		switch key.String() {
 		case "esc":
 			m.keySearchInput.Blur()

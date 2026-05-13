@@ -3,9 +3,9 @@ package tui
 import (
 	"os"
 
-	"github.com/charmbracelet/bubbles/spinner"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/spinner"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 // spinnerResult wraps a generic result received from a background goroutine.
@@ -26,7 +26,7 @@ type spinnerModel[T any] struct {
 }
 
 func (m spinnerModel[T]) Init() tea.Cmd {
-	return tea.Batch(m.spinner.Tick, func() tea.Msg {
+	return tea.Batch(func() tea.Msg { return m.spinner.Tick() }, func() tea.Msg {
 		return <-m.result
 	})
 }
@@ -46,11 +46,11 @@ func (m spinnerModel[T]) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m spinnerModel[T]) View() string {
+func (m spinnerModel[T]) View() tea.View {
 	if m.done {
-		return ""
+		return tea.NewView("")
 	}
-	return m.spinner.View() + " " + m.label
+	return tea.NewView(m.spinner.View() + " " + m.label)
 }
 
 // RunWithSpinner runs fn in a background goroutine while displaying a spinner

@@ -3,8 +3,8 @@ package tui
 import (
 	"strings"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 // HelpSection represents a section of keybindings in the help overlay.
@@ -167,7 +167,7 @@ func (m HelpModel) Init() tea.Cmd {
 
 // Update handles scrolling within the help overlay.
 func (m HelpModel) Update(msg tea.Msg, innerH int) HelpModel {
-	key, ok := msg.(tea.KeyMsg)
+	key, ok := msg.(tea.KeyPressMsg)
 	if !ok {
 		return m
 	}

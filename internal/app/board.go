@@ -7,10 +7,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/charmbracelet/bubbles/spinner"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/glamour"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/spinner"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/justinmklam/tira/internal/api"
 	"github.com/justinmklam/tira/internal/debug"
 	"github.com/justinmklam/tira/internal/models"
@@ -445,7 +444,7 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		// Intercept ctrl+c so it cancels the form rather than quitting.
-		if key, ok := msg.(tea.KeyMsg); ok && key.String() == "ctrl+c" {
+		if key, ok := msg.(tea.KeyPressMsg); ok && key.String() == "ctrl+c" {
 			m.activeView = m.prevView
 			m.editForm = nil
 			return m, nil
@@ -461,7 +460,7 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.activeView = viewEditSaving
 			m.editErr = ""
-			return m, tea.Batch(m.editSpinner.Tick, saveEditCmd(m.client, m.editKey, fields))
+			return m, tea.Batch(func() tea.Msg { return m.editSpinner.Tick() }, saveEditCmd(m.client, m.editKey, fields))
 		}
 		if m.editForm.aborted {
 			m.activeView = m.prevView
@@ -537,7 +536,7 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.editForm == nil {
 			return m, nil
 		}
-		if key, ok := msg.(tea.KeyMsg); ok && key.String() == "ctrl+c" {
+		if key, ok := msg.(tea.KeyPressMsg); ok && key.String() == "ctrl+c" {
 			m.activeView = m.prevView
 			m.editForm = nil
 			return m, nil
@@ -553,7 +552,7 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.activeView = viewCreateSaving
 			m.editErr = ""
-			return m, tea.Batch(m.editSpinner.Tick, saveCreateCmd(m.client, m.project, fields, m.createSprintID))
+			return m, tea.Batch(func() tea.Msg { return m.editSpinner.Tick() }, saveCreateCmd(m.client, m.project, fields, m.createSprintID))
 		}
 		if m.editForm.aborted {
 			m.activeView = m.prevView
@@ -609,7 +608,7 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case viewAssigneePicker:
-		if key, ok := msg.(tea.KeyMsg); ok && key.String() == "ctrl+c" {
+		if key, ok := msg.(tea.KeyPressMsg); ok && key.String() == "ctrl+c" {
 			if m.assigneeForEdit {
 				m.editForm = nil
 				m.activeView = m.prevView
@@ -691,7 +690,7 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	case viewHelp:
-		if key, ok := msg.(tea.KeyMsg); ok {
+		if key, ok := msg.(tea.KeyPressMsg); ok {
 			switch key.String() {
 			case "esc", "?":
 				m.activeView = m.prevView
@@ -711,7 +710,7 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.commentForm == nil {
 			return m, nil
 		}
-		if key, ok := msg.(tea.KeyMsg); ok && key.String() == "ctrl+c" {
+		if key, ok := msg.(tea.KeyPressMsg); ok && key.String() == "ctrl+c" {
 			m.activeView = m.prevView
 			m.commentForm = nil
 			return m, nil
@@ -722,7 +721,7 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			text := strings.TrimSpace(m.commentForm.ta.Value())
 			m.activeView = viewCommentSaving
 			m.commentErr = ""
-			return m, tea.Batch(m.editSpinner.Tick, saveCommentCmd(m.client, m.commentKey, text))
+			return m, tea.Batch(func() tea.Msg { return m.editSpinner.Tick() }, saveCommentCmd(m.client, m.commentKey, text))
 		}
 		if m.commentForm.aborted {
 			m.activeView = m.prevView
@@ -748,12 +747,12 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.prevView == ViewBacklog && m.backlog.state == blDetail && m.backlog.detailIssue != nil {
 				key := m.backlog.detailIssue.Key
 				m.backlog.state = blLoading
-				return m, tea.Batch(m.backlog.loadSpinner.Tick, fetchIssueCmd(m.client, key, vpW))
+				return m, tea.Batch(func() tea.Msg { return m.backlog.loadSpinner.Tick() }, fetchIssueCmd(m.client, key, vpW))
 			}
 			if m.prevView == ViewKanban && m.kanban.state == stateDetail && m.kanban.detailIssue != nil {
 				key := m.kanban.detailIssue.Key
 				m.kanban.state = stateLoading
-				return m, tea.Batch(m.kanban.loadSpinner.Tick, fetchIssueCmd(m.client, key, vpW))
+				return m, tea.Batch(func() tea.Msg { return m.kanban.loadSpinner.Tick() }, fetchIssueCmd(m.client, key, vpW))
 			}
 			return m, nil
 		}
@@ -761,7 +760,7 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	// Open in browser (works in both list and detail views).
-	if key, ok := msg.(tea.KeyMsg); ok && key.String() == "o" && m.canOpenInBrowser() {
+	if key, ok := msg.(tea.KeyPressMsg); ok && key.String() == "o" && m.canOpenInBrowser() {
 		var issueKey string
 		switch m.activeView {
 		case ViewBacklog:
@@ -783,7 +782,7 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	// View-switching keys: only when the sub-model is in its base state.
-	if key, ok := msg.(tea.KeyMsg); ok && m.canSwitchView() {
+	if key, ok := msg.(tea.KeyPressMsg); ok && m.canSwitchView() {
 		switch key.String() {
 		case "tab":
 			if m.activeView == ViewBacklog {
@@ -825,7 +824,7 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.prevView = ViewBacklog
 			m.editKey = key
 			m.activeView = viewEditLoading
-			return m, tea.Batch(m.editSpinner.Tick, fetchEditDataCmd(m.client, key))
+			return m, tea.Batch(func() tea.Msg { return m.editSpinner.Tick() }, fetchEditDataCmd(m.client, key))
 		}
 		if m.backlog.result.commentKey != "" {
 			key := m.backlog.result.commentKey
@@ -848,7 +847,7 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.createSprintID = m.backlog.result.createSprintID
 			m.prevView = ViewBacklog
 			m.activeView = viewCreateLoading
-			return m, tea.Batch(m.editSpinner.Tick, fetchCreateDataCmd(m.client, m.project))
+			return m, tea.Batch(func() tea.Msg { return m.editSpinner.Tick() }, fetchCreateDataCmd(m.client, m.project))
 		}
 		return m, cmd
 
@@ -870,7 +869,7 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.prevView = ViewKanban
 			m.editKey = key
 			m.activeView = viewEditLoading
-			return m, tea.Batch(m.editSpinner.Tick, fetchEditDataCmd(m.client, key))
+			return m, tea.Batch(func() tea.Msg { return m.editSpinner.Tick() }, fetchEditDataCmd(m.client, key))
 		}
 		if m.kanban.result.commentKey != "" {
 			key := m.kanban.result.commentKey
@@ -992,16 +991,8 @@ func (m boardModel) issueURL(key string) string {
 
 // RunBoardTUI runs the interactive board TUI.
 func RunBoardTUI(client api.Client, boardID int, jiraURL, project string, classicProject bool, data BoardInitData, startView BoardView) error {
-	// Detect glamour style before handing the TTY to BubbleTea.
-	// glamour.WithAutoStyle() queries the terminal for its background color,
-	// which conflicts with BubbleTea's terminal reader when called from a
-	// background goroutine. Detecting once here (while we still own the TTY)
-	// caches the result in termenv's package-level sync.Once, so goroutines
-	// can call WithAutoStyle() without blocking.
-	_, _ = glamour.NewTermRenderer(glamour.WithAutoStyle())
-
 	m, _ := newBoardModel(client, boardID, jiraURL, project, classicProject, data, startView)
-	p := tea.NewProgram(m, tea.WithAltScreen())
+	p := tea.NewProgram(m)
 	_, err := p.Run()
 	if err != nil {
 		debug.LogError("board.Run", err)

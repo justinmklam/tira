@@ -3,10 +3,10 @@ package app
 import (
 	"strings"
 
-	"github.com/charmbracelet/bubbles/spinner"
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/spinner"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/justinmklam/tira/internal/api"
 	"github.com/justinmklam/tira/internal/models"
 	"github.com/justinmklam/tira/internal/tui"
@@ -259,8 +259,8 @@ func (m kanbanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.state == stateDetail {
 			vpW, vpH := tui.OverlayViewportSize(m.width, m.height)
-			m.detailView.Width = vpW
-			m.detailView.Height = vpH
+			m.detailView.SetWidth(vpW)
+			m.detailView.SetHeight(vpH)
 		}
 		return m, nil
 
@@ -271,7 +271,7 @@ func (m kanbanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.detailIssue = msg.issue
 		vpW, vpH := tui.OverlayViewportSize(m.width, m.height)
-		vp := viewport.New(vpW, vpH)
+		vp := viewport.New(viewport.WithWidth(vpW), viewport.WithHeight(vpH))
 		vp.SetContent(msg.content)
 		m.detailView = vp
 		m.state = stateDetail
@@ -316,7 +316,7 @@ func (m kanbanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m kanbanModel) updateBoard(msg tea.Msg) (tea.Model, tea.Cmd) {
-	key, ok := msg.(tea.KeyMsg)
+	key, ok := msg.(tea.KeyPressMsg)
 	if !ok {
 		return m, nil
 	}
@@ -347,7 +347,7 @@ func (m kanbanModel) updateBoard(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if issue := m.currentIssue(); issue != nil {
 			m.state = stateLoading
 			vpW, _ := tui.OverlayViewportSize(m.width, m.height)
-			return m, tea.Batch(m.loadSpinner.Tick, fetchIssueCmd(m.client, issue.Key, vpW))
+			return m, tea.Batch(func() tea.Msg { return m.loadSpinner.Tick() }, fetchIssueCmd(m.client, issue.Key, vpW))
 		}
 	case "e":
 		if issue := m.currentIssue(); issue != nil {
@@ -387,7 +387,7 @@ func (m kanbanModel) updateBoard(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m kanbanModel) updateDetail(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if key, ok := msg.(tea.KeyMsg); ok {
+	if key, ok := msg.(tea.KeyPressMsg); ok {
 		switch key.String() {
 		case "esc", "q":
 			m.state = stateBoard
@@ -414,7 +414,7 @@ func (m kanbanModel) updateDetail(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m kanbanModel) updateAssignPicker(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if key, ok := msg.(tea.KeyMsg); ok && key.String() == "ctrl+c" {
+	if key, ok := msg.(tea.KeyPressMsg); ok && key.String() == "ctrl+c" {
 		m.quitting = true
 		return m, nil
 	}
@@ -440,7 +440,7 @@ func (m kanbanModel) updateAssignPicker(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m kanbanModel) updateStatusPicker(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if key, ok := msg.(tea.KeyMsg); ok && key.String() == "ctrl+c" {
+	if key, ok := msg.(tea.KeyPressMsg); ok && key.String() == "ctrl+c" {
 		m.quitting = true
 		return m, nil
 	}
