@@ -139,7 +139,7 @@ func (m *editModel) setSize(w, h int) {
 	m.acTA.SetHeight(taH)
 }
 
-func (m *editModel) Init() tea.Cmd { return func() tea.Msg { return textinput.Blink() } }
+func (m *editModel) Init() tea.Cmd { return textinput.Blink }
 
 func (m *editModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if key, ok := msg.(tea.KeyMsg); ok {

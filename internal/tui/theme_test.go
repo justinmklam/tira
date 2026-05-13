@@ -21,11 +21,11 @@ func TestSetTheme_Default(t *testing.T) {
 		t.Fatalf("SetTheme(\"default\"): %v", err)
 	}
 
-	if fmt.Sprint(ColorError) != fmt.Sprint(ColorError) {
-		t.Error("ColorError should be set")
+	if fmt.Sprint(ColorError) == "" {
+		t.Error("ColorError should have a non-empty string representation")
 	}
-	if fmt.Sprint(ColorAccent) != fmt.Sprint(ColorAccent) {
-		t.Error("ColorAccent should be set")
+	if fmt.Sprint(ColorAccent) == "" {
+		t.Error("ColorAccent should have a non-empty string representation")
 	}
 }
 

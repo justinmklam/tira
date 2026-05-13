@@ -52,7 +52,7 @@ func (m *commentInputModel) isDirty() bool {
 	return strings.TrimSpace(m.ta.Value()) != ""
 }
 
-func (m *commentInputModel) Init() tea.Cmd { return func() tea.Msg { return textarea.Blink() } }
+func (m *commentInputModel) Init() tea.Cmd { return textarea.Blink }
 
 func (m *commentInputModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if key, ok := msg.(tea.KeyPressMsg); ok {
