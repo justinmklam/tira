@@ -9,12 +9,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/spinner"
-	"github.com/charmbracelet/bubbles/textinput"
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/glamour"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/spinner"
+	"charm.land/bubbles/v2/textinput"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/glamour/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/justinmklam/tira/internal/api"
 	"github.com/justinmklam/tira/internal/display"
 	"github.com/justinmklam/tira/internal/models"
@@ -488,8 +488,8 @@ func (m blModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		if m.state == blDetail {
 			vpW, vpH := tui.OverlayViewportSize(m.width, m.height)
-			m.detailView.Width = vpW
-			m.detailView.Height = vpH
+			m.detailView.SetWidth(vpW)
+			m.detailView.SetHeight(vpH)
 		}
 		// Re-render sidebar at the actual terminal width.
 		// The initial render uses a default width since the terminal size isn't known yet.
@@ -519,7 +519,7 @@ func (m blModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.detailIssue = msg.issue
 		vpW, vpH := tui.OverlayViewportSize(m.width, m.height)
-		vp := viewport.New(vpW, vpH)
+		vp := viewport.New(viewport.WithWidth(vpW), viewport.WithHeight(vpH))
 		vp.SetContent(msg.content)
 		m.detailView = vp
 		m.state = blDetail

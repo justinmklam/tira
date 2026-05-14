@@ -3,9 +3,9 @@ package app
 import (
 	"strings"
 
-	"github.com/charmbracelet/bubbles/textarea"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/textarea"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/justinmklam/tira/internal/tui"
 )
 
@@ -55,7 +55,7 @@ func (m *commentInputModel) isDirty() bool {
 func (m *commentInputModel) Init() tea.Cmd { return textarea.Blink }
 
 func (m *commentInputModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if key, ok := msg.(tea.KeyMsg); ok {
+	if key, ok := msg.(tea.KeyPressMsg); ok {
 		if m.confirmAbort {
 			switch key.String() {
 			case "y", "enter":
@@ -87,7 +87,7 @@ func (m *commentInputModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m *commentInputModel) View() string {
+func (m *commentInputModel) View() tea.View {
 	var lines []string
 	lines = append(lines, m.ta.View())
 
@@ -99,5 +99,5 @@ func (m *commentInputModel) View() string {
 		hint = tui.MutedStyle.Render("  ctrl+s: save   esc: cancel")
 	}
 	lines = append(lines, hint)
-	return strings.Join(lines, "\n")
+	return tea.NewView(strings.Join(lines, "\n"))
 }

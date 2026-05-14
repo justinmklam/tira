@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/charmbracelet/log"
+	"charm.land/log/v2"
 	"github.com/justinmklam/tira/internal/config"
 	"github.com/justinmklam/tira/internal/debug"
 	"github.com/justinmklam/tira/internal/tui"

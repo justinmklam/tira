@@ -2,29 +2,31 @@ package tui
 
 import (
 	"fmt"
+	"image/color"
 	"sort"
 
-	"github.com/charmbracelet/glamour/ansi"
-	"github.com/charmbracelet/glamour/styles"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/glamour/v2/ansi"
+	"charm.land/glamour/v2/styles"
+	"charm.land/lipgloss/v2"
 )
 
 // Theme defines a complete color palette for the TUI.
 type Theme struct {
-	Error            lipgloss.Color
-	Success          lipgloss.Color
-	Warning          lipgloss.Color
-	Accent           lipgloss.Color
-	Special          lipgloss.Color
-	Caution          lipgloss.Color
-	Highlight        lipgloss.Color
-	Foreground       lipgloss.Color
-	ForegroundBright lipgloss.Color
-	Muted            lipgloss.Color
-	Subtle           lipgloss.Color
-	Surface          lipgloss.Color
+	Error            color.Color
+	Success          color.Color
+	Warning          color.Color
+	Accent           color.Color
+	AccentStr        string
+	Special          color.Color
+	Caution          color.Color
+	Highlight        color.Color
+	Foreground       color.Color
+	ForegroundBright color.Color
+	Muted            color.Color
+	Subtle           color.Color
+	Surface          color.Color
 
-	EpicPalette []lipgloss.Color
+	EpicPalette []color.Color
 }
 
 // GlamourStyleConfig is the glamour style used for markdown rendering.
@@ -37,6 +39,7 @@ var themes = map[string]Theme{
 		Success:          lipgloss.Color("10"),
 		Warning:          lipgloss.Color("11"),
 		Accent:           lipgloss.Color("12"),
+		AccentStr:        "12",
 		Special:          lipgloss.Color("13"),
 		Caution:          lipgloss.Color("208"),
 		Highlight:        lipgloss.Color("15"),
@@ -45,8 +48,8 @@ var themes = map[string]Theme{
 		Muted:            lipgloss.Color("244"),
 		Subtle:           lipgloss.Color("240"),
 		Surface:          lipgloss.Color("237"),
-		EpicPalette: []lipgloss.Color{
-			"39", "208", "141", "43", "214", "99", "203", "118", "45", "220",
+		EpicPalette: []color.Color{
+			lipgloss.Color("39"), lipgloss.Color("208"), lipgloss.Color("141"), lipgloss.Color("43"), lipgloss.Color("214"), lipgloss.Color("99"), lipgloss.Color("203"), lipgloss.Color("118"), lipgloss.Color("45"), lipgloss.Color("220"),
 		},
 	},
 	"tokyonight": {
@@ -54,6 +57,7 @@ var themes = map[string]Theme{
 		Success:          lipgloss.Color("#9ece6a"), // green
 		Warning:          lipgloss.Color("#e0af68"), // yellow
 		Accent:           lipgloss.Color("#f7768e"), // red
+		AccentStr:        "#f7768e",
 		Special:          lipgloss.Color("#bb9af7"), // magenta
 		Caution:          lipgloss.Color("#ff9e64"), // orange
 		Highlight:        lipgloss.Color("#a9b1d6"), // white
@@ -62,9 +66,9 @@ var themes = map[string]Theme{
 		Muted:            lipgloss.Color("#414868"), // bright black
 		Subtle:           lipgloss.Color("#283457"), // comment
 		Surface:          lipgloss.Color("#283457"), // selection
-		EpicPalette: []lipgloss.Color{
-			"#7aa2f7", "#ff9e64", "#9ece6a", "#7dcfff", "#e0af68",
-			"#bb9af7", "#f7768e", "#73daca", "#2ac3de", "#ff007c",
+		EpicPalette: []color.Color{
+			lipgloss.Color("#7aa2f7"), lipgloss.Color("#ff9e64"), lipgloss.Color("#9ece6a"), lipgloss.Color("#7dcfff"), lipgloss.Color("#e0af68"),
+			lipgloss.Color("#bb9af7"), lipgloss.Color("#f7768e"), lipgloss.Color("#73daca"), lipgloss.Color("#2ac3de"), lipgloss.Color("#ff007c"),
 		},
 	},
 	"catppuccin": {
@@ -72,6 +76,7 @@ var themes = map[string]Theme{
 		Success:          lipgloss.Color("#a6e3a1"), // green
 		Warning:          lipgloss.Color("#f9e2af"), // yellow
 		Accent:           lipgloss.Color("#cba6f7"), // mauve
+		AccentStr:        "#cba6f7",
 		Special:          lipgloss.Color("#f5c2e7"), // pink
 		Caution:          lipgloss.Color("#fab387"), // peach
 		Highlight:        lipgloss.Color("#bac2de"), // subtext1
@@ -80,9 +85,9 @@ var themes = map[string]Theme{
 		Muted:            lipgloss.Color("#6c7086"), // overlay0
 		Subtle:           lipgloss.Color("#585b70"), // surface2
 		Surface:          lipgloss.Color("#313244"), // surface0
-		EpicPalette: []lipgloss.Color{
-			"#89b4fa", "#fab387", "#a6e3a1", "#94e2d5", "#f9e2af",
-			"#cba6f7", "#f38ba8", "#f5c2e7", "#74c7ec", "#f5e0dc",
+		EpicPalette: []color.Color{
+			lipgloss.Color("#89b4fa"), lipgloss.Color("#fab387"), lipgloss.Color("#a6e3a1"), lipgloss.Color("#94e2d5"), lipgloss.Color("#f9e2af"),
+			lipgloss.Color("#cba6f7"), lipgloss.Color("#f38ba8"), lipgloss.Color("#f5c2e7"), lipgloss.Color("#74c7ec"), lipgloss.Color("#f5e0dc"),
 		},
 	},
 }
@@ -131,8 +136,7 @@ func SetTheme(name string) error {
 	}
 
 	// Override glamour heading color to match the active theme's Accent.
-	accentStr := string(t.Accent)
-	GlamourStyleConfig.Heading.Color = &accentStr
+	GlamourStyleConfig.Heading.Color = &t.AccentStr
 
 	return nil
 }

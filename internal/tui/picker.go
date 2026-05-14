@@ -4,9 +4,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 // PickerItem is a single selectable entry.
@@ -158,7 +158,7 @@ func (m PickerModel) Update(msg tea.Msg) (PickerModel, tea.Cmd) {
 		return m, m.dispatchSearch(msg.query)
 	}
 
-	key, ok := msg.(tea.KeyMsg)
+	key, ok := msg.(tea.KeyPressMsg)
 	if !ok {
 		var cmd tea.Cmd
 		m.Input, cmd = m.Input.Update(msg)

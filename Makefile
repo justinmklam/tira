@@ -4,7 +4,7 @@
 
 # Build the binary
 build:
-	GOTOOLCHAIN=local go build -o tira ./cmd/tira
+	go build -o tira ./cmd/tira
 
 run:
 	./tira backlog
@@ -14,7 +14,7 @@ run-dev:
 
 # Install the binary to $GOPATH/bin (or ~/go/bin)
 install:
-	GOTOOLCHAIN=local go install ./cmd/tira
+	go install ./cmd/tira
 
 # Remove build artifacts
 clean:
@@ -36,11 +36,11 @@ test-cover:
 
 # Format code (check only — fails if not formatted)
 fmt-check:
-	@test -z "$$(gofmt -l .)" || (echo "Files not formatted:"; gofmt -l .; exit 1)
+	@test -z "$$(gofmt -l cmd/ internal/)" || (echo "Files not formatted:"; gofmt -l cmd/ internal/; exit 1)
 
 # Format code in-place
 fmt:
-	gofmt -w .
+	gofmt -w cmd/ internal/
 
 # Run go vet
 vet:

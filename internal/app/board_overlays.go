@@ -1,11 +1,12 @@
 package app
 
 import (
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/justinmklam/tira/internal/tui"
 )
 
-func (m boardModel) View() string {
+func (m boardModel) View() tea.View {
 	w, h := m.width, m.height
 	if w == 0 {
 		w = 120
@@ -14,54 +15,62 @@ func (m boardModel) View() string {
 		h = 40
 	}
 
+	var content string
 	switch m.activeView {
 	case viewEditLoading:
 		msg := m.editSpinner.View() + tui.MutedStyle.Render(" Fetching issue…")
-		return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, msg)
+		content = lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, msg)
 
 	case viewEdit:
-		return m.viewEditForm(w, h)
+		content = m.viewEditForm(w, h)
 
 	case viewEditSaving:
 		msg := m.editSpinner.View() + tui.MutedStyle.Render(" Saving…")
-		return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, msg)
+		content = lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, msg)
 
 	case viewCreateLoading:
 		msg := m.editSpinner.View() + tui.MutedStyle.Render(" Loading…")
-		return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, msg)
+		content = lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, msg)
 
 	case viewCreate:
-		return m.viewEditForm(w, h)
+		content = m.viewEditForm(w, h)
 
 	case viewCreateSaving:
 		msg := m.editSpinner.View() + tui.MutedStyle.Render(" Creating issue…")
-		return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, msg)
+		content = lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, msg)
 
 	case viewAssigneePicker:
-		return m.viewAssigneePickerOverlay(w, h)
+		content = m.viewAssigneePickerOverlay(w, h)
 
 	case viewTypePicker:
-		return m.viewTypePickerOverlay(w, h)
+		content = m.viewTypePickerOverlay(w, h)
 
 	case viewPriorityPicker:
-		return m.viewPriorityPickerOverlay(w, h)
+		content = m.viewPriorityPickerOverlay(w, h)
 
 	case viewHelp:
-		return m.viewHelpOverlay(w, h)
+		content = m.viewHelpOverlay(w, h)
 
 	case viewComment:
-		return m.viewCommentForm(w, h)
+		content = m.viewCommentForm(w, h)
 
 	case viewCommentSaving:
 		msg := m.editSpinner.View() + tui.MutedStyle.Render(" Saving comment…")
-		return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, msg)
+		content = lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, msg)
 
 	case ViewKanban:
-		return m.kanban.View()
+		v := m.kanban.View()
+		v.AltScreen = true
+		return v
 
 	default:
-		return m.backlog.View()
+		v := m.backlog.View()
+		v.AltScreen = true
+		return v
 	}
+	v := tea.NewView(content)
+	v.AltScreen = true
+	return v
 }
 
 func (m boardModel) viewEditForm(w, h int) string {
@@ -88,7 +97,7 @@ func (m boardModel) viewEditForm(w, h int) string {
 	header := tui.BoldAccent.Padding(0, 1).Width(innerW).
 		Render(tui.FixedWidth(titleStr, innerW-2))
 
-	body := header + "\n" + m.editForm.View()
+	body := header + "\n" + m.editForm.View().Content
 	if m.editErr != "" {
 		body += "\n" + lipgloss.NewStyle().Foreground(tui.ColorError).Render("  "+m.editErr)
 	}
@@ -157,7 +166,7 @@ func (m boardModel) viewCommentForm(w, h int) string {
 	header := tui.BoldAccent.Padding(0, 1).Width(innerW).
 		Render(tui.FixedWidth(titleStr, innerW-2))
 
-	body := header + "\n" + m.commentForm.View()
+	body := header + "\n" + m.commentForm.View().Content
 	if m.commentErr != "" {
 		body += "\n" + lipgloss.NewStyle().Foreground(tui.ColorError).Render("  "+m.commentErr)
 	}

@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"testing"
 	"time"
 )
@@ -51,20 +52,20 @@ func TestDaysColor_Thresholds(t *testing.T) {
 		days int
 		want string
 	}{
-		{0, string(ColorSuccess)},
-		{1, string(ColorSuccess)},
-		{2, string(ColorSuccess)},
-		{3, string(ColorWarning)},
-		{5, string(ColorWarning)},
-		{6, string(ColorCaution)},
-		{9, string(ColorCaution)},
-		{10, string(ColorError)},
-		{15, string(ColorError)},
-		{100, string(ColorError)},
+		{0, fmt.Sprint(ColorSuccess)},
+		{1, fmt.Sprint(ColorSuccess)},
+		{2, fmt.Sprint(ColorSuccess)},
+		{3, fmt.Sprint(ColorWarning)},
+		{5, fmt.Sprint(ColorWarning)},
+		{6, fmt.Sprint(ColorCaution)},
+		{9, fmt.Sprint(ColorCaution)},
+		{10, fmt.Sprint(ColorError)},
+		{15, fmt.Sprint(ColorError)},
+		{100, fmt.Sprint(ColorError)},
 	}
 	for _, tt := range tests {
 		t.Run(string(rune(tt.days+'0')), func(t *testing.T) {
-			got := string(DaysColor(tt.days))
+			got := fmt.Sprint(DaysColor(tt.days))
 			if got != tt.want {
 				t.Errorf("DaysColor(%d) = %q, want %q", tt.days, got, tt.want)
 			}
