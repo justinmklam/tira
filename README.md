@@ -167,6 +167,18 @@ make vet          # Run go vet
 make lint         # Run golangci-lint (requires golangci-lint installation)
 ```
 
+### Releasing
+
+To cut a new release, bump the version and push a tag — GoReleaser runs automatically via GitHub Actions:
+
+```sh
+bin/release.sh patch   # 1.2.3 → 1.2.4
+bin/release.sh minor   # 1.2.3 → 1.3.0
+bin/release.sh major   # 1.2.3 → 2.0.0
+```
+
+The script will show the commits going into the release and ask for confirmation before tagging.
+
 ## Documentation
 
 | Document | Description |

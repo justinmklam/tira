@@ -56,3 +56,4 @@ lint:
 
 # Run all checks (fmt, vet, lint, test) — same as CI
 check: fmt-check vet lint test vuln-check
+
