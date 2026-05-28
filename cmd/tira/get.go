@@ -26,7 +26,17 @@ var editFlag bool
 var getCmd = &cobra.Command{
 	Use:   "get <key>",
 	Short: "Fetch and display a Jira issue",
-	Args:  cobra.ExactArgs(1),
+	Long: `Fetch and display a Jira issue as Markdown.
+
+When stdout is a terminal, the output is paged via glow (if installed) or less.
+When stdout is piped, raw Markdown is written directly — useful for agents:
+
+  tira get PROJ-123
+  tira get PROJ-123 | cat          # pipe-safe: writes raw Markdown
+  tira get PROJ-123 | grep Status  # extract specific fields
+
+Use --edit to open the issue in $EDITOR and write changes back to Jira.`,
+	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		key := args[0]
 

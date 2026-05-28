@@ -36,25 +36,50 @@ Interactive mode (default):
 
 Non-interactive mode (for AI agents / automation):
   Use --file or pipe content via stdin to create an issue without opening an
-  editor. The input should be in the same template format as the interactive
-  mode (YAML-like front matter + Markdown body, separated by ---).
+  editor. The input must use the template format: YAML-like front matter
+  separated from the Markdown body by ---.
 
   Examples:
-    # Create from a file
+
+    # Heredoc piped to stdin (recommended for agents):
+    cat <<'EOF' | tira create --no-edit
+    <!-- tira: do not remove this line or change field names -->
+    type: Task
+
+    ---
+
+    # Fix the login bug
+
+    ## Description
+
+    Users cannot log in when 2FA is enabled.
+
+    ## Acceptance Criteria
+
+    - Login succeeds with 2FA enabled
+    EOF
+
+    # Heredoc redirected directly (equivalent):
+    tira create --no-edit <<'EOF'
+    <!-- tira: do not remove this line or change field names -->
+    type: Story
+    assignee: Jane Smith
+    story_points: 3
+
+    ---
+
+    # Implement OAuth2 login
+    EOF
+
+    # Create from a file:
     tira create --file issue-template.md
 
-    # Pipe from stdin (e.g., from an AI agent)
-    echo -e "type: Task\npriority: High\n---\n# My Summary\n\n## Description\n\nDo the thing" | tira create --no-edit
-
-    # Generate with AI and create
-    ai-generate-issue | tira create --no-edit
-
-  In non-interactive mode, validation is still performed (valid types, priorities,
-  required fields) but no editor is opened.
+  In non-interactive mode, validation is still performed (valid types,
+  required summary) but no editor is opened.
 
 For AI Agents:
   Use 'tira create --template' to get the exact format specification including
-  all supported front matter fields and their descriptions.`,
+  all supported front matter fields, validation rules, and examples.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// Handle --template flag early (before config loading)
 		if showTemplate {
@@ -238,8 +263,8 @@ Your description here. Supports full Markdown:
 
 ## Acceptance Criteria   # Optional
 
-- [ ] Criterion 1
-- [ ] Criterion 2
+- Criterion 1
+- Criterion 2
 ` + "```" + `
 
 ## Minimal Valid Example
@@ -272,8 +297,8 @@ Add OAuth2 login with Google provider.
 
 ## Acceptance Criteria
 
-- [ ] User can sign in with Google
-- [ ] Session persists correctly
+- User can sign in with Google
+- Session persists correctly
 ` + "```" + `
 
 ## Validation Rules

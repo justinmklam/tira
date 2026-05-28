@@ -20,6 +20,37 @@ var (
 var rootCmd = &cobra.Command{
 	Use:   "tira",
 	Short: "A blazing fast terminal interface for Jira",
+	Long: `tira — a fast terminal interface for Jira.
+
+Quick reference for AI agents and automation:
+
+  Read an issue (outputs Markdown; pipe-safe):
+    tira get <KEY>
+    tira get <KEY> | cat
+
+  Create an issue from stdin (non-interactive):
+    cat <<'EOF' | tira create --no-edit
+    <!-- tira: do not remove this line or change field names -->
+    type: Task
+
+    ---
+
+    # Summary of the work
+
+    ## Description
+
+    What needs to be done.
+
+    ## Acceptance Criteria
+
+    - Criterion 1
+    EOF
+
+  Get the full template format specification:
+    tira create --template
+
+  Edit an existing issue interactively:
+    tira get <KEY> --edit`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return cmd.Help()
 	},

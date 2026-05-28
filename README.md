@@ -179,6 +179,19 @@ make lint         # Run golangci-lint (requires golangci-lint installation)
 | [Keybindings](docs/keybindings-backlog.md) | Complete keybinding reference |
 | [Glossary](docs/glossary.md) | Glossary and key types |
 
+## AI Agent Skill
+
+A skill file is included at [`skills/tira.md`](skills/tira.md) for use with AI coding agents (GitHub Copilot CLI, Claude, Cursor, etc.). It teaches the agent how to create and read Jira tickets using the `tira` CLI — including the correct template format, heredoc piping patterns, and a confirm-before-create workflow.
+
+**GitHub Copilot CLI** — install to your user skills directory:
+
+```bash
+mkdir -p ~/.copilot/skills/tira
+cp skills/tira.md ~/.copilot/skills/tira/SKILL.md
+```
+
+**Claude / other agents** — reference the file directly in your system prompt or agent context, or copy its contents into your project's `CLAUDE.md` / `AGENTS.md`.
+
 ## Acknowledgements
 
 This project was built with the excellent [bubbletea](https://github.com/charmbracelet/bubbletea) framework by [Charm](https://github.com/charmbracelet).
