@@ -115,24 +115,19 @@ func (c *adfConverter) walkNode(node ast.Node) {
 }
 
 func (c *adfConverter) buildParagraph(node ast.Node) map[string]any {
-	textContent := c.buildInlineContent(node)
-	if len(textContent) == 0 {
+	content := c.buildInlineNodes(node)
+	if len(content) == 0 {
 		return nil
 	}
 	return map[string]any{
-		"type": "paragraph",
-		"content": []any{
-			map[string]any{
-				"type": "text",
-				"text": textContent,
-			},
-		},
+		"type":    "paragraph",
+		"content": content,
 	}
 }
 
 func (c *adfConverter) buildHeading(node ast.Node, level int) map[string]any {
-	textContent := c.buildInlineContent(node)
-	if textContent == "" {
+	content := c.buildInlineNodes(node)
+	if len(content) == 0 {
 		return nil
 	}
 	return map[string]any{
@@ -140,12 +135,7 @@ func (c *adfConverter) buildHeading(node ast.Node, level int) map[string]any {
 		"attrs": map[string]any{
 			"level": level,
 		},
-		"content": []any{
-			map[string]any{
-				"type": "text",
-				"text": textContent,
-			},
-		},
+		"content": content,
 	}
 }
 
@@ -158,19 +148,14 @@ func (c *adfConverter) buildList(node ast.Node, listNode *ast.List) map[string]a
 	items := []any{}
 	for child := node.FirstChild(); child != nil; child = child.NextSibling() {
 		if listItem, ok := child.(*ast.ListItem); ok {
-			itemContent := c.buildInlineContent(listItem)
-			if itemContent != "" {
+			itemContent := c.buildInlineNodes(listItem)
+			if len(itemContent) > 0 {
 				items = append(items, map[string]any{
 					"type": "listItem",
 					"content": []any{
 						map[string]any{
-							"type": "paragraph",
-							"content": []any{
-								map[string]any{
-									"type": "text",
-									"text": itemContent,
-								},
-							},
+							"type":    "paragraph",
+							"content": itemContent,
 						},
 					},
 				})
@@ -232,52 +217,100 @@ func (c *adfConverter) buildCodeBlock(node ast.Node, language string) map[string
 }
 
 func (c *adfConverter) buildBlockquote(node ast.Node) map[string]any {
-	textContent := c.buildInlineContent(node)
-	if textContent == "" {
+	content := c.buildInlineNodes(node)
+	if len(content) == 0 {
 		return nil
 	}
 	return map[string]any{
 		"type": "blockquote",
 		"content": []any{
 			map[string]any{
-				"type": "paragraph",
-				"content": []any{
-					map[string]any{
-						"type": "text",
-						"text": textContent,
-					},
-				},
+				"type":    "paragraph",
+				"content": content,
 			},
 		},
 	}
 }
 
-func (c *adfConverter) buildInlineContent(node ast.Node) string {
-	var sb strings.Builder
-	c.collectInlineText(&sb, node)
-	return sb.String()
+// buildInlineNodes converts inline markdown content to a slice of ADF inline
+// nodes, preserving marks for bold, italic, code, and links.
+func (c *adfConverter) buildInlineNodes(node ast.Node) []any {
+	var nodes []any
+	c.collectInlineNodes(&nodes, node, nil)
+	return nodes
 }
 
-func (c *adfConverter) collectInlineText(sb *strings.Builder, node ast.Node) {
+func (c *adfConverter) collectInlineNodes(nodes *[]any, node ast.Node, marks []any) {
 	for child := node.FirstChild(); child != nil; child = child.NextSibling() {
 		switch n := child.(type) {
 		case *ast.Text:
-			sb.Write(n.Segment.Value(c.source))
+			seg := string(n.Segment.Value(c.source))
+			if seg == "" {
+				continue
+			}
+			textNode := map[string]any{
+				"type": "text",
+				"text": seg,
+			}
+			if len(marks) > 0 {
+				marksCopy := make([]any, len(marks))
+				copy(marksCopy, marks)
+				textNode["marks"] = marksCopy
+			}
+			*nodes = append(*nodes, textNode)
+
 		case *ast.Emphasis:
-			c.collectInlineText(sb, child)
+			markType := "em"
+			if n.Level == 2 {
+				markType = "strong"
+			}
+			newMarks := append(append([]any{}, marks...), map[string]any{"type": markType})
+			c.collectInlineNodes(nodes, child, newMarks)
+
 		case *ast.CodeSpan:
+			var sb strings.Builder
 			for gc := child.FirstChild(); gc != nil; gc = gc.NextSibling() {
 				if textNode, ok := gc.(*ast.Text); ok {
 					sb.Write(textNode.Segment.Value(c.source))
 				}
 			}
+			if sb.Len() > 0 {
+				codeMarks := append(append([]any{}, marks...), map[string]any{"type": "code"})
+				*nodes = append(*nodes, map[string]any{
+					"type":  "text",
+					"text":  sb.String(),
+					"marks": codeMarks,
+				})
+			}
+
 		case *ast.Link:
-			// For links, just include the text content
-			c.collectInlineText(sb, child)
+			href := string(n.Destination)
+			linkMark := map[string]any{
+				"type": "link",
+				"attrs": map[string]any{
+					"href": href,
+				},
+			}
+			newMarks := append(append([]any{}, marks...), linkMark)
+			c.collectInlineNodes(nodes, child, newMarks)
+
 		case *ast.AutoLink:
-			sb.Write(n.URL(c.source))
+			url := string(n.URL(c.source))
+			linkMark := map[string]any{
+				"type": "link",
+				"attrs": map[string]any{
+					"href": url,
+				},
+			}
+			allMarks := append(append([]any{}, marks...), linkMark)
+			*nodes = append(*nodes, map[string]any{
+				"type":  "text",
+				"text":  url,
+				"marks": allMarks,
+			})
+
 		default:
-			c.collectInlineText(sb, child)
+			c.collectInlineNodes(nodes, child, marks)
 		}
 	}
 }

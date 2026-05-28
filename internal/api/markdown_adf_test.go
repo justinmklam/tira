@@ -234,6 +234,123 @@ func TestMarkdownToADF_Lists(t *testing.T) {
 	}
 }
 
+func TestMarkdownToADF_InlineFormatting(t *testing.T) {
+	t.Run("link produces text node with link mark", func(t *testing.T) {
+		adf := markdownToADF("Check [example](https://example.com) here")
+		content, _ := adf["content"].([]any)
+		if len(content) == 0 {
+			t.Fatal("no content nodes")
+		}
+		para, _ := content[0].(map[string]any)
+		nodes, _ := para["content"].([]any)
+
+		var linkNode map[string]any
+		for _, n := range nodes {
+			node, _ := n.(map[string]any)
+			marks, _ := node["marks"].([]any)
+			for _, m := range marks {
+				mark, _ := m.(map[string]any)
+				if mark["type"] == "link" {
+					linkNode = node
+				}
+			}
+		}
+		if linkNode == nil {
+			t.Fatal("no text node with link mark found")
+		}
+		if linkNode["text"] != "example" {
+			t.Errorf("link text = %q, want %q", linkNode["text"], "example")
+		}
+		marks, _ := linkNode["marks"].([]any)
+		linkMark, _ := marks[0].(map[string]any)
+		attrs, _ := linkMark["attrs"].(map[string]any)
+		if attrs["href"] != "https://example.com" {
+			t.Errorf("link href = %q, want %q", attrs["href"], "https://example.com")
+		}
+	})
+
+	t.Run("bold produces text node with strong mark", func(t *testing.T) {
+		adf := markdownToADF("**bold text**")
+		content, _ := adf["content"].([]any)
+		para, _ := content[0].(map[string]any)
+		nodes, _ := para["content"].([]any)
+		if len(nodes) == 0 {
+			t.Fatal("no inline nodes")
+		}
+		node, _ := nodes[0].(map[string]any)
+		if node["text"] != "bold text" {
+			t.Errorf("text = %q, want %q", node["text"], "bold text")
+		}
+		marks, _ := node["marks"].([]any)
+		if len(marks) == 0 {
+			t.Fatal("no marks on bold node")
+		}
+		mark, _ := marks[0].(map[string]any)
+		if mark["type"] != "strong" {
+			t.Errorf("mark type = %q, want %q", mark["type"], "strong")
+		}
+	})
+
+	t.Run("italic produces text node with em mark", func(t *testing.T) {
+		adf := markdownToADF("_italic text_")
+		content, _ := adf["content"].([]any)
+		para, _ := content[0].(map[string]any)
+		nodes, _ := para["content"].([]any)
+		if len(nodes) == 0 {
+			t.Fatal("no inline nodes")
+		}
+		node, _ := nodes[0].(map[string]any)
+		if node["text"] != "italic text" {
+			t.Errorf("text = %q, want %q", node["text"], "italic text")
+		}
+		marks, _ := node["marks"].([]any)
+		if len(marks) == 0 {
+			t.Fatal("no marks on italic node")
+		}
+		mark, _ := marks[0].(map[string]any)
+		if mark["type"] != "em" {
+			t.Errorf("mark type = %q, want %q", mark["type"], "em")
+		}
+	})
+
+	t.Run("inline code produces text node with code mark", func(t *testing.T) {
+		adf := markdownToADF("Use `fmt.Println` to print")
+		content, _ := adf["content"].([]any)
+		para, _ := content[0].(map[string]any)
+		nodes, _ := para["content"].([]any)
+
+		var codeNode map[string]any
+		for _, n := range nodes {
+			node, _ := n.(map[string]any)
+			marks, _ := node["marks"].([]any)
+			for _, m := range marks {
+				mark, _ := m.(map[string]any)
+				if mark["type"] == "code" {
+					codeNode = node
+				}
+			}
+		}
+		if codeNode == nil {
+			t.Fatal("no text node with code mark found")
+		}
+		if codeNode["text"] != "fmt.Println" {
+			t.Errorf("code text = %q, want %q", codeNode["text"], "fmt.Println")
+		}
+	})
+
+	t.Run("link roundtrip preserves text and URL", func(t *testing.T) {
+		input := "Check [example](https://example.com) here"
+		adf := markdownToADF(input)
+		got := strings.TrimSpace(ADFToMarkdown(adf))
+		if !strings.Contains(got, "example") {
+			t.Errorf("roundtrip lost link text: %q", got)
+		}
+		if !strings.Contains(got, "https://example.com") {
+			t.Errorf("roundtrip lost link URL: %q", got)
+		}
+	})
+}
+
 func TestMarkdownToADF_CodeBlock(t *testing.T) {
 	input := "```go\nfmt.Println(\"hello\")\n```"
 	got := markdownToADF(input)
