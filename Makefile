@@ -1,6 +1,6 @@
 # Makefile for tira
 
-.PHONY: build install clean test fmt lint vet check
+.PHONY: build install clean test fmt lint vet check release
 
 # Build the binary
 build:
@@ -56,3 +56,8 @@ lint:
 
 # Run all checks (fmt, vet, lint, test) — same as CI
 check: fmt-check vet lint test vuln-check
+
+# Create a new release (major, minor, or patch)
+# Usage: make release BUMP=minor
+release:
+	@bin/release.sh $(BUMP)
