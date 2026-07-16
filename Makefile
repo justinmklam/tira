@@ -1,6 +1,6 @@
 # Makefile for tira
 
-.PHONY: build install clean test fmt lint vet check
+.PHONY: build install clean test fmt lint vet check update
 
 # Build the binary
 build:
@@ -15,6 +15,11 @@ run-dev:
 # Install the binary to $GOPATH/bin (or ~/go/bin)
 install:
 	go install ./cmd/tira
+
+# Update all Go dependencies to their latest versions and tidy go.mod/go.sum
+update:
+	go get -u ./...
+	go mod tidy
 
 # Remove build artifacts
 clean:
