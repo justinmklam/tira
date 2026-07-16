@@ -4,7 +4,7 @@ tira provides the following commands:
 
 | Command | Description |
 |---------|-------------|
-| `get <key> [--edit]` | Fetch and display a single issue; optionally edit it |
+| `get <key\|url> [--edit]` | Fetch and display a single issue (accepts an issue key or a full browse URL); optionally edit it |
 | `create [--project <key>] [--type <type>] [--parent <key>]` | Create a new issue via `$EDITOR` |
 | `board` | Launch the unified TUI (backlog + kanban views) |
 | `backlog` | Launch the TUI starting in backlog view |
@@ -14,9 +14,17 @@ All commands use the `--profile` flag to select a config profile (default: `"def
 
 ---
 
-## `tira get <key> [--edit]`
+## `tira get <key|url> [--edit]`
 
 **File:** `cmd/tira/get.go`
+
+### Key resolution
+
+The argument may be a bare issue key (e.g. `PROJ-123`) or a full Jira browse
+URL (e.g. `https://example.atlassian.net/browse/PROJ-123`). `extractIssueKey`
+pulls the `KEY-123`-shaped key out of either form via regex (case-insensitive,
+whitespace-trimmed) before calling the API — this works for any project, not
+just the one configured in `project`/`board_id`.
 
 ### Without `--edit` (View Mode)
 
@@ -35,6 +43,7 @@ Displays a single issue in a terminal pager:
 ```bash
 ./tira get MP-101
 ./tira get MP-101 | grep "Status"  # pipe to another command
+./tira get https://example.atlassian.net/browse/MP-101  # full URL also works
 ```
 
 ### With `--edit` (Edit Mode)

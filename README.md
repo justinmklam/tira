@@ -115,6 +115,7 @@ See [Keybindings](docs/keybindings-backlog.md) for the complete reference.
 
 ```sh
 tira get MP-101
+tira get https://your-domain.atlassian.net/browse/MP-101  # full browse URL also works
 ```
 
 **Edit an issue in your editor:**

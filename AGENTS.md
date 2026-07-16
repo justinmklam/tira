@@ -372,6 +372,8 @@ runtime.SetFinalizer(new(struct{}), func(_ *struct{}) {
 
 ## Documentation
 
+**Always update the relevant docs (and this file, if applicable) in the same change when adding or updating a feature.** README.md and the tables below should never fall out of sync with behavior — e.g. new/changed CLI commands, flags, config keys, or keybindings must be reflected in `docs/cli-commands.md`, `README.md`, `docs/configuration.md`, or `docs/keybindings-backlog.md` as appropriate.
+
 | Document | Description |
 |----------|-------------|
 | [docs/architecture.md](docs/architecture.md) | System architecture and package structure |

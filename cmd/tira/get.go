@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 
 	"golang.org/x/term"
@@ -24,21 +25,25 @@ import (
 var editFlag bool
 
 var getCmd = &cobra.Command{
-	Use:   "get <key>",
+	Use:   "get <key|url>",
 	Short: "Fetch and display a Jira issue",
 	Long: `Fetch and display a Jira issue as Markdown.
+
+Accepts a bare issue key or a full Jira browse URL — the issue key is
+extracted automatically either way.
 
 When stdout is a terminal, the output is paged via glow (if installed) or less.
 When stdout is piped, raw Markdown is written directly — useful for agents:
 
   tira get PROJ-123
+  tira get https://your-domain.atlassian.net/browse/PROJ-123
   tira get PROJ-123 | cat          # pipe-safe: writes raw Markdown
   tira get PROJ-123 | grep Status  # extract specific fields
 
 Use --edit to open the issue in $EDITOR and write changes back to Jira.`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		key := args[0]
+		key := extractIssueKey(args[0])
 
 		client, err := api.NewClient(cfg)
 		if err != nil {
@@ -66,6 +71,22 @@ Use --edit to open the issue in $EDITOR and write changes back to Jira.`,
 func init() {
 	getCmd.Flags().BoolVar(&editFlag, "edit", false, "Open issue in $EDITOR and write changes back to Jira")
 	rootCmd.AddCommand(getCmd)
+}
+
+// issueKeyRe matches a Jira issue key such as "PROJ-123" or "TEST-456".
+var issueKeyRe = regexp.MustCompile(`[A-Za-z][A-Za-z0-9]*-\d+`)
+
+// extractIssueKey returns the Jira issue key from arg, which may be a bare
+// key (e.g. "PROJ-123") or a full browse URL
+// (e.g. "https://example.atlassian.net/browse/PROJ-123"). If no key
+// pattern is found, arg is returned unchanged so the API call surfaces a
+// clear error.
+func extractIssueKey(arg string) string {
+	arg = strings.TrimSpace(arg)
+	if match := issueKeyRe.FindString(arg); match != "" {
+		return strings.ToUpper(match)
+	}
+	return arg
 }
 
 // runEditLoop implements the full get --edit flow.
