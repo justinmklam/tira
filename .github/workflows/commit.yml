@@ -17,6 +17,7 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+          check-latest: true
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:
@@ -30,6 +31,7 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+          check-latest: true
       - name: Run tests
         run: go test -race -coverprofile=coverage.out ./...
       - name: Print coverage summary
@@ -43,6 +45,7 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+          check-latest: true
       - name: Build
         run: go build -o tira ./cmd/tira
 
@@ -68,6 +71,7 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+          check-latest: true
       - name: go vet
         run: go vet ./...
 
@@ -79,5 +83,6 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+          check-latest: true
       - name: Check formatting
         run: test -z "$(gofmt -l .)" || (echo "Files not formatted:"; gofmt -l .; exit 1)
