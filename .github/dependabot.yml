@@ -5,6 +5,8 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    reviewers:
+      - justinmklam
     groups:
       charmbracelet:
         patterns:
@@ -14,3 +16,5 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    reviewers:
+      - justinmklam
