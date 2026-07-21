@@ -118,10 +118,18 @@ tira get MP-101
 tira get https://your-domain.atlassian.net/browse/MP-101  # full browse URL also works
 ```
 
-**Edit an issue in your editor:**
+**Update an issue (non-interactive, recommended for scripts/agents):**
 
 ```sh
-tira get MP-101 --edit
+tira update MP-101 --template > /tmp/mp-101.md   # capture current values
+# edit /tmp/mp-101.md, changing only what's needed
+cat /tmp/mp-101.md | tira update MP-101 --no-edit
+```
+
+**Update an issue interactively (opens `$EDITOR`):**
+
+```sh
+tira update MP-101
 ```
 
 **Create a new issue:**

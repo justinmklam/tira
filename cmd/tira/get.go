@@ -40,7 +40,8 @@ When stdout is piped, raw Markdown is written directly — useful for agents:
   tira get PROJ-123 | cat          # pipe-safe: writes raw Markdown
   tira get PROJ-123 | grep Status  # extract specific fields
 
-Use --edit to open the issue in $EDITOR and write changes back to Jira.`,
+Use --edit to open the issue in $EDITOR and write changes back to Jira
+(interactive only — for non-interactive/agent updates, use 'tira update' instead).`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		key := extractIssueKey(args[0])
@@ -64,13 +65,28 @@ Use --edit to open the issue in $EDITOR and write changes back to Jira.`,
 			return page(output)
 		}
 
-		return runEditLoop(client, issue)
+		valid, err := loadValidValues(client, projectKeyFromIssueKey(issue.Key))
+		if err != nil {
+			debug.LogError("loadValidValues", err)
+			return err
+		}
+
+		return runEditLoop(client, issue, valid)
 	},
 }
 
 func init() {
-	getCmd.Flags().BoolVar(&editFlag, "edit", false, "Open issue in $EDITOR and write changes back to Jira")
+	getCmd.Flags().BoolVar(&editFlag, "edit", false, "Open issue in $EDITOR and write changes back to Jira (interactive; for agents use 'tira update')")
 	rootCmd.AddCommand(getCmd)
+}
+
+// projectKeyFromIssueKey derives the project key from an issue key
+// (e.g. "MP-101" → "MP"), falling back to the configured default project.
+func projectKeyFromIssueKey(issueKey string) string {
+	if idx := strings.Index(issueKey, "-"); idx > 0 {
+		return issueKey[:idx]
+	}
+	return cfg.Project
 }
 
 // issueKeyRe matches a Jira issue key such as "PROJ-123" or "TEST-456".
@@ -89,26 +105,40 @@ func extractIssueKey(arg string) string {
 	return arg
 }
 
-// runEditLoop implements the full get --edit flow.
-func runEditLoop(client api.Client, issue *models.Issue) error {
-	// Derive project key from issue key (e.g. "MP-101" → "MP").
-	projectKey := cfg.Project
-	if idx := strings.Index(issue.Key, "-"); idx > 0 {
-		projectKey = issue.Key[:idx]
-	}
-
-	valid, err := loadValidValues(client, projectKey)
-	if err != nil {
-		debug.LogError("loadValidValues", err)
-		return err
-	}
-
+// runEditLoop implements the interactive get --edit flow: opens the issue
+// template in $EDITOR, validates, and writes changes back to Jira.
+func runEditLoop(client api.Client, issue *models.Issue, valid *models.ValidValues) error {
 	content := editor.RenderTemplate(issue, valid)
 	fields, err := openAndValidate(content, valid)
 	if err != nil || fields == nil {
 		return err
 	}
 
+	return applyUpdate(client, issue, fields)
+}
+
+// applyTemplateUpdate parses raw template content (from stdin, --file, or a
+// captured/edited template), validates it, and writes changes back to Jira.
+// Used by the non-interactive update flow (`tira update --no-edit`).
+func applyTemplateUpdate(client api.Client, issue *models.Issue, valid *models.ValidValues, content string) error {
+	fields, err := editor.ParseTemplate(content)
+	if err != nil {
+		return fmt.Errorf("parsing template: %w", err)
+	}
+
+	errs := validator.Validate(fields, valid)
+	if len(errs) > 0 {
+		printValidationErrors(errs)
+		return fmt.Errorf("template failed validation (%d error(s)); run 'tira update %s --template' to get a fresh, current template to edit", len(errs), issue.Key)
+	}
+	fields.AssigneeID = validator.ResolveAssigneeID(fields, valid)
+
+	return applyUpdate(client, issue, fields)
+}
+
+// applyUpdate diffs fields against issue, calls UpdateIssue, and reports the
+// result. It is a no-op (with a message) if nothing changed.
+func applyUpdate(client api.Client, issue *models.Issue, fields *models.IssueFields) error {
 	printFieldDiff(issue, fields)
 
 	if err := client.UpdateIssue(issue.Key, *fields); err != nil {

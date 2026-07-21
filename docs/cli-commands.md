@@ -4,7 +4,8 @@ tira provides the following commands:
 
 | Command | Description |
 |---------|-------------|
-| `get <key\|url> [--edit]` | Fetch and display a single issue (accepts an issue key or a full browse URL); optionally edit it |
+| `get <key\|url> [--edit]` | Fetch and display a single issue (accepts an issue key or a full browse URL); `--edit` opens `$EDITOR` interactively |
+| `update <key\|url> [--template] [--no-edit] [--file <path>]` | Update an existing issue; non-interactively (agents) via `--template`/`--no-edit`/`--file`, or interactively via `$EDITOR` |
 | `create [--project <key>] [--type <type>] [--parent <key>]` | Create a new issue via `$EDITOR` |
 | `board` | Launch the unified TUI (backlog + kanban views) |
 | `backlog` | Launch the TUI starting in backlog view |
@@ -48,30 +49,51 @@ Displays a single issue in a terminal pager:
 
 ### With `--edit` (Edit Mode)
 
-Edits an existing issue via `$EDITOR`:
-
-1. Fetches issue (with spinner)
-2. Fetches valid values (issue types, priorities, assignees) with spinner; gracefully degrades on error
-3. Derives `projectKey` from issue key (e.g., `"MP-101"` → `"MP"`)
-4. Calls `runEditLoop`:
-   - Renders template to temp file
-   - Opens `$EDITOR`
-   - Validates edited template
-   - Updates via API
-5. Prints a field diff to stderr before updating
-
-**Edit loop** (`openAndValidate`):
-```
-WriteTempFile → OpenEditor → ReadFile
-→ compare to original (abort if no changes)
-→ ParseTemplate → Validate
-→ if errors: AnnotateTemplate → WriteFile → ask to retry → loop
-→ if valid: ResolveAssigneeID → return fields → UpdateIssue
-```
+Edits an existing issue interactively via `$EDITOR` (same underlying loop as `tira update` with
+no flags — see below). For non-interactive/agent usage, use `tira update` instead.
 
 **Example:**
 ```bash
 ./tira get MP-101 --edit
+```
+
+---
+
+## `tira update <key|url> [--template] [--no-edit] [--file <path>]`
+
+**File:** `cmd/tira/update.go`
+
+Updates an existing issue. Only non-empty fields/sections in the parsed template are sent to the
+API (`client.UpdateIssue` skips empty fields) — omitted fields are left unchanged on the ticket.
+
+### Non-interactive mode (recommended for AI agents)
+
+1. `tira update <KEY> --template` fetches the issue and valid values, renders the full
+   `editor.RenderTemplate` output (identical to what `$EDITOR` would show), and prints it to
+   stdout — no mutation happens. Agents should always run this first to capture current values
+   before editing, rather than guessing or reconstructing the template from `tira get` output.
+2. The caller edits only the fields/sections that need to change.
+3. `tira update <KEY> --no-edit` (or piping via stdin/`--file` without `--no-edit`, or non-terminal
+   stdin, which is auto-detected the same way `create` detects it) reads the edited template via
+   `readInput`, parses it with `editor.ParseTemplate`, validates via `validator.Validate`
+   (returning validation errors without opening an editor if invalid), resolves the assignee ID,
+   diffs against the current issue (`printFieldDiff`), and calls `client.UpdateIssue`.
+
+**Example:**
+```bash
+./tira update MP-101 --template > /tmp/mp-101.md
+# edit /tmp/mp-101.md
+cat /tmp/mp-101.md | ./tira update MP-101 --no-edit
+```
+
+### Interactive mode
+
+With no `--template`/`--no-edit`/`--file` and a terminal stdin, falls back to the same
+`runEditLoop` used by `tira get --edit`: renders the template to a temp file, opens `$EDITOR`,
+validates (looping on validation errors with `AnnotateTemplate`), and updates via the API.
+
+```bash
+./tira update MP-101
 ```
 
 ---

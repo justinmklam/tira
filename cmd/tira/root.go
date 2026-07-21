@@ -49,8 +49,13 @@ Quick reference for AI agents and automation:
   Get the full template format specification:
     tira create --template
 
+  Update an existing issue (non-interactive, recommended for agents):
+    tira update <KEY> --template > /tmp/issue.md   # capture current values
+    # edit /tmp/issue.md, changing only what you need, then:
+    cat /tmp/issue.md | tira update <KEY> --no-edit
+
   Edit an existing issue interactively:
-    tira get <KEY> --edit`,
+    tira update <KEY>`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return cmd.Help()
 	},
