@@ -1,6 +1,8 @@
 # Makefile for tira
 
-.PHONY: build install clean test fmt lint vet check update
+GOLANGCI_LINT_VERSION := $(strip $(shell cat .golangci-version))
+
+.PHONY: build install clean test fmt lint lint-install vet check update
 
 # Build the binary
 build:
@@ -55,10 +57,19 @@ vet:
 vuln-check:
 	govulncheck ./...
 
-# Run golangci-lint (install: https://golangci-lint.run/welcome/install/)
+# Install the repository-pinned golangci-lint version
+lint-install:
+	cd "$$(go env GOPATH)" && go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v$(GOLANGCI_LINT_VERSION)
+
+# Run the repository-pinned golangci-lint version
 lint:
+	@command -v golangci-lint >/dev/null 2>&1 || { echo "golangci-lint is not installed; run make lint-install"; exit 1; }
+	@actual="$$(golangci-lint version --short)"; \
+	if [ "$$actual" != "$(GOLANGCI_LINT_VERSION)" ]; then \
+		echo "golangci-lint $(GOLANGCI_LINT_VERSION) required; found $$actual; run make lint-install"; \
+		exit 1; \
+	fi
 	golangci-lint run ./...
 
-# Run all checks (fmt, vet, lint, test) — same as CI
+# Run all local checks (fmt, vet, lint, test, vulnerability scan)
 check: fmt-check vet lint test vuln-check
-

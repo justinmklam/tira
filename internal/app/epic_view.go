@@ -74,12 +74,9 @@ func (m epicModel) viewList() string {
 	if m.quitting {
 		return ""
 	}
-	width, height := m.width, m.height
+	width := m.width
 	if width == 0 {
 		width = 120
-	}
-	if height == 0 {
-		height = 40
 	}
 
 	listWidth := tui.ListPaneWidth(width)

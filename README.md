@@ -193,7 +193,8 @@ make test         # Run all tests
 make test-race    # Run tests with race detector
 make fmt          # Format code in-place
 make vet          # Run go vet
-make lint         # Run golangci-lint (requires golangci-lint installation)
+make lint-install # Install the repository-pinned golangci-lint version
+make lint         # Run the repository-pinned golangci-lint version
 ```
 
 ### Releasing
