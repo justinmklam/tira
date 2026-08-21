@@ -18,23 +18,15 @@ func resetState(t *testing.T) {
 		file = nil
 	}
 	logger = nil
+	logPath = ""
 	once = sync.Once{}
 }
 
-// inTempDir changes the working directory to a temp dir for the duration of the test,
-// then restores it. debug.Init() creates debug.log in the current directory.
-func inTempDir(t *testing.T) string {
+// tempLogPath returns a debug.log path inside a fresh temp directory, so
+// tests never touch the real default log location.
+func tempLogPath(t *testing.T) string {
 	t.Helper()
-	dir := t.TempDir()
-	orig, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("Getwd: %v", err)
-	}
-	if err := os.Chdir(dir); err != nil {
-		t.Fatalf("Chdir: %v", err)
-	}
-	t.Cleanup(func() { _ = os.Chdir(orig) })
-	return dir
+	return filepath.Join(t.TempDir(), "debug.log")
 }
 
 // TestWritesBeforeCloseAppearInFile is the core contract: content written
@@ -42,10 +34,10 @@ func inTempDir(t *testing.T) string {
 // violated by the original bug, where defer Close() inside PersistentPreRunE
 // closed the file before RunE (and its Logf calls) executed.
 func TestWritesBeforeCloseAppearInFile(t *testing.T) {
-	dir := inTempDir(t)
+	path := tempLogPath(t)
 	defer resetState(t)
 
-	if err := Init(); err != nil {
+	if err := Init(path); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
 
@@ -55,7 +47,7 @@ func TestWritesBeforeCloseAppearInFile(t *testing.T) {
 		t.Fatalf("Close: %v", err)
 	}
 
-	content, err := os.ReadFile(filepath.Join(dir, "debug.log"))
+	content, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("ReadFile: %v", err)
 	}
@@ -69,10 +61,10 @@ func TestWritesBeforeCloseAppearInFile(t *testing.T) {
 // This directly models the regression scenario: if Close() is called too
 // early (e.g. via defer inside PersistentPreRunE), writes from RunE are lost.
 func TestWritesAfterCloseDoNotAppearInFile(t *testing.T) {
-	dir := inTempDir(t)
+	path := tempLogPath(t)
 	defer resetState(t)
 
-	if err := Init(); err != nil {
+	if err := Init(path); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
 
@@ -83,7 +75,7 @@ func TestWritesAfterCloseDoNotAppearInFile(t *testing.T) {
 	// Simulates writes that happen in RunE after PersistentPreRunE's defer fires.
 	Logf("this must not appear")
 
-	content, _ := os.ReadFile(filepath.Join(dir, "debug.log"))
+	content, _ := os.ReadFile(path)
 	if strings.Contains(string(content), "this must not appear") {
 		t.Error("found content written after Close — Close() was called too early")
 	}
@@ -91,16 +83,94 @@ func TestWritesAfterCloseDoNotAppearInFile(t *testing.T) {
 
 // TestIsEnabledAfterInit verifies IsEnabled reflects initialisation state.
 func TestIsEnabledAfterInit(t *testing.T) {
-	inTempDir(t)
+	path := tempLogPath(t)
 	defer resetState(t)
 
 	if IsEnabled() {
 		t.Error("IsEnabled() = true before Init()")
 	}
-	if err := Init(); err != nil {
+	if err := Init(path); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
 	if !IsEnabled() {
 		t.Error("IsEnabled() = false after Init()")
+	}
+}
+
+// TestInit_CreatesParentDirectory verifies Init creates the log file's parent
+// directory (needed for the default $XDG_STATE_HOME/tira/debug.log path,
+// which won't exist on a fresh machine).
+func TestInit_CreatesParentDirectory(t *testing.T) {
+	nested := filepath.Join(t.TempDir(), "nested", "dir", "debug.log")
+	defer resetState(t)
+
+	if err := Init(nested); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	if _, err := os.Stat(nested); err != nil {
+		t.Errorf("expected %s to exist: %v", nested, err)
+	}
+}
+
+// TestLogPath verifies LogPath reflects the path passed to Init.
+func TestLogPath(t *testing.T) {
+	path := tempLogPath(t)
+	defer resetState(t)
+
+	if got := LogPath(); got != "" {
+		t.Errorf("LogPath() before Init = %q, want empty", got)
+	}
+	if err := Init(path); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	if got := LogPath(); got != path {
+		t.Errorf("LogPath() = %q, want %q", got, path)
+	}
+}
+
+// TestDefaultLogPath_UsesXDGStateHome verifies DefaultLogPath honors
+// $XDG_STATE_HOME when set.
+func TestDefaultLogPath_UsesXDGStateHome(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_STATE_HOME", dir)
+
+	want := filepath.Join(dir, "tira", "debug.log")
+	if got := DefaultLogPath(); got != want {
+		t.Errorf("DefaultLogPath() = %q, want %q", got, want)
+	}
+}
+
+// TestDefaultLogPath_FallsBackToHomeDir verifies DefaultLogPath falls back to
+// ~/.local/state/tira/debug.log when $XDG_STATE_HOME is unset.
+func TestDefaultLogPath_FallsBackToHomeDir(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", "")
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Skip("no home directory available in this environment")
+	}
+
+	want := filepath.Join(home, ".local", "state", "tira", "debug.log")
+	if got := DefaultLogPath(); got != want {
+		t.Errorf("DefaultLogPath() = %q, want %q", got, want)
+	}
+}
+
+// TestInit_EmptyPathUsesDefault verifies Init("") resolves to DefaultLogPath().
+func TestInit_EmptyPathUsesDefault(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_STATE_HOME", dir)
+	defer resetState(t)
+
+	if err := Init(""); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	want := filepath.Join(dir, "tira", "debug.log")
+	if got := LogPath(); got != want {
+		t.Errorf("LogPath() = %q, want %q", got, want)
+	}
+	if _, err := os.Stat(want); err != nil {
+		t.Errorf("expected %s to exist: %v", want, err)
 	}
 }

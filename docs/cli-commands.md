@@ -4,14 +4,24 @@ tira provides the following commands:
 
 | Command | Description |
 |---------|-------------|
-| `get <key\|url> [--edit]` | Fetch and display a single issue (accepts an issue key or a full browse URL); `--edit` opens `$EDITOR` interactively |
-| `update <key\|url> [--template] [--no-edit] [--file <path>]` | Update an existing issue; non-interactively (agents) via `--template`/`--no-edit`/`--file`, or interactively via `$EDITOR` |
+| `get <key\|url> [--edit]` | Fetch and display a single issue (accepts an issue key or a full browse URL); `--edit` is a **deprecated** alias for `update <key> --edit`-style interactive editing |
+| `update <key\|url> [--show] [--no-edit] [--file <path>]` | Update an existing issue; non-interactively (agents) via `--show`/`--no-edit`/`--file`, or interactively via `$EDITOR` |
 | `create [--project <key>] [--type <type>] [--parent <key>]` | Create a new issue via `$EDITOR` |
-| `board` | Launch the unified TUI (backlog + kanban views) |
-| `backlog` | Launch the TUI starting in backlog view |
-| `kanban` | Launch the TUI starting in kanban view |
+| `board [--view backlog\|kanban] [--board-id <id>]` | Launch the unified TUI (backlog + kanban views) |
+| `backlog` | **Deprecated** — alias for `board --view backlog` |
+| `kanban` | **Deprecated** — alias for `board --view kanban` |
+| `version` | Print the tira version (also available as `tira --version`) |
 
-All commands use the `--profile` flag to select a config profile (default: `"default"`).
+All commands use the `--profile` flag to select a config profile (default: `"default"`), and the
+`--debug`/`--debug-file <path>` flags to enable debug logging (see [Debug Logging](#debug-logging)
+below).
+
+> **Deprecation notice:** `get --edit`, `backlog`, `kanban`, and `update --template` are deprecated
+> aliases kept for backward compatibility. They still work today, print a warning on stderr, and
+> are planned for removal in a future major version. Prefer `update <key>`, `board --view backlog`,
+> `board --view kanban`, and `update <key> --show`, respectively. See
+> [command-restructure-proposal.md](command-restructure-proposal.md) for the full rationale and
+> migration timeline.
 
 ---
 
@@ -47,19 +57,19 @@ Displays a single issue in a terminal pager:
 ./tira get https://example.atlassian.net/browse/MP-101  # full URL also works
 ```
 
-### With `--edit` (Edit Mode)
+### With `--edit` (Edit Mode) — deprecated
 
-Edits an existing issue interactively via `$EDITOR` (same underlying loop as `tira update` with
-no flags — see below). For non-interactive/agent usage, use `tira update` instead.
+**Deprecated:** use `tira update <KEY>` instead (identical behavior, clearer name). `--edit` is
+kept as a backward-compatible alias and prints a deprecation warning on stderr, but still works.
 
 **Example:**
 ```bash
-./tira get MP-101 --edit
+./tira get MP-101 --edit   # deprecated; prefer: ./tira update MP-101
 ```
 
 ---
 
-## `tira update <key|url> [--template] [--no-edit] [--file <path>]`
+## `tira update <key|url> [--show] [--no-edit] [--file <path>]`
 
 **File:** `cmd/tira/update.go`
 
@@ -68,7 +78,7 @@ API (`client.UpdateIssue` skips empty fields) — omitted fields are left unchan
 
 ### Non-interactive mode (recommended for AI agents)
 
-1. `tira update <KEY> --template` fetches the issue and valid values, renders the full
+1. `tira update <KEY> --show` fetches the issue and valid values, renders the full
    `editor.RenderTemplate` output (identical to what `$EDITOR` would show), and prints it to
    stdout — no mutation happens. Agents should always run this first to capture current values
    before editing, rather than guessing or reconstructing the template from `tira get` output.
@@ -81,10 +91,13 @@ API (`client.UpdateIssue` skips empty fields) — omitted fields are left unchan
 
 **Example:**
 ```bash
-./tira update MP-101 --template > /tmp/mp-101.md
+./tira update MP-101 --show > /tmp/mp-101.md
 # edit /tmp/mp-101.md
 cat /tmp/mp-101.md | ./tira update MP-101 --no-edit
 ```
+
+> **Note:** `--template` is a deprecated alias for `--show` (kept for backward compatibility;
+> prints a deprecation warning). Use `--show`.
 
 ### Interactive mode
 
@@ -239,16 +252,21 @@ AI agents can use this to generate properly formatted issue templates programmat
 
 **File:** `cmd/tira/board.go`
 
-All three commands launch the same unified TUI. The only difference is the starting view:
-- `board` — starts in backlog view (default)
-- `backlog` — starts in backlog view
-- `kanban` — starts in kanban view
+All three commands launch the same unified TUI. `board` is the canonical command; `backlog` and
+`kanban` are **deprecated** aliases kept for backward compatibility (print a deprecation warning,
+still fully functional):
+- `board [--view backlog|kanban]` — starts in the given view (`backlog` if `--view` omitted)
+- `backlog` — deprecated alias for `board --view backlog`
+- `kanban` — deprecated alias for `board --view kanban`
+
+All three also accept `--board-id <id>` to override the `board_id` configured for the active
+profile without editing the config file.
 
 ### Execution Flow
 
 All three commands call `runBoardCmd(startView)` which:
 
-1. Checks `cfg.BoardID != 0` (fatal if missing)
+1. Resolves the board ID: `--board-id` flag if set, else `cfg.BoardID` (fatal if both are missing)
 2. Creates API client from config
 3. Calls `fetchBoardData` with spinner — fetches sprint groups + board columns **concurrently**
 4. Calls `runBoardTUI` — starts the `tea.Program` with `tea.WithAltScreen()`
@@ -275,10 +293,17 @@ Manual refresh (`R`) fetches everything at once via `GetSprintGroups`.
 ./tira board
 
 # Start in kanban view
+./tira board --view kanban
+
+# Override the configured board ID
+./tira board --board-id 42
+
+# Deprecated aliases (still work, print a warning)
+./tira backlog
 ./tira kanban
 
 # Use specific profile
-./tira --profile dev backlog
+./tira --profile dev board
 ```
 
 ### View Switching
@@ -318,6 +343,42 @@ Both `get --edit` and `create` use the same editor flow:
 - Editor resolution: `$EDITOR` → `$VISUAL` → `vi`
 
 See [Editor Flow](editor-flow.md) for template format details.
+
+---
+
+## `tira version` / `tira --version`
+
+**Files:** `cmd/tira/version.go`, `cmd/tira/main.go`
+
+Prints the tira version and exits. Does not require config (`~/.config/tira/config.yaml`), so it
+works even before `tira` is configured — useful as a first sanity check for agents.
+
+```bash
+./tira version
+./tira --version   # equivalent, handled by cobra before config/profile resolution
+```
+
+The version string is injected at build time via `-X main.version=...` (see `.goreleaser.yml`);
+locally-built binaries report `dev`.
+
+---
+
+## Debug Logging
+
+Pass `--debug` (or `--debug-file <path>`) to any command to enable verbose debug logging:
+
+```bash
+./tira --debug get MP-101
+./tira --debug-file /tmp/tira-debug.log update MP-101 --show
+```
+
+- `--debug` enables logging to the default location and prints the resolved path to stderr on
+  startup (`Debug logging to <path>`).
+- `--debug-file <path>` enables logging to a specific path (implies `--debug`).
+- Default location: `$XDG_STATE_HOME/tira/debug.log`, falling back to
+  `~/.local/state/tira/debug.log` if `$XDG_STATE_HOME` is unset. (Prior versions wrote
+  `debug.log` to the current working directory — this no longer happens by default.)
+- See `internal/debug/logger.go` for `Init(path)`, `DefaultLogPath()`, and `LogPath()`.
 
 ---
 

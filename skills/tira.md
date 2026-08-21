@@ -23,7 +23,7 @@ Only non-empty fields/sections are applied — Jira fields you omit are left unc
 
 ```bash
 # 1. Capture current state (does not modify the ticket)
-tira update PROJ-123 --template > /tmp/proj-123.md
+tira update PROJ-123 --show > /tmp/proj-123.md
 
 # 2. Edit /tmp/proj-123.md — change only the fields/sections that need updating
 
@@ -189,9 +189,30 @@ Use `--profile <name>` to select a non-default config profile.
 
 ### Updating a ticket
 
-1. **Capture current state** — run `tira update <KEY> --template` and read the output; never guess at existing field values.
+1. **Capture current state** — run `tira update <KEY> --show` and read the output; never guess at existing field values.
 2. **Understand the task** — read relevant files, identify affected code, collect GitHub links.
 3. **Draft the change** — modify only the fields/sections that need updating; leave everything else exactly as captured.
 4. **Show the diff** — display what will change (new description, new acceptance criteria, etc.) to the user in a code block and ask for confirmation before updating. Use the `ask_user` tool with choices `["Yes, update it", "No, cancel"]`.
 5. **Update via stdin** — only if the user confirms, pipe the edited template to `tira update <KEY> --no-edit`.
+
+## Troubleshooting
+
+**`tira get`/`tira update` never used to hang or error with "error opening TTY" — if you still see
+that, you're on an old build.** In current `tira`, `get`, `update`, and any other command that
+shows a "Fetching…" spinner automatically detect when stdin/stdout aren't a real terminal (piped
+output, no-TTY sandboxes, CI) and skip the spinner UI entirely — the command just runs and prints
+output normally. **Do not** work around this with `script`, pseudo-terminals, `TERM=dumb`, custom
+`$EDITOR` scripts, or redirect tricks — none of that should be necessary. If a command still hangs
+or errors, it's a real bug; check `tira --version` and re-run with `tira --debug <cmd> ...` to
+capture a debug log before assuming it's a terminal/TTY issue.
+
+**Never open an interactive editor as an agent.** `create` and `update` both support fully
+non-interactive flows (`--no-edit` + stdin/`--file`, `--show` to capture current values). `get
+--edit` and plain `tira update <KEY>`/`tira get <KEY> --edit` with no other flags open `$EDITOR`
+interactively and will hang in an agent context — never invoke them without `--no-edit`/`--show`
+or piped input.
+
+**`backlog`, `kanban`, and `update --template` still work but are deprecated** — prefer `board
+--view backlog`, `board --view kanban`, and `update --show` respectively. Deprecation warnings on
+stderr are expected and can be ignored, but don't propagate the old spellings into new scripts.
 6. **Report back** — share the updated ticket key and its Jira URL with the user.

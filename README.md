@@ -76,11 +76,17 @@ Launch the interactive board TUI:
 
 ```sh
 # Start in backlog view
-tira backlog
+tira board
 
 # Start in kanban view
-tira kanban
+tira board --view kanban
+
+# Override the configured board ID
+tira board --board-id 42
 ```
+
+> `tira backlog` and `tira kanban` still work but are deprecated aliases for `tira board` /
+> `tira board --view kanban`.
 
 **Common keybindings:**
 
@@ -121,7 +127,7 @@ tira get https://your-domain.atlassian.net/browse/MP-101  # full browse URL also
 **Update an issue (non-interactive, recommended for scripts/agents):**
 
 ```sh
-tira update MP-101 --template > /tmp/mp-101.md   # capture current values
+tira update MP-101 --show > /tmp/mp-101.md   # capture current values
 # edit /tmp/mp-101.md, changing only what's needed
 cat /tmp/mp-101.md | tira update MP-101 --no-edit
 ```
@@ -140,6 +146,14 @@ tira create
 
 # Specify project and type
 tira create --project DEV --type Bug
+```
+
+**Check version / enable debug logging:**
+
+```sh
+tira version           # or: tira --version
+tira --debug get MP-101         # logs to $XDG_STATE_HOME/tira/debug.log by default
+tira --debug-file /tmp/tira.log get MP-101   # log to a specific path
 ```
 
 ## Build & Development

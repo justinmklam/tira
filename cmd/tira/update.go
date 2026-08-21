@@ -13,9 +13,9 @@ import (
 )
 
 var (
-	updateFile     string
-	updateNoEdit   bool
-	updateTemplate bool
+	updateFile   string
+	updateNoEdit bool
+	updateShow   bool
 )
 
 var updateCmd = &cobra.Command{
@@ -29,7 +29,7 @@ Non-interactive mode (recommended for AI agents / automation):
 
   Step 1 — fetch the current issue as an editable template:
 
-    tira update HIVE-3774 --template > /tmp/hive-3774.md
+    tira update HIVE-3774 --show > /tmp/hive-3774.md
 
   Step 2 — edit /tmp/hive-3774.md (change only the fields/sections you want
   to update; leave the rest as-is), then pipe it back:
@@ -73,7 +73,7 @@ Interactive mode:
   tira update HIVE-3774
 
 For AI Agents:
-  Always call 'tira update <KEY> --template' first to capture the current
+  Always call 'tira update <KEY> --show' first to capture the current
   field values before editing — this avoids clobbering fields you didn't
   intend to change and guarantees the sentinel line and summary heading are
   present. See 'tira create --template' for the full template format spec
@@ -103,7 +103,7 @@ For AI Agents:
 			return err
 		}
 
-		if updateTemplate {
+		if updateShow {
 			fmt.Print(editor.RenderTemplate(issue, valid))
 			return nil
 		}
@@ -123,6 +123,11 @@ For AI Agents:
 func init() {
 	updateCmd.Flags().StringVarP(&updateFile, "file", "f", "", "Read updated template from file (non-interactive mode)")
 	updateCmd.Flags().BoolVar(&updateNoEdit, "no-edit", false, "Read updated template from stdin (non-interactive mode)")
-	updateCmd.Flags().BoolVar(&updateTemplate, "template", false, "Print the current issue as an editable template and exit")
+	updateCmd.Flags().BoolVar(&updateShow, "show", false, "Print the current issue as an editable template and exit")
+	// --template is a deprecated alias for --show, bound to the same variable.
+	updateCmd.Flags().BoolVar(&updateShow, "template", false, "Print the current issue as an editable template and exit")
+	if err := updateCmd.Flags().MarkDeprecated("template", "use --show instead"); err != nil {
+		panic(err)
+	}
 	rootCmd.AddCommand(updateCmd)
 }

@@ -13,6 +13,7 @@ import (
 
 var (
 	debugMode bool
+	debugFile string
 	profile   string
 	cfg       *config.Config
 )
@@ -50,7 +51,7 @@ Quick reference for AI agents and automation:
     tira create --template
 
   Update an existing issue (non-interactive, recommended for agents):
-    tira update <KEY> --template > /tmp/issue.md   # capture current values
+    tira update <KEY> --show > /tmp/issue.md   # capture current values
     # edit /tmp/issue.md, changing only what you need, then:
     cat /tmp/issue.md | tira update <KEY> --no-edit
 
@@ -60,11 +61,15 @@ Quick reference for AI agents and automation:
 		return cmd.Help()
 	},
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		if debugFile != "" {
+			debugMode = true
+		}
 		if debugMode {
 			log.SetLevel(log.DebugLevel)
-			if err := debug.Init(); err != nil {
+			if err := debug.Init(debugFile); err != nil {
 				return fmt.Errorf("initializing debug logger: %w", err)
 			}
+			fmt.Fprintf(os.Stderr, "Debug logging to %s\n", debug.LogPath())
 			debug.Logf("Debug mode enabled")
 		}
 
@@ -73,6 +78,9 @@ Quick reference for AI agents and automation:
 			if val := cmd.Flag("template").Value.String(); val == "true" {
 				return nil
 			}
+		}
+		if cmd.Name() == "version" {
+			return nil
 		}
 
 		var err error
@@ -94,7 +102,9 @@ Quick reference for AI agents and automation:
 }
 
 func init() {
+	rootCmd.Version = version
 	rootCmd.PersistentFlags().BoolVar(&debugMode, "debug", false, "enable debug logging")
+	rootCmd.PersistentFlags().StringVar(&debugFile, "debug-file", "", "enable debug logging to a specific path (implies --debug; default path: $XDG_STATE_HOME/tira/debug.log)")
 	rootCmd.PersistentFlags().StringVar(&profile, "profile", "default", "config profile to use")
 }
 

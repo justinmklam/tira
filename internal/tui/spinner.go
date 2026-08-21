@@ -6,6 +6,7 @@ import (
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"golang.org/x/term"
 )
 
 // spinnerResult wraps a generic result received from a background goroutine.
@@ -55,7 +56,19 @@ func (m spinnerModel[T]) View() tea.View {
 
 // RunWithSpinner runs fn in a background goroutine while displaying a spinner
 // with the given label. Returns the result of fn once complete.
+//
+// When stdin/stderr is not a TTY (e.g. piped output, redirected input, or a
+// non-interactive agent sandbox), bubbletea cannot take control of the
+// terminal to render the spinner and would fail with an "error opening TTY"
+// error. In that case RunWithSpinner falls back to calling fn synchronously
+// with no spinner UI at all — this keeps every command that uses a spinner
+// (get, update, board, ...) working the same in scripts/CI/agents as it does
+// when piped, with no special flags required.
 func RunWithSpinner[T any](label string, fn func() (T, error)) (T, error) {
+	if !isInteractive() {
+		return fn()
+	}
+
 	ch := make(chan spinnerResult[T], 1)
 	go func() {
 		v, err := fn()
@@ -79,4 +92,12 @@ func RunWithSpinner[T any](label string, fn func() (T, error)) (T, error) {
 	}
 	m := fm.(spinnerModel[T])
 	return m.value, m.err
+}
+
+// isInteractive reports whether both stdin and stderr are attached to a
+// terminal. bubbletea reads raw key input from stdin and renders to the
+// program's configured output (stderr, for RunWithSpinner) — if either isn't
+// a TTY there is no terminal to control, so the spinner is skipped.
+func isInteractive() bool {
+	return term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stderr.Fd()))
 }

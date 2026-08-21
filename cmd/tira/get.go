@@ -77,6 +77,9 @@ Use --edit to open the issue in $EDITOR and write changes back to Jira
 
 func init() {
 	getCmd.Flags().BoolVar(&editFlag, "edit", false, "Open issue in $EDITOR and write changes back to Jira (interactive; for agents use 'tira update')")
+	if err := getCmd.Flags().MarkDeprecated("edit", "use 'tira update <key>' instead"); err != nil {
+		panic(err)
+	}
 	rootCmd.AddCommand(getCmd)
 }
 

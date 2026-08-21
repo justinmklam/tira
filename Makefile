@@ -7,10 +7,10 @@ build:
 	go build -o tira ./cmd/tira
 
 run:
-	./tira backlog
+	./tira board
 
 run-dev:
-	./tira --profile dev backlog --debug
+	./tira --profile dev board --debug
 
 # Install the binary to $GOPATH/bin (or ~/go/bin)
 install:

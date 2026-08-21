@@ -7,30 +7,71 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"sync"
 )
 
 var (
-	logger *log.Logger
-	file   *os.File
-	once   sync.Once
-	mu     sync.Mutex
+	logger  *log.Logger
+	file    *os.File
+	logPath string
+	once    sync.Once
+	mu      sync.Mutex
 )
 
-// Init initializes the debug logger, writing to ./debug.log.
+// DefaultLogPath returns the default debug log location:
+// $XDG_STATE_HOME/tira/debug.log, falling back to ~/.local/state/tira/debug.log
+// when $XDG_STATE_HOME is unset. Prior to this, debug.log was written to the
+// current working directory, which cluttered whatever directory the user
+// happened to be in.
+func DefaultLogPath() string {
+	stateDir := os.Getenv("XDG_STATE_HOME")
+	if stateDir == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			// Last-resort fallback: current directory (previous behavior).
+			return "debug.log"
+		}
+		stateDir = filepath.Join(home, ".local", "state")
+	}
+	return filepath.Join(stateDir, "tira", "debug.log")
+}
+
+// Init initializes the debug logger, writing to path (creating its parent
+// directory if needed). If path is empty, DefaultLogPath() is used.
 // If the file already exists, it will be overwritten.
 // This function is safe to call multiple times, but only the first call will have effect.
-func Init() error {
+func Init(path string) error {
 	var err error
 	once.Do(func() {
-		file, err = os.Create("debug.log")
+		if path == "" {
+			path = DefaultLogPath()
+		}
+
+		if dir := filepath.Dir(path); dir != "." && dir != "" {
+			if mkErr := os.MkdirAll(dir, 0o750); mkErr != nil {
+				err = fmt.Errorf("creating log directory %q: %w", dir, mkErr)
+				return
+			}
+		}
+
+		file, err = os.Create(path)
 		if err != nil {
-			err = fmt.Errorf("creating debug.log: %w", err)
+			err = fmt.Errorf("creating %s: %w", path, err)
 			return
 		}
+		logPath = path
 		logger = log.New(file, "", log.LstdFlags|log.Lmicroseconds)
 	})
 	return err
+}
+
+// LogPath returns the path the debug logger is writing to. Empty until Init
+// has been called successfully.
+func LogPath() string {
+	mu.Lock()
+	defer mu.Unlock()
+	return logPath
 }
 
 // Close closes the debug log file. Should be called when the application exits.
