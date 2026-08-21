@@ -153,6 +153,15 @@ func (c *cachedClient) UpdateIssue(key string, fields models.IssueFields) error 
 	return nil
 }
 
+func (c *cachedClient) SetLabels(issueKey string, labels []string) error {
+	if err := c.inner.SetLabels(issueKey, labels); err != nil {
+		return err
+	}
+	c.cdel("issue:" + issueKey)
+	c.cdelPrefix("sprint_groups:")
+	return nil
+}
+
 func (c *cachedClient) SetAssignee(issueKey, accountID string) error {
 	if err := c.inner.SetAssignee(issueKey, accountID); err != nil {
 		return err

@@ -106,6 +106,7 @@ tira board --board-id 42
 | `A` | Set assignee |
 | `S` | Set story points |
 | `P` | Set parent |
+| `l` (Epics) | Edit the selected epic's labels |
 | `f<num>` | Jump to issue by number |
 | `/<keyword>` | Filter issues by keyword |
 | `F` | Open parent issue picker to filter issues by parent |

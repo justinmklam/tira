@@ -12,6 +12,7 @@ The API client is the interface between tira and the Jira Cloud REST API.
 type Client interface {
     GetIssue(key string) (*models.Issue, error)
     UpdateIssue(key string, fields models.IssueFields) error
+    SetLabels(issueKey string, labels []string) error
     CreateIssue(projectKey string, fields models.IssueFields) (*models.Issue, error)
     GetValidValues(projectKey string) (*models.ValidValues, error)
     GetIssueMetadata(projectKey string) (*models.ValidValues, error)
@@ -135,6 +136,12 @@ The board TUI minimizes time-to-first-render by splitting the load:
 ### UpdateIssue — Field ID Resolution
 
 Before updating, `fetchFieldIDs(key)` makes a request to `?expand=names` on the specific issue to get accurate field IDs for that issue type. This is required because custom field IDs differ between projects.
+
+### SetLabels — Full Replacement
+
+`SetLabels(issueKey, labels)` replaces the issue's complete label set through
+`fields.labels`. It always sends the field, including an empty JSON array when
+`labels` is empty, so clearing labels is distinct from omitting the field.
 
 ### CreateIssue — Field ID Resolution
 

@@ -5,10 +5,12 @@ import (
 	"strings"
 
 	"charm.land/bubbles/v2/spinner"
+	"charm.land/bubbles/v2/textinput"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/justinmklam/tira/internal/api"
+	"github.com/justinmklam/tira/internal/debug"
 	"github.com/justinmklam/tira/internal/models"
 	"github.com/justinmklam/tira/internal/tui"
 )
@@ -19,6 +21,9 @@ const (
 	epicList epicState = iota
 	epicLoading
 	epicDetail
+	epicLabelLoading
+	epicLabelInput
+	epicLabelSaving
 )
 
 // epicItem is the board-derived projection of an epic and its represented
@@ -42,6 +47,18 @@ type epicResult struct {
 	filterBacklogKey string
 	refresh          bool
 	quit             bool
+}
+
+type epicLabelsFetchedMsg struct {
+	key   string
+	issue *models.Issue
+	err   error
+}
+
+type epicLabelsSavedMsg struct {
+	key    string
+	labels []string
+	err    error
 }
 
 // epicModel is intentionally independent of boardModel so it can be wired in
@@ -70,6 +87,10 @@ type epicModel struct {
 
 	detailIssue *models.Issue
 	detailView  viewport.Model
+
+	labelInput     textinput.Model
+	labelTargetKey string
+	labelError     string
 }
 
 // buildEpicItems projects represented epics in flattened group/issue order.
@@ -269,6 +290,52 @@ func (m epicModel) issueURL(key string) string {
 	return fmt.Sprintf("%s/browse/%s", strings.TrimRight(m.jiraURL, "/"), key)
 }
 
+func (m *epicModel) beginLabelEdit() tea.Cmd {
+	key := m.selectedKey()
+	if key == "" || m.client == nil {
+		return nil
+	}
+
+	m.labelTargetKey = key
+	m.labelError = ""
+	m.loadError = ""
+	if m.sidebarFullIssue != nil && m.sidebarFullIssue.Key == key {
+		return m.openLabelInput(m.sidebarFullIssue)
+	}
+
+	m.state = epicLabelLoading
+	return tea.Batch(m.loadSpinner.Tick, fetchEpicLabelsCmd(m.client, key))
+}
+
+func (m *epicModel) openLabelInput(issue *models.Issue) tea.Cmd {
+	if issue == nil || issue.Key != m.labelTargetKey {
+		return nil
+	}
+
+	input := textinput.New()
+	input.Prompt = ""
+	input.Placeholder = "comma-separated labels"
+	input.CharLimit = 200
+	input.SetValue(strings.Join(issue.Labels, ", "))
+	m.labelInput = input
+	m.setLabelInputSize()
+	m.state = epicLabelInput
+	return m.labelInput.Focus()
+}
+
+func (m *epicModel) setLabelInputSize() {
+	width := m.width
+	if width == 0 {
+		width = 120
+	}
+	overlayW, _ := tui.OverlaySize(width, m.height)
+	inputW := overlayW - 8
+	if inputW < 24 {
+		inputW = 24
+	}
+	m.labelInput.SetWidth(inputW)
+}
+
 func (m epicModel) Init() tea.Cmd { return nil }
 
 func (m epicModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -280,6 +347,9 @@ func (m epicModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			vpW, vpH := tui.OverlayViewportSize(m.width, m.height)
 			m.detailView.SetWidth(vpW)
 			m.detailView.SetHeight(vpH)
+		}
+		if m.state == epicLabelInput {
+			m.setLabelInputSize()
 		}
 		m.updateSidebar()
 		if m.sidebarIssueKey == "" {
@@ -301,6 +371,48 @@ func (m epicModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.state = epicDetail
 		return m, nil
 
+	case epicLabelsFetchedMsg:
+		if m.state != epicLabelLoading || msg.key != m.labelTargetKey {
+			return m, nil
+		}
+		if msg.err != nil {
+			debug.LogError("client.GetIssue for labels", msg.err)
+			m.state = epicList
+			m.labelTargetKey = ""
+			m.loadError = msg.err.Error()
+			return m, nil
+		}
+		if msg.issue == nil {
+			err := fmt.Errorf("fetching labels for %s returned no issue", msg.key)
+			debug.LogError("client.GetIssue for labels", err)
+			m.state = epicList
+			m.labelTargetKey = ""
+			m.loadError = err.Error()
+			return m, nil
+		}
+		m.sidebarIssueKey = msg.issue.Key
+		m.sidebarFullIssue = msg.issue
+		m.updateSidebar()
+		return m, m.openLabelInput(msg.issue)
+
+	case epicLabelsSavedMsg:
+		if m.state != epicLabelSaving || msg.key != m.labelTargetKey {
+			return m, nil
+		}
+		if msg.err != nil {
+			m.state = epicLabelInput
+			m.labelError = msg.err.Error()
+			return m, nil
+		}
+		if m.sidebarFullIssue != nil && m.sidebarFullIssue.Key == msg.key {
+			m.sidebarFullIssue.Labels = append([]string(nil), msg.labels...)
+			m.updateSidebar()
+		}
+		m.state = epicList
+		m.labelTargetKey = ""
+		m.labelError = ""
+		return m, nil
+
 	case sidebarIssueFetchedMsg:
 		if msg.err == nil && msg.issue != nil && msg.issue.Key == m.selectedKey() {
 			m.sidebarIssueKey = msg.issue.Key
@@ -310,7 +422,7 @@ func (m epicModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case spinner.TickMsg:
-		if m.state == epicLoading {
+		if m.state == epicLoading || m.state == epicLabelLoading || m.state == epicLabelSaving {
 			var cmd tea.Cmd
 			m.loadSpinner, cmd = m.loadSpinner.Update(msg)
 			return m, cmd
@@ -324,6 +436,45 @@ func (m epicModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			var cmd tea.Cmd
 			m.detailView, cmd = m.detailView.Update(msg)
 			return m, cmd
+		}
+		return m, nil
+	}
+
+	if m.state == epicLabelLoading {
+		if key.String() == "esc" {
+			m.state = epicList
+			m.labelTargetKey = ""
+			m.labelError = ""
+		}
+		return m, nil
+	}
+
+	if m.state == epicLabelInput {
+		switch key.String() {
+		case "ctrl+c":
+			m.quitting = true
+			m.result.quit = true
+			return m, nil
+		case "esc":
+			m.state = epicList
+			m.labelTargetKey = ""
+			m.labelError = ""
+			return m, nil
+		case "enter":
+			labels := parseLabels(m.labelInput.Value())
+			m.labelError = ""
+			m.state = epicLabelSaving
+			return m, tea.Batch(m.loadSpinner.Tick, setEpicLabelsCmd(m.client, m.labelTargetKey, labels))
+		}
+		var cmd tea.Cmd
+		m.labelInput, cmd = m.labelInput.Update(msg)
+		return m, cmd
+	}
+
+	if m.state == epicLabelSaving {
+		if key.String() == "ctrl+c" {
+			m.quitting = true
+			m.result.quit = true
 		}
 		return m, nil
 	}
@@ -399,6 +550,8 @@ func (m epicModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.result.filterBacklogKey = item.Key
 		}
 		return m, nil
+	case "l":
+		return m, m.beginLabelEdit()
 	case "R":
 		m.result.refresh = true
 		return m, nil
@@ -414,4 +567,21 @@ func (m *epicModel) clampSidebarOffset() {
 		maxOffset = 0
 	}
 	m.sidebarOffset = tui.Clamp(m.sidebarOffset, 0, maxOffset)
+}
+
+func fetchEpicLabelsCmd(client api.Client, key string) tea.Cmd {
+	return func() tea.Msg {
+		issue, err := client.GetIssue(key)
+		return epicLabelsFetchedMsg{key: key, issue: issue, err: err}
+	}
+}
+
+func setEpicLabelsCmd(client api.Client, key string, labels []string) tea.Cmd {
+	return func() tea.Msg {
+		err := client.SetLabels(key, labels)
+		if err != nil {
+			debug.LogError("client.SetLabels", err)
+		}
+		return epicLabelsSavedMsg{key: key, labels: labels, err: err}
+	}
 }

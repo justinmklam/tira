@@ -2,7 +2,7 @@
 
 Modelled on yazi's philosophy: modal only where the modality is obvious from context, not as a first-class concept the user has to track.
 
-> **Note:** This document reflects the actual implemented keybindings. Last updated: 2026-03-20
+> **Note:** This document reflects the actual implemented keybindings. Last updated: 2026-08-21
 
 ---
 
@@ -47,6 +47,19 @@ Modelled on yazi's philosophy: modal only where the modality is obvious from con
 | `<Esc>` / `q` | Close epic detail / cancel action |
 | `o` | Open selected epic in Jira |
 | `b` | Switch to Backlog and filter by selected epic |
+
+---
+
+## Editing (Epics View)
+
+| Key | Action |
+|-----|--------|
+| `l` | Edit the selected epic's complete label set |
+| `<Enter>` | Save labels |
+| `<Esc>` | Cancel label editing |
+
+Labels are entered as a comma-separated list. Saving an empty value clears all
+labels; existing labels are replaced by the submitted list.
 
 ---
 
@@ -145,6 +158,7 @@ When the help overlay is open (`?`), use these keys to navigate:
 | Key search | `f` | `<Enter>` to jump, `<Esc>` to cancel |
 | Detail view | `<Enter>` on issue | `<Esc>` or `q` to close |
 | Epic detail view | `<Enter>` on epic | `<Esc>` or `q` to close |
+| Label edit | `l` on an epic | `<Enter>` to save, `<Esc>` to cancel |
 | Pickers (`s`, `P`, `A`, `F`) | Key press | `<Enter>` to select, `<Esc>` to cancel |
 
 ---
@@ -184,7 +198,6 @@ The following keybindings are planned but not yet implemented:
 | `r` | Rename — inline edit of summary only |
 | `t` | Change type — picker |
 | `p` (lowercase, for priority) | Change priority — picker (currently `p` is paste) |
-| `l` | Edit labels — inline comma-separated input |
 | `V` | Select all tickets in current sprint |
 | `*` | Invert selection across all sprints |
 | `n` / `N` | Next / previous filter match |

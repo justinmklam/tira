@@ -41,6 +41,9 @@ func (m epicModel) View() tea.View {
 	if m.state == epicDetail {
 		return tea.NewView(m.viewDetail())
 	}
+	if m.state == epicLabelLoading || m.state == epicLabelInput || m.state == epicLabelSaving {
+		return tea.NewView(m.viewLabelEditor())
+	}
 	return tea.NewView(m.viewList())
 }
 
@@ -118,7 +121,7 @@ func (m epicModel) viewList() string {
 		sidebar = append(sidebar, "")
 	}
 
-	footer := "  j/k ↑/↓: move   enter: details   b: filter backlog   o: open Jira   R: refresh   ctrl+d/u: scroll   q: quit"
+	footer := "  j/k ↑/↓: move   enter: details   l: edit labels   b: filter backlog   o: open Jira   R: refresh   ctrl+d/u: scroll   q: quit"
 	if m.state == epicLoading {
 		footer = "  " + m.loadSpinner.View() + tui.MutedStyle.Render(" Loading epic…") + "   " + footer
 	}
@@ -172,6 +175,49 @@ func (m epicModel) renderRow(idx, width int) string {
 		lipgloss.NewStyle().Foreground(locationColor).Render(firstLocation+"  ") +
 		tui.MutedStyle.Render(storyPoints+"  ") +
 		tui.MutedStyle.Render(children)
+}
+
+func (m epicModel) viewLabelEditor() string {
+	width, height := m.width, m.height
+	if width == 0 {
+		width = 120
+	}
+	if height == 0 {
+		height = 40
+	}
+	overlayW, _ := tui.OverlaySize(width, height)
+	innerW := overlayW - 2
+	key := m.labelTargetKey
+	if key == "" {
+		key = "selected epic"
+	}
+
+	title := tui.BoldAccent.Padding(0, 1).Width(innerW).
+		Render(tui.FixedWidth("Edit Labels - "+key, innerW-2))
+	var lines []string
+	lines = append(lines, title)
+
+	switch m.state {
+	case epicLabelLoading:
+		lines = append(lines, "  "+m.loadSpinner.View()+" "+tui.MutedStyle.Render("Loading labels..."))
+	case epicLabelSaving:
+		lines = append(lines, "  "+m.loadSpinner.View()+" "+tui.MutedStyle.Render("Saving labels..."))
+	default:
+		lines = append(lines, "  "+m.labelInput.View())
+		lines = append(lines, tui.MutedStyle.Render(strings.Repeat("─", innerW)))
+		if m.labelError != "" {
+			lines = append(lines, lipgloss.NewStyle().Foreground(tui.ColorError).Render("  Error: "+m.labelError))
+		}
+		lines = append(lines, tui.MutedStyle.Render("  enter: save   esc: cancel   comma-separated; empty clears all"))
+	}
+
+	body := strings.Join(lines, "\n")
+	modal := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(tui.ColorAccent).
+		Width(innerW).
+		Render(body)
+	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, modal)
 }
 
 func renderEpicSidebarContent(issue *models.Issue, item *epicItem, width int) string {

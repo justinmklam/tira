@@ -76,6 +76,12 @@ func HelpSections() []HelpSection {
 			},
 		},
 		{
+			Title: "Editing (Epics)",
+			Keybindings: []HelpKeybinding{
+				{Key: "l", Description: "Edit selected epic labels"},
+			},
+		},
+		{
 			Title: "Selection (Backlog)",
 			Keybindings: []HelpKeybinding{
 				{Key: "Space", Description: "Toggle select ticket under cursor"},

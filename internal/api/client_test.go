@@ -153,6 +153,53 @@ func TestFetchFullIssue_NilOptionalFields(t *testing.T) {
 	}
 }
 
+func TestSetLabelsSerializesReplacementAndClear(t *testing.T) {
+	tests := []struct {
+		name   string
+		labels []string
+		want   []any
+	}{
+		{name: "replace", labels: []string{"frontend", "urgent"}, want: []any{"frontend", "urgent"}},
+		{name: "clear", labels: []string{}, want: []any{}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodPut {
+					t.Errorf("method = %q, want %q", r.Method, http.MethodPut)
+				}
+				if r.URL.Path != "/rest/api/3/issue/EPIC-1" {
+					t.Errorf("path = %q, want %q", r.URL.Path, "/rest/api/3/issue/EPIC-1")
+				}
+
+				var payload struct {
+					Fields struct {
+						Labels []any `json:"labels"`
+					} `json:"fields"`
+				}
+				if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+					t.Errorf("decoding request body: %v", err)
+				}
+				if len(payload.Fields.Labels) != len(tt.want) {
+					t.Errorf("labels = %v, want %v", payload.Fields.Labels, tt.want)
+				}
+				for i, label := range tt.want {
+					if payload.Fields.Labels[i] != label {
+						t.Errorf("labels[%d] = %v, want %v", i, payload.Fields.Labels[i], label)
+					}
+				}
+				w.WriteHeader(http.StatusNoContent)
+			}))
+			defer server.Close()
+
+			if err := newTestClient(server).SetLabels("EPIC-1", tt.labels); err != nil {
+				t.Fatalf("SetLabels() error = %v", err)
+			}
+		})
+	}
+}
+
 func TestFetchComments_ADFBody(t *testing.T) {
 	fixture := `{
 		"comments": [

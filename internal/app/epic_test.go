@@ -1,10 +1,12 @@
 package app
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
 	"charm.land/lipgloss/v2"
+	"github.com/justinmklam/tira/internal/api"
 	"github.com/justinmklam/tira/internal/models"
 )
 
@@ -168,5 +170,190 @@ func TestEpicListUsesAlignedColumnsAndFormatting(t *testing.T) {
 		if !strings.Contains(row, value) {
 			t.Errorf("selected row missing %q: %q", value, row)
 		}
+	}
+}
+
+type epicLabelTestClient struct {
+	api.Client
+	issue          *models.Issue
+	getIssueErr    error
+	getIssueCalls  int
+	setLabelsErr   error
+	setLabelsCalls int
+	setLabelsKey   string
+	setLabels      []string
+}
+
+func (c *epicLabelTestClient) GetIssue(string) (*models.Issue, error) {
+	c.getIssueCalls++
+	return c.issue, c.getIssueErr
+}
+
+func (c *epicLabelTestClient) SetLabels(key string, labels []string) error {
+	c.setLabelsCalls++
+	c.setLabelsKey = key
+	c.setLabels = append([]string(nil), labels...)
+	return c.setLabelsErr
+}
+
+func newEpicLabelTestModel(client api.Client, issue *models.Issue) epicModel {
+	return epicModel{
+		state:  epicList,
+		client: client,
+		items: []epicItem{{
+			Key:        issue.Key,
+			Name:       issue.Summary,
+			ChildCount: 1,
+		}},
+		sidebarFullIssue: issue,
+		sidebarIssueKey:  issue.Key,
+		cursor:           0,
+		width:            100,
+		height:           40,
+	}
+}
+
+func TestEpicLabelHotkeyFetchesAndPrefillsCurrentLabels(t *testing.T) {
+	issue := &models.Issue{Key: "EPIC-A", Summary: "Alpha", Labels: []string{"frontend", "urgent"}}
+	client := &epicLabelTestClient{issue: issue}
+	m := newEpicLabelTestModel(client, issue)
+	m.sidebarFullIssue = nil
+	m.sidebarIssueKey = ""
+
+	updated, cmd := m.Update(keyPress("l"))
+	m = updated.(epicModel)
+	if m.state != epicLabelLoading {
+		t.Fatalf("state after label hotkey = %v, want epicLabelLoading", m.state)
+	}
+	if cmd == nil {
+		t.Fatal("label hotkey should fetch the full epic when sidebar data is absent")
+	}
+
+	fetched := fetchEpicLabelsCmd(client, issue.Key)()
+	updated, focusCmd := m.Update(fetched)
+	m = updated.(epicModel)
+	if m.state != epicLabelInput {
+		t.Fatalf("state after label fetch = %v, want epicLabelInput", m.state)
+	}
+	if focusCmd == nil {
+		t.Fatal("opening label input should focus the text input")
+	}
+	if got := m.labelInput.Value(); got != "frontend, urgent" {
+		t.Fatalf("prefilled labels = %q, want %q", got, "frontend, urgent")
+	}
+	if client.getIssueCalls != 1 {
+		t.Fatalf("GetIssue calls = %d, want 1", client.getIssueCalls)
+	}
+}
+
+func TestEpicLabelEditSaveUpdatesSidebarAndSupportsClear(t *testing.T) {
+	tests := []struct {
+		name       string
+		input      string
+		wantLabels []string
+	}{
+		{name: "replace", input: "new, trimmed,,", wantLabels: []string{"new", "trimmed"}},
+		{name: "clear", input: " , ", wantLabels: []string{}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			issue := &models.Issue{Key: "EPIC-A", Summary: "Alpha", Labels: []string{"old"}}
+			client := &epicLabelTestClient{issue: issue}
+			m := newEpicLabelTestModel(client, issue)
+			m.labelTargetKey = issue.Key
+			if cmd := m.openLabelInput(issue); cmd == nil {
+				t.Fatal("openLabelInput should return a focus command")
+			}
+			m.labelInput.SetValue(tt.input)
+
+			updated, cmd := m.Update(keyPress("enter"))
+			m = updated.(epicModel)
+			if m.state != epicLabelSaving {
+				t.Fatalf("state after save = %v, want epicLabelSaving", m.state)
+			}
+			if cmd == nil {
+				t.Fatal("save should return an API command")
+			}
+
+			updated, _ = m.Update(setEpicLabelsCmd(client, issue.Key, parseLabels(tt.input))())
+			m = updated.(epicModel)
+			if m.state != epicList {
+				t.Fatalf("state after save completion = %v, want epicList", m.state)
+			}
+			if client.setLabelsKey != issue.Key {
+				t.Fatalf("SetLabels key = %q, want %q", client.setLabelsKey, issue.Key)
+			}
+			if len(client.setLabels) != len(tt.wantLabels) {
+				t.Fatalf("saved labels = %v, want %v", client.setLabels, tt.wantLabels)
+			}
+			for i, label := range tt.wantLabels {
+				if client.setLabels[i] != label {
+					t.Errorf("saved labels[%d] = %q, want %q", i, client.setLabels[i], label)
+				}
+			}
+			if len(m.sidebarFullIssue.Labels) != len(tt.wantLabels) {
+				t.Fatalf("sidebar labels = %v, want %v", m.sidebarFullIssue.Labels, tt.wantLabels)
+			}
+		})
+	}
+}
+
+func TestEpicLabelEditCancelAndSaveError(t *testing.T) {
+	issue := &models.Issue{Key: "EPIC-A", Summary: "Alpha", Labels: []string{"old"}}
+	client := &epicLabelTestClient{issue: issue, setLabelsErr: errors.New("permission denied")}
+	m := newEpicLabelTestModel(client, issue)
+	m.labelTargetKey = issue.Key
+	m.openLabelInput(issue)
+	m.labelInput.SetValue("new")
+
+	updated, cmd := m.Update(keyPress("enter"))
+	m = updated.(epicModel)
+	if cmd == nil {
+		t.Fatal("save should return an API command")
+	}
+	updated, _ = m.Update(setEpicLabelsCmd(client, issue.Key, parseLabels("new"))())
+	m = updated.(epicModel)
+	if m.state != epicLabelInput {
+		t.Fatalf("state after save error = %v, want epicLabelInput", m.state)
+	}
+	if m.labelError != "permission denied" {
+		t.Fatalf("label error = %q, want %q", m.labelError, "permission denied")
+	}
+	if got := m.labelInput.Value(); got != "new" {
+		t.Fatalf("input after save error = %q, want %q", got, "new")
+	}
+
+	updated, _ = m.Update(keyPress("esc"))
+	m = updated.(epicModel)
+	if m.state != epicList {
+		t.Fatalf("state after cancel = %v, want epicList", m.state)
+	}
+	if m.labelTargetKey != "" {
+		t.Fatalf("label target after cancel = %q, want empty", m.labelTargetKey)
+	}
+	if client.setLabelsCalls != 1 {
+		t.Fatalf("SetLabels calls = %d, want 1", client.setLabelsCalls)
+	}
+}
+
+func TestParseLabelsTrimsAndReturnsEmptySlice(t *testing.T) {
+	got := parseLabels(" first, second ,, third ")
+	want := []string{"first", "second", "third"}
+	if len(got) != len(want) {
+		t.Fatalf("labels = %v, want %v", got, want)
+	}
+	for i, label := range want {
+		if got[i] != label {
+			t.Errorf("labels[%d] = %q, want %q", i, got[i], label)
+		}
+	}
+
+	empty := parseLabels(" , ")
+	if empty == nil {
+		t.Fatal("empty label parsing should return a non-nil slice")
+	}
+	if len(empty) != 0 {
+		t.Fatalf("empty labels = %v, want empty", empty)
 	}
 }

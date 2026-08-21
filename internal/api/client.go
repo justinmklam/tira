@@ -19,6 +19,7 @@ import (
 type Client interface {
 	GetIssue(key string) (*models.Issue, error)
 	UpdateIssue(key string, fields models.IssueFields) error
+	SetLabels(issueKey string, labels []string) error
 	CreateIssue(projectKey string, fields models.IssueFields) (*models.Issue, error)
 	GetValidValues(projectKey string) (*models.ValidValues, error)
 	// GetIssueMetadata returns issue types and priorities only (no assignee lookup).
@@ -583,6 +584,25 @@ func (c *jiraClient) UpdateIssue(key string, fields models.IssueFields) error {
 
 	req, err := c.client.NewRequest(context.Background(), http.MethodPut,
 		fmt.Sprintf("rest/api/3/issue/%s", key), payload)
+	if err != nil {
+		return err
+	}
+	_, err = c.client.Do(req, nil)
+	return err
+}
+
+// SetLabels replaces all labels on an issue. An empty slice clears the labels.
+func (c *jiraClient) SetLabels(issueKey string, labels []string) error {
+	if labels == nil {
+		labels = []string{}
+	}
+	payload := map[string]any{
+		"fields": map[string]any{
+			"labels": labels,
+		},
+	}
+	req, err := c.client.NewRequest(context.Background(), http.MethodPut,
+		fmt.Sprintf("rest/api/3/issue/%s", issueKey), payload)
 	if err != nil {
 		return err
 	}

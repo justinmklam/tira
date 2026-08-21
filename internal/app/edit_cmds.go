@@ -43,19 +43,13 @@ func (s editFormState) toIssueFields(valid *models.ValidValues) models.IssueFiel
 	if v, err := strconv.ParseFloat(strings.TrimSpace(s.storyPoints), 64); err == nil {
 		sp = v
 	}
-	var labels []string
-	for _, l := range strings.Split(s.labels, ",") {
-		if l = strings.TrimSpace(l); l != "" {
-			labels = append(labels, l)
-		}
-	}
 	fields := models.IssueFields{
 		Summary:            strings.TrimSpace(s.summary),
 		IssueType:          s.issueType,
 		Priority:           s.priority,
 		Assignee:           strings.TrimSpace(s.assignee),
 		StoryPoints:        sp,
-		Labels:             labels,
+		Labels:             parseLabels(s.labels),
 		Description:        strings.TrimSpace(s.description),
 		AcceptanceCriteria: strings.TrimSpace(s.acceptanceCriteria),
 	}
@@ -67,6 +61,16 @@ func (s editFormState) toIssueFields(valid *models.ValidValues) models.IssueFiel
 		fields.AssigneeID = validator.ResolveAssigneeID(&fields, valid)
 	}
 	return fields
+}
+
+func parseLabels(value string) []string {
+	labels := make([]string, 0)
+	for _, label := range strings.Split(value, ",") {
+		if label = strings.TrimSpace(label); label != "" {
+			labels = append(labels, label)
+		}
+	}
+	return labels
 }
 
 // fetchEditDataCmd fetches the full issue and issue metadata concurrently.
