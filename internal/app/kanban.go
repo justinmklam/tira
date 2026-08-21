@@ -227,6 +227,7 @@ func (m *kanbanModel) patchIssue(fresh models.Issue) {
 			fresh.StatusID = existing.StatusID
 			fresh.EpicKey = existing.EpicKey
 			fresh.EpicName = existing.EpicName
+			fresh.EpicStatus = existing.EpicStatus
 			fresh.ProjectKey = existing.ProjectKey
 			if fresh.StatusChangedDate == "" {
 				fresh.StatusChangedDate = existing.StatusChangedDate

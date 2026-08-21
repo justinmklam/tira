@@ -34,6 +34,7 @@ type epicItem struct {
 	Summary          string
 	ChildCount       int
 	StoryPoints      float64
+	EpicStatus       string
 	FirstIssueKey    string
 	FirstSprintName  string
 	FirstSprintState string
@@ -124,6 +125,7 @@ func buildEpicItems(groups []models.SprintGroup) []epicItem {
 					Summary:          name,
 					ChildCount:       1,
 					StoryPoints:      issue.StoryPoints,
+					EpicStatus:       issue.EpicStatus,
 					FirstIssueKey:    issue.Key,
 					FirstSprintName:  group.Sprint.Name,
 					FirstSprintState: group.Sprint.State,
@@ -139,6 +141,9 @@ func buildEpicItems(groups []models.SprintGroup) []epicItem {
 			item := &items[idx]
 			item.ChildCount++
 			item.StoryPoints += issue.StoryPoints
+			if item.EpicStatus == "" && issue.EpicStatus != "" {
+				item.EpicStatus = issue.EpicStatus
+			}
 			if item.Name == item.Key && issue.EpicName != "" {
 				item.Name = issue.EpicName
 				item.Summary = issue.EpicName
@@ -146,7 +151,13 @@ func buildEpicItems(groups []models.SprintGroup) []epicItem {
 		}
 	}
 
-	return items
+	openItems := items[:0]
+	for _, item := range items {
+		if !strings.EqualFold(item.EpicStatus, "closed") {
+			openItems = append(openItems, item)
+		}
+	}
+	return openItems
 }
 
 func newEpicModel(client api.Client, groups []models.SprintGroup, jiraURL string, loading bool) (epicModel, tea.Cmd) {
@@ -225,6 +236,7 @@ func (m epicModel) previewIssue() *models.Issue {
 		IssueType:   "Epic",
 		EpicKey:     item.Key,
 		EpicName:    item.Name,
+		Status:      item.EpicStatus,
 		SprintName:  item.FirstLocation,
 		StoryPoints: item.StoryPoints,
 	}

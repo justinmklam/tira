@@ -227,7 +227,7 @@ Sprint headers display:
 The epics view derives unique epics from the same ordered sprint/backlog groups
 used by the backlog. Only epics referenced by loaded issues are shown. Each epic
 is ordered by the first child issue encountered while iterating sprint groups
-and their issue slices.
+and their issue slices. Epics whose Jira status is `Closed` are excluded.
 
 ### Epic State
 
@@ -252,6 +252,8 @@ editing.
 `buildEpicItems(groups)` walks groups and issues in display order. The first
 issue for an `EpicKey` establishes the epic's position and first sprint/backlog
 location; subsequent children update the child count and aggregate metadata.
+The epic status is read from the parent epic metadata, and closed epics are
+removed from the projection.
 The projection is rebuilt after lazy loading, full refreshes, and before entering
 the epics view so local optimistic backlog moves are reflected.
 

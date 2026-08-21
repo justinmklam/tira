@@ -221,7 +221,7 @@ type Issue struct {
     Reporter                                       string
     StoryPoints                                    float64
     Labels                                         []string
-    EpicKey, EpicName                              string
+    EpicKey, EpicName, EpicStatus                  string
     SprintName                                     string
     ParentKey, ParentSummary                       string
     LinkedIssues                                   []LinkedIssue

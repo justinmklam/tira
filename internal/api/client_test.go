@@ -465,6 +465,14 @@ func TestFetchAgileIssues_DynamicStoryPointsField(t *testing.T) {
 					"summary": "Test Issue",
 					"status": {"id": "1", "name": "To Do"},
 					"issuetype": {"name": "Story"},
+					"parent": {
+						"key": "PROJ-100",
+						"fields": {
+							"summary": "Closed epic",
+							"status": {"name": "Closed"},
+							"issuetype": {"name": "Epic"}
+						}
+					},
 					"priority": {"name": "Medium"},
 					"labels": [],
 					"project": {"key": "PROJ"},
@@ -494,6 +502,9 @@ func TestFetchAgileIssues_DynamicStoryPointsField(t *testing.T) {
 	}
 	if issues[0].SprintName != "Sprint 1" {
 		t.Errorf("SprintName = %q, want %q", issues[0].SprintName, "Sprint 1")
+	}
+	if issues[0].EpicStatus != "Closed" {
+		t.Errorf("EpicStatus = %q, want %q", issues[0].EpicStatus, "Closed")
 	}
 }
 

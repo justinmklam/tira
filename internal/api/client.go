@@ -1187,7 +1187,10 @@ func (c *jiraClient) fetchAgileIssues(url, sprintName, spField string) ([]models
 		Parent *struct {
 			Key    string `json:"key"`
 			Fields struct {
-				Summary   string `json:"summary"`
+				Summary string `json:"summary"`
+				Status  struct {
+					Name string `json:"name"`
+				} `json:"status"`
 				Issuetype struct {
 					Name string `json:"name"`
 				} `json:"issuetype"`
@@ -1223,6 +1226,7 @@ func (c *jiraClient) fetchAgileIssues(url, sprintName, spField string) ([]models
 		if p := af.Parent; p != nil && p.Fields.Issuetype.Name == "Epic" {
 			issue.EpicKey = p.Key
 			issue.EpicName = p.Fields.Summary
+			issue.EpicStatus = p.Fields.Status.Name
 		}
 		// Story points: extract from the resolved field ID.
 		var rawFields map[string]json.RawMessage

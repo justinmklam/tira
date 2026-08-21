@@ -44,6 +44,26 @@ func TestBuildEpicItemsOrderingDeduplicationAndCounts(t *testing.T) {
 	}
 }
 
+func TestBuildEpicItemsExcludesClosedEpics(t *testing.T) {
+	groups := []models.SprintGroup{
+		{
+			Sprint: models.Sprint{Name: "Active sprint", State: "active"},
+			Issues: []models.Issue{
+				{Key: "P-1", EpicKey: "EPIC-CLOSED", EpicName: "Closed epic", EpicStatus: "Closed"},
+				{Key: "P-2", EpicKey: "EPIC-OPEN", EpicName: "Open epic", EpicStatus: "In Progress"},
+			},
+		},
+	}
+
+	items := buildEpicItems(groups)
+	if len(items) != 1 {
+		t.Fatalf("expected one non-closed epic, got %d", len(items))
+	}
+	if items[0].Key != "EPIC-OPEN" {
+		t.Fatalf("unexpected epic: %#v", items[0])
+	}
+}
+
 func TestBuildEpicItemsFallbackNameAndEmptyInput(t *testing.T) {
 	items := buildEpicItems([]models.SprintGroup{{
 		Sprint: models.Sprint{State: "backlog"},

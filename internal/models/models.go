@@ -16,6 +16,7 @@ type Issue struct {
 	Labels             []string
 	EpicKey            string
 	EpicName           string
+	EpicStatus         string
 	SprintName         string
 	ParentKey          string
 	ParentSummary      string

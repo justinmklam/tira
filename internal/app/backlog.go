@@ -289,8 +289,8 @@ func (m *blModel) refreshData(groups []models.SprintGroup) tea.Cmd {
 
 // patchIssue updates a single issue in place within the sprint groups and
 // rebuilds derived state (rows, sidebar). Preserves agile-only fields that
-// GetIssue does not return (StatusID, EpicKey, EpicName, ProjectKey,
-// StatusChangedDate) from the existing record.
+// GetIssue does not return (StatusID, EpicKey, EpicName, EpicStatus,
+// ProjectKey, StatusChangedDate) from the existing record.
 func (m *blModel) patchIssue(fresh models.Issue) {
 	for gi := range m.groups {
 		for ii := range m.groups[gi].Issues {
@@ -302,6 +302,7 @@ func (m *blModel) patchIssue(fresh models.Issue) {
 			fresh.StatusID = existing.StatusID
 			fresh.EpicKey = existing.EpicKey
 			fresh.EpicName = existing.EpicName
+			fresh.EpicStatus = existing.EpicStatus
 			fresh.ProjectKey = existing.ProjectKey
 			if fresh.StoryPoints == 0 {
 				fresh.StoryPoints = existing.StoryPoints
