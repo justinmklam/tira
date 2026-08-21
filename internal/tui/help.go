@@ -63,6 +63,19 @@ func HelpSections() []HelpSection {
 			},
 		},
 		{
+			Title: "Navigation (Epics)",
+			Keybindings: []HelpKeybinding{
+				{Key: "j / k", Description: "Move down / up through epics"},
+				{Key: "g / G", Description: "Jump to first / last epic"},
+				{Key: "d / u", Description: "Scroll the epic list by 1/4 page"},
+				{Key: "ctrl+d / ctrl+u", Description: "Scroll selected epic details"},
+				{Key: "Enter", Description: "Open epic detail pane"},
+				{Key: "Esc / q", Description: "Close epic detail / cancel action"},
+				{Key: "o", Description: "Open selected epic in Jira"},
+				{Key: "b", Description: "Filter backlog by selected epic"},
+			},
+		},
+		{
 			Title: "Selection (Backlog)",
 			Keybindings: []HelpKeybinding{
 				{Key: "Space", Description: "Toggle select ticket under cursor"},
@@ -114,7 +127,8 @@ func HelpSections() []HelpSection {
 			Keybindings: []HelpKeybinding{
 				{Key: "1", Description: "Switch to backlog view"},
 				{Key: "2", Description: "Switch to kanban board view"},
-				{Key: "Tab", Description: "Toggle between backlog and board"},
+				{Key: "3", Description: "Switch to epics view"},
+				{Key: "Tab", Description: "Cycle between backlog, kanban, and epics"},
 				{Key: "R", Description: "Refresh from Jira API"},
 				{Key: "?", Description: "Show this help overlay"},
 				{Key: "q", Description: "Quit"},

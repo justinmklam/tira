@@ -51,7 +51,8 @@ func IssueTypeColor(issueType string) color.Color {
 	}
 }
 
-// epicPalette is the color palette used by EpicColor. It is overwritten by SetTheme.
+// epicPalette is the color palette used by EpicColor and SprintColor. It is
+// overwritten by SetTheme.
 var epicPalette = []color.Color{lipgloss.Color("39"), lipgloss.Color("208"), lipgloss.Color("141"), lipgloss.Color("43"), lipgloss.Color("214"), lipgloss.Color("99"), lipgloss.Color("203"), lipgloss.Color("118"), lipgloss.Color("45"), lipgloss.Color("220")}
 
 // EpicColor returns a consistent terminal color for an epic key by hashing it.
@@ -65,6 +66,15 @@ func EpicColor(epicKey string) color.Color {
 		sum += int(r)
 	}
 	return epicPalette[sum%len(epicPalette)]
+}
+
+// SprintColor returns a deterministic palette color for a sprint's board-order
+// index. Colors repeat only after the palette is exhausted.
+func SprintColor(index int) color.Color {
+	if index < 0 || len(epicPalette) == 0 {
+		return ColorMuted
+	}
+	return epicPalette[index%len(epicPalette)]
 }
 
 // DaysInColumn calculates the number of days an issue has been in its current status.

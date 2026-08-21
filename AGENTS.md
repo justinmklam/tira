@@ -269,7 +269,7 @@ func (m boardModel) refreshCmd() tea.Cmd {
 - Backlog rendering is split: `backlog.go` (model + update) and `backlog_view.go` (rendering)
 - Kanban similarly split: `kanban.go` (model + update) and `kanban_view.go` (rendering)
 - Edit form split: `edit_form.go` (model) and `edit_cmds.go` (commands)
-- The `board` command runs a unified TUI that wraps both backlog and kanban views — Tab toggles between them
+- The `board` command runs a unified TUI that wraps backlog, kanban, and epics views — Tab cycles between them
 
 ### Editor/Validator Packages
 

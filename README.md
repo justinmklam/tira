@@ -81,21 +81,25 @@ tira board
 # Start in kanban view
 tira board --view kanban
 
+# Start in epics view
+tira board --view epics
+
 # Override the configured board ID
 tira board --board-id 42
 ```
 
 > `tira backlog` and `tira kanban` still work but are deprecated aliases for `tira board` /
-> `tira board --view kanban`.
+> `tira board --view backlog` and `tira board --view kanban`.
 
 **Common keybindings:**
 
 | Key | Action |
 |-----|--------|
-| `Tab` | Toggle between backlog and kanban |
+| `Tab` | Toggle between backlog, kanban, and epics |
+| `1` / `2` / `3` | Switch to backlog / kanban / epics |
 | `j`/`k` | Move cursor to next/prev issue |
 | `J`/`K` | Move cursor to next/prev sprint |
-| `Enter` | Open issue detail in fullscreen / Toggle sprint collapse |
+| `Enter` | Open issue/epic detail / Toggle sprint collapse |
 | `e` | Edit issue |
 | `c` | Add comment |
 | `s` | Set status |
@@ -110,6 +114,7 @@ tira board --board-id 42
 | `x` / `p` | Cut / Paste selected issue(s) |
 | < / > | Move selected issue(s) to prev/next sprint |
 | `R` | Refresh from Jira |
+| `b` (Epics) | Filter the backlog by the selected epic |
 | `?` | Show help |
 | `q` | Quit |
 

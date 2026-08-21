@@ -67,6 +67,7 @@ issue, err := tui.RunWithSpinner("Fetching issue...", func() (*models.Issue, err
 **Helper functions:**
 - `IssueTypeColor(issueType)` — Maps `"bug"→Red`, `"story"→Green`, `"task"→Blue`, `"epic"→Magenta`, `"sub-task"/"subtask"→Yellow`, default→Dim
 - `EpicColor(epicKey)` — Deterministic 10-color hash of epic key
+- `SprintColor(index)` — Deterministic palette color for a sprint's board-order index
 - `DaysInColumn(statusChangedDate)` — Days since status changed (from ISO date string)
 - `DaysColor(days)` — Green (0-2), Yellow (3-5), Orange (6-9), Red (10+)
 
@@ -75,6 +76,7 @@ issue, err := tui.RunWithSpinner("Fetching issue...", func() (*models.Issue, err
 | Function | Description |
 |----------|-------------|
 | `FixedWidth(s string, n int) string` | Pad/truncate to exactly `n` runes; uses `…` for overflow |
+| `FormatStoryPoints(points float64) string` | Compact story-point formatting shared by Backlog and Epics |
 | `Clamp(v, lo, hi int) int` | Constrain `v` to `[lo, hi]` |
 | `SplitPanes(left, right string, leftWidth, height int) string` | Side-by-side layout with dim `│` separator |
 | `ListPaneWidth(totalWidth int) int` | 40% of total, min 30 |

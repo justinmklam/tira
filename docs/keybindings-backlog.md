@@ -35,6 +35,21 @@ Modelled on yazi's philosophy: modal only where the modality is obvious from con
 
 ---
 
+## Navigation (Epics View)
+
+| Key | Action |
+|-----|--------|
+| `j` / `k` | Move down / up through epics |
+| `g` / `G` | Jump to first / last epic |
+| `d` / `u` | Scroll the epic list by 1/4 page |
+| `<C-d>` / `<C-u>` | Scroll the selected epic sidebar |
+| `<Enter>` | Open selected epic detail |
+| `<Esc>` / `q` | Close epic detail / cancel action |
+| `o` | Open selected epic in Jira |
+| `b` | Switch to Backlog and filter by selected epic |
+
+---
+
 ## Selection (Backlog View)
 
 | Key | Action |
@@ -99,7 +114,8 @@ Quick pickers (`s`, `P`, `A`, `F`) open a small overlay, navigate with `j`/`k`, 
 |-----|--------|
 | `1` | Switch to backlog view |
 | `2` | Switch to kanban board view |
-| `<Tab>` | Toggle between backlog and board |
+| `3` | Switch to epics view |
+| `<Tab>` | Cycle between backlog, kanban, and epics |
 | `R` | Refresh from Jira API |
 | `?` | Show keybindings help overlay |
 | `q` | Quit |
@@ -128,6 +144,7 @@ When the help overlay is open (`?`), use these keys to navigate:
 | Filter | `/` | `<Enter>` to apply, `<Esc>` to clear |
 | Key search | `f` | `<Enter>` to jump, `<Esc>` to cancel |
 | Detail view | `<Enter>` on issue | `<Esc>` or `q` to close |
+| Epic detail view | `<Enter>` on epic | `<Esc>` or `q` to close |
 | Pickers (`s`, `P`, `A`, `F`) | Key press | `<Enter>` to select, `<Esc>` to cancel |
 
 ---

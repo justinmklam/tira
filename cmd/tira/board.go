@@ -19,13 +19,14 @@ var (
 
 var boardCmd = &cobra.Command{
 	Use:   "board",
-	Short: "Interactive board with backlog and kanban views (Tab to toggle)",
-	Long: `Interactive board with backlog and kanban views (Tab to toggle).
+	Short: "Interactive board with backlog, kanban, and epics views",
+	Long: `Interactive board with backlog, kanban, and epics views (Tab to cycle).
 
 Starts on the backlog view by default; use --view to start elsewhere:
 
   tira board                  # starts on backlog
   tira board --view kanban    # starts on kanban
+  tira board --view epics     # starts on epics
   tira board --view backlog   # explicit, same as default`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		view, err := parseBoardView(boardView)
@@ -67,7 +68,7 @@ func init() {
 		cmd.Flags().StringVar(&boardProject, "project", "", "override the default project from config")
 		cmd.Flags().IntVar(&boardID, "board-id", 0, "override the default board ID from config")
 	}
-	boardCmd.Flags().StringVar(&boardView, "view", "backlog", `starting view: "backlog" or "kanban"`)
+	boardCmd.Flags().StringVar(&boardView, "view", "backlog", `starting view: "backlog", "kanban", or "epics"`)
 }
 
 // parseBoardView validates and converts the --view flag value.
@@ -77,8 +78,10 @@ func parseBoardView(view string) (app.BoardView, error) {
 		return app.ViewBacklog, nil
 	case "kanban":
 		return app.ViewKanban, nil
+	case "epics":
+		return app.ViewEpics, nil
 	default:
-		return 0, fmt.Errorf("invalid --view %q: must be \"backlog\" or \"kanban\"", view)
+		return 0, fmt.Errorf("invalid --view %q: must be \"backlog\", \"kanban\", or \"epics\"", view)
 	}
 }
 

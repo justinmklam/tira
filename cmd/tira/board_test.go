@@ -17,6 +17,7 @@ func TestParseBoardView(t *testing.T) {
 		{name: "empty defaults to backlog", view: "", want: app.ViewBacklog},
 		{name: "backlog", view: "backlog", want: app.ViewBacklog},
 		{name: "kanban", view: "kanban", want: app.ViewKanban},
+		{name: "epics", view: "epics", want: app.ViewEpics},
 		{name: "case insensitive", view: "KANBAN", want: app.ViewKanban},
 		{name: "invalid value errors", view: "bogus", wantErr: true},
 	}

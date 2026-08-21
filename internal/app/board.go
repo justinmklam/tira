@@ -22,6 +22,7 @@ type BoardView int
 const (
 	ViewBacklog BoardView = iota
 	ViewKanban
+	ViewEpics
 	viewEditLoading    // fetching issue + valid values
 	viewEdit           // huh form active
 	viewEditSaving     // API call in flight
@@ -81,6 +82,7 @@ type boardModel struct {
 	prevView       BoardView // restored after edit completes
 	backlog        blModel
 	kanban         kanbanModel
+	epics          epicModel
 	client         api.Client
 	boardID        int
 	jiraURL        string
@@ -257,8 +259,9 @@ func newBoardModel(client api.Client, boardID int, jiraURL, project string, clas
 	s.Style = lipgloss.NewStyle().Foreground(tui.ColorSpinner)
 
 	backlog, backlogCmd := newBacklogModel(client, boardID, data.Groups, project, jiraURL)
+	epics, epicCmd := newEpicModel(client, data.Groups, jiraURL, true)
 
-	cmds := []tea.Cmd{backlogCmd}
+	cmds := []tea.Cmd{backlogCmd, epicCmd}
 
 	// If there are remaining sprints to load, fire lazy load in background.
 	if len(data.RemainingSprints) > 0 {
@@ -279,6 +282,7 @@ func newBoardModel(client api.Client, boardID int, jiraURL, project string, clas
 		activeView:     startView,
 		backlog:        backlog,
 		kanban:         newKanbanModel(client, data.BoardCols, issues, sprintName, project),
+		epics:          epics,
 		client:         client,
 		boardID:        boardID,
 		jiraURL:        strings.TrimRight(jiraURL, "/"),
@@ -323,12 +327,14 @@ func lazyLoadCmd(client api.Client, boardID int, remainingSprints []models.Sprin
 
 		// Always fetch backlog.
 		backlogIssues, err := client.GetBacklogIssues(boardID)
-		if err == nil {
-			groups = append(groups, models.SprintGroup{
-				Sprint: models.Sprint{Name: "Backlog", State: "backlog"},
-				Issues: backlogIssues,
-			})
+		if err != nil {
+			groups = filterGroupsByProject(groups, projectFilter)
+			return blLazyLoadDoneMsg{groups: groups, err: err}
 		}
+		groups = append(groups, models.SprintGroup{
+			Sprint: models.Sprint{Name: "Backlog", State: "backlog"},
+			Issues: backlogIssues,
+		})
 
 		groups = filterGroupsByProject(groups, projectFilter)
 
@@ -345,6 +351,8 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.backlog = updated.(blModel)
 		updated, _ = m.kanban.Update(ws)
 		m.kanban = updated.(kanbanModel)
+		updated, _ = m.epics.Update(ws)
+		m.epics = updated.(epicModel)
 		if (m.activeView == viewEdit || m.activeView == viewCreate) && m.editForm != nil {
 			overlayW, overlayH := tui.OverlaySize(m.width, m.height)
 			m.editForm.setSize(overlayW-4, overlayH-4)
@@ -368,6 +376,11 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// New issue inserted: add it to the correct backlog group and navigate to it.
 	if msg, ok := msg.(issueInsertDoneMsg); ok {
 		if msg.err == nil && msg.issue != nil {
+			if msg.issue.ParentKey != "" {
+				// The board issue payload is the authoritative source for epic
+				// membership; refresh so the new child is projected correctly.
+				return m, m.refreshCmd()
+			}
 			m.backlog.insertIssue(*msg.issue, msg.sprintID)
 			if m.createResultKey != "" {
 				m.backlog.navigateToKey(m.createResultKey)
@@ -382,6 +395,7 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err == nil {
 			m.initData = msg.data
 			sidebarCmd := m.backlog.refreshData(msg.data.Groups)
+			epicCmd := m.epics.refreshData(msg.data.Groups, false, nil)
 			issues, sprintName := activeSprintFromGroups(msg.data.Groups)
 			m.kanban.refreshData(msg.data.BoardCols, issues, sprintName)
 			if m.createResultKey != "" {
@@ -389,7 +403,7 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.createResultKey = ""
 			}
 			m.backlog.moving = false
-			return m, sidebarCmd
+			return m, tea.Batch(sidebarCmd, epicCmd)
 		}
 		m.backlog.moving = false
 		return m, nil
@@ -397,7 +411,7 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// Lazy-loaded sprint groups + backlog arrived.
 	if msg, ok := msg.(blLazyLoadDoneMsg); ok {
-		if msg.err == nil && len(msg.groups) > 0 {
+		if len(msg.groups) > 0 {
 			m.backlog.appendGroups(msg.groups)
 			// Update initData so future refreshes include all groups.
 			m.initData.Groups = m.backlog.groups
@@ -408,7 +422,10 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.kanban.refreshData(m.initData.BoardCols, issues, sprintName)
 			}
 		}
-		return m, nil
+		epicCmd := m.epics.refreshData(m.backlog.groups, false, msg.err)
+		m.initData.Groups = m.backlog.groups
+		m.initData.RemainingSprints = nil
+		return m, epicCmd
 	}
 
 	// Metadata preload completed — result is already cached; nothing else to do.
@@ -775,6 +792,12 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else if issue := m.kanban.currentIssue(); issue != nil {
 				issueKey = issue.Key
 			}
+		case ViewEpics:
+			if m.epics.state == epicDetail && m.epics.detailIssue != nil {
+				issueKey = m.epics.detailIssue.Key
+			} else if item := m.epics.selectedItem(); item != nil {
+				issueKey = item.Key
+			}
 		}
 		if issueKey != "" {
 			return m, openInBrowserCmd(m.issueURL(issueKey))
@@ -785,9 +808,13 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if key, ok := msg.(tea.KeyPressMsg); ok && m.canSwitchView() {
 		switch key.String() {
 		case "tab":
-			if m.activeView == ViewBacklog {
+			switch m.activeView {
+			case ViewBacklog:
 				m.activeView = ViewKanban
-			} else {
+			case ViewKanban:
+				m.activeView = ViewEpics
+				return m, m.syncEpicsFromBacklog()
+			case ViewEpics:
 				m.activeView = ViewBacklog
 			}
 			return m, nil
@@ -797,6 +824,9 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "2":
 			m.activeView = ViewKanban
 			return m, nil
+		case "3":
+			m.activeView = ViewEpics
+			return m, m.syncEpicsFromBacklog()
 		case "?":
 			m.prevView = m.activeView
 			m.activeView = viewHelp
@@ -888,6 +918,26 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.refreshCmd()
 		}
 		return m, cmd
+
+	case ViewEpics:
+		updated, cmd := m.epics.Update(msg)
+		m.epics = updated.(epicModel)
+
+		if m.epics.quitting || m.epics.result.quit {
+			return m, tea.Quit
+		}
+		if m.epics.result.filterBacklogKey != "" {
+			key := m.epics.result.filterBacklogKey
+			m.epics.result.filterBacklogKey = ""
+			m.backlog, cmd = m.backlog.setEpicFilter(key)
+			m.activeView = ViewBacklog
+			return m, cmd
+		}
+		if m.epics.result.refresh {
+			m.epics.result.refresh = false
+			return m, m.refreshCmd()
+		}
+		return m, cmd
 	}
 
 	return m, nil
@@ -902,6 +952,8 @@ func (m boardModel) canOpenInBrowser() bool {
 		return (m.backlog.state == blList && !m.backlog.visualMode) || m.backlog.state == blDetail
 	case ViewKanban:
 		return m.kanban.state == stateBoard || m.kanban.state == stateDetail
+	case ViewEpics:
+		return m.epics.state == epicList || m.epics.state == epicDetail
 	}
 	return false
 }
@@ -914,8 +966,21 @@ func (m boardModel) canSwitchView() bool {
 		return m.backlog.state == blList && !m.backlog.visualMode
 	case ViewKanban:
 		return m.kanban.state == stateBoard
+	case ViewEpics:
+		return m.epics.state == epicList
 	}
 	return false // edit states: no switching
+}
+
+// syncEpicsFromBacklog rebuilds the epic projection from the backlog's current
+// in-memory groups, preserving any lazy-load error while the board remains
+// partially loaded.
+func (m boardModel) syncEpicsFromBacklog() tea.Cmd {
+	var loadErr error
+	if m.epics.loadError != "" {
+		loadErr = fmt.Errorf("%s", m.epics.loadError)
+	}
+	return m.epics.refreshData(m.backlog.groups, m.epics.loading, loadErr)
 }
 
 func (m boardModel) refreshCmd() tea.Cmd {

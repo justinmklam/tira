@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"math"
 	"strings"
 	"testing"
 )
@@ -37,6 +38,24 @@ func TestFixedWidth_Empty(t *testing.T) {
 	got := FixedWidth("", 3)
 	if got != "   " {
 		t.Errorf("got %q, want %q", got, "   ")
+	}
+}
+
+func TestFormatStoryPoints(t *testing.T) {
+	tests := []struct {
+		points float64
+		want   string
+	}{
+		{0, "—"},
+		{-1, "—"},
+		{math.NaN(), "—"},
+		{3, "3"},
+		{3.5, "3.5"},
+	}
+	for _, tt := range tests {
+		if got := FormatStoryPoints(tt.points); got != tt.want {
+			t.Errorf("FormatStoryPoints(%v) = %q, want %q", tt.points, got, tt.want)
+		}
 	}
 }
 

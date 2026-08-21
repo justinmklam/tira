@@ -1,6 +1,6 @@
 # TUI Architecture
 
-The tira TUI is built with the [Bubbletea](https://github.com/charmbracelet/bubbletea) framework and provides two views (backlog and kanban) under a unified board interface.
+The tira TUI is built with the [Bubbletea](https://github.com/charmbracelet/bubbletea) framework and provides three views (backlog, kanban, and epics) under a unified board interface.
 
 ---
 
@@ -9,7 +9,7 @@ The tira TUI is built with the [Bubbletea](https://github.com/charmbracelet/bubb
 **File:** `internal/app/board.go`
 
 The board TUI runs a single `tea.Program` wrapping a `boardModel`. It manages:
-- Two sub-models: `blModel` (backlog) and `kanbanModel` (kanban)
+- Three sub-models: `blModel` (backlog), `kanbanModel` (kanban), and `epicModel` (epics)
 - Multiple overlay states (edit form, create form, assignee picker, help, comment input)
 - Shared data (sprint groups, board columns, issue cache)
 
@@ -21,6 +21,7 @@ type boardModel struct {
     prevView       boardView        // restored after overlay closes
     backlog        blModel
     kanban         kanbanModel
+    epics          epicModel
     client         api.Client
     boardID        int
     jiraURL        string
@@ -62,6 +63,7 @@ type boardModel struct {
 const (
     viewBacklog       boardView = iota
     viewKanban
+    viewEpics
     viewEditLoading    // fetching issue + valid values
     viewEdit           // edit form active
     viewEditSaving     // API call in flight
@@ -79,9 +81,10 @@ const (
 
 | Key | Action |
 |-----|--------|
-| `Tab` | Toggle between backlog and kanban |
+| `Tab` | Cycle between backlog, kanban, and epics |
 | `1` | Switch to backlog |
 | `2` | Switch to kanban |
+| `3` | Switch to epics |
 | `?` | Open help overlay |
 
 **View switching is gated** by `canSwitchView()`: returns `true` only when the active sub-model is in its base navigation state (not filtering, not in detail view, not in visual mode).
@@ -89,8 +92,8 @@ const (
 ### Message Routing
 
 `boardModel.Update` handles:
-1. `tea.WindowSizeMsg` — always forwarded to both sub-models
-2. `boardRefreshDoneMsg` — replaces data in both sub-models after a refresh
+1. `tea.WindowSizeMsg` — always forwarded to all sub-models
+2. `boardRefreshDoneMsg` — replaces data in all sub-models after a refresh
 3. Edit/Create/Comment state machines (switch on `m.activeView`)
 4. `"o"` key — opens issue in browser (when in base navigation state)
 5. View-switching keys
@@ -105,6 +108,11 @@ When a sub-model wants an action that crosses TUI boundaries (edit, comment, ref
 ### Progressive Loading
 
 On initial startup, only the first 3 sprints are fetched (via `fetchBoardDataCore`). After the TUI renders, `lazyLoadCmd` fires in the background to fetch remaining sprints + backlog. Results arrive as `blLazyLoadDoneMsg`, which calls `blModel.appendGroups()` to merge them into the model without disrupting the user's cursor position.
+
+The epics view is a projection of the ordered backlog groups. It initially renders
+epics found in the first loaded sprints, then rebuilds after `blLazyLoadDoneMsg`
+adds remaining sprints and backlog issues. A lazy-load error remains visible in
+the epics view until the next full refresh.
 
 ### URL Construction
 
@@ -209,6 +217,42 @@ Sprint headers display:
 - Date range badge (`Mar 1 – Mar 14`) or state label
 - Issue count right-aligned, connected with `─` fill characters
 - Color: green for active, blue for future, dim for others
+
+---
+
+## Epics View (epicModel)
+
+**Files:** `internal/app/epic.go`, `internal/app/epic_view.go`
+
+The epics view derives unique epics from the same ordered sprint/backlog groups
+used by the backlog. Only epics referenced by loaded issues are shown. Each epic
+is ordered by the first child issue encountered while iterating sprint groups
+and their issue slices.
+
+### Epic State
+
+```text
+epicList -> epicLoading -> epicDetail
+    ^            |             |
+    +------------+-------------+
+```
+
+The list supports `j`/`k`, `g`/`G`, page movement, sidebar scrolling, and
+progressive loading status. `Enter` opens the selected epic detail, `o` opens
+the epic in Jira, and `b` switches to Backlog with the epic filter applied.
+Epic editing and comments are intentionally not part of this view.
+
+### Epic Projection
+
+`buildEpicItems(groups)` walks groups and issues in display order. The first
+issue for an `EpicKey` establishes the epic's position and first sprint/backlog
+location; subsequent children update the child count and aggregate metadata.
+The projection is rebuilt after lazy loading, full refreshes, and before entering
+the epics view so local optimistic backlog moves are reflected.
+
+Epic keys use the shared deterministic epic palette. The `FIRST APPEARS` value
+uses a deterministic palette slot assigned from the source sprint's board-order
+index, so each displayed sprint has a distinct color until the palette cycles.
 
 ---
 
@@ -328,7 +372,7 @@ After comment saves (`commentSaveDoneMsg`), `boardModel` refreshes the detail vi
 
 ### 1. Unified Board Model
 
-Running both backlog and kanban under a single `boardModel` allows:
+Running backlog, kanban, and epics under a single `boardModel` allows:
 - Shared data (no duplicate API calls when switching views)
 - Seamless view toggling with `Tab`
 - Consistent overlay states (edit, comment, picker) across views

@@ -19,7 +19,7 @@ and ship without any deprecation period since there's nothing to alias.
 | `tira get <key\|url>` | Read an issue (Markdown; pipe-safe) | `--edit` (opens `$EDITOR`) |
 | `tira update <key\|url>` | Update an issue | `--template`, `--no-edit`, `--file` |
 | `tira create` | Create an issue | `--project`, `--type`, `--parent`, `--file`, `--no-edit`, `--template` |
-| `tira board` | Unified TUI (backlog + kanban, Tab to toggle), starts on **backlog** | `--project` |
+| `tira board` | Unified TUI (backlog + kanban + epics, Tab to cycle), starts on **backlog** | `--project` |
 | `tira backlog` | Unified TUI, starts on **backlog** | `--project` |
 | `tira kanban` | Unified TUI, starts on **kanban** | `--project` |
 | `tira completion` | Shell completion script (cobra built-in) | — |

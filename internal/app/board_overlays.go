@@ -63,6 +63,11 @@ func (m boardModel) View() tea.View {
 		v.AltScreen = true
 		return v
 
+	case ViewEpics:
+		v := m.epics.View()
+		v.AltScreen = true
+		return v
+
 	default:
 		v := m.backlog.View()
 		v.AltScreen = true

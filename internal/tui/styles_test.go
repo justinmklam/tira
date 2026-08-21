@@ -54,3 +54,15 @@ func TestEpicColor_DifferentKeys(t *testing.T) {
 		}
 	}
 }
+
+func TestSprintColor_DeterministicAndIndexed(t *testing.T) {
+	if got := fmt.Sprint(SprintColor(0)); got != fmt.Sprint(SprintColor(0)) {
+		t.Fatalf("SprintColor is not deterministic: %q", got)
+	}
+	if fmt.Sprint(SprintColor(0)) == fmt.Sprint(SprintColor(1)) {
+		t.Fatal("adjacent sprint indexes should use distinct palette colors")
+	}
+	if fmt.Sprint(SprintColor(-1)) != fmt.Sprint(ColorMuted) {
+		t.Fatalf("negative sprint index should use muted color, got %v", SprintColor(-1))
+	}
+}

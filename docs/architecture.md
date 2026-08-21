@@ -4,7 +4,7 @@
 
 ## Overview
 
-tira is a terminal UI for Jira built in Go with the Charm ecosystem (Bubbletea, Bubbles, Lipgloss, Glamour). It provides two interactive views (backlog and kanban) under a unified board TUI, plus CLI commands for fetching, editing, and creating issues via `$EDITOR`.
+tira is a terminal UI for Jira built in Go with the Charm ecosystem (Bubbletea, Bubbles, Lipgloss, Glamour). It provides three interactive views (backlog, kanban, and epics) under a unified board TUI, plus CLI commands for fetching, editing, and creating issues via `$EDITOR`.
 
 ---
 
@@ -26,6 +26,8 @@ tira/
 │   │   ├── backlog.go         # blModel: backlog state + update logic
 │   │   ├── backlog_view.go    # blModel: all View() rendering
 │   │   ├── kanban.go          # kanbanModel: state + update + rendering
+│   │   ├── epic.go                 # epicModel: state + update logic
+│   │   ├── epic_view.go            # epicModel: rendering
 │   │   ├── kanban_view.go     # kanbanModel: view helpers
 │   │   ├── edit_form.go       # editModel: in-TUI issue form
 │   │   ├── edit_cmds.go       # editFormState: tea.Cmd funcs, pickers
@@ -179,11 +181,11 @@ graph TB
 ### Unified Board Model
 
 The board TUI runs a single `tea.Program` wrapping a `boardModel`. It manages:
-- Two sub-models: `blModel` (backlog) and `kanbanModel` (kanban)
+- Three sub-models: `blModel` (backlog), `kanbanModel` (kanban), and `epicModel` (epics)
 - Multiple overlay states (edit form, create form, assignee picker, help, comment input)
 - Shared data (sprint groups, board columns, issue cache)
 
-**View switching:** `Tab` toggles between backlog and kanban. `1` and `2` switch directly. Data is shared — the backlog's sprint groups and kanban's active sprint are fetched once and shared between views.
+**View switching:** `Tab` cycles through backlog, kanban, and epics. `1`, `2`, and `3` switch directly. Data is shared — the backlog's ordered sprint groups, kanban's active sprint, and epic projection are fetched or derived once and shared between views.
 
 **State machine (per sub-view):**
 

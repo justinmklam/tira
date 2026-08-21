@@ -765,17 +765,37 @@ func (m blModel) updateEpicFilterPicker(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	if m.epicFilterPicker.Completed {
 		item := m.epicFilterPicker.SelectedItem()
+		var filterEpic string
 		if item != nil {
-			m.filterEpic = item.Value
-		} else {
-			m.filterEpic = ""
+			filterEpic = item.Value
 		}
 		m.state = blList
-		m.rows = blBuildRows(m.groups, m.collapsed, m.filter, m.filterEpic)
-		m.cursor = tui.Clamp(m.cursor, 0, len(m.rows)-1)
-		return blScrollToFit(m), nil
+		var cmd tea.Cmd
+		m, cmd = m.setEpicFilter(filterEpic)
+		return m, cmd
 	}
 	return m, cmd
+}
+
+// setEpicFilter applies an epic filter, selects the first matching issue when
+// one exists, and refreshes the sidebar for the new cursor position.
+func (m blModel) setEpicFilter(epicKey string) (blModel, tea.Cmd) {
+	m.filterEpic = epicKey
+	m.rows = blBuildRows(m.groups, m.collapsed, m.filter, m.filterEpic)
+	m.cursor = tui.Clamp(m.cursor, 0, max(len(m.rows)-1, 0))
+
+	for i, row := range m.rows {
+		if row.kind == blRowIssue &&
+			(m.groups[row.groupIdx].Issues[row.issueIdx].EpicKey == epicKey ||
+				(epicKey == "" && row.kind == blRowIssue)) {
+			m.cursor = i
+			break
+		}
+	}
+
+	var cmd tea.Cmd
+	m, cmd = m.updateSidebarContent()
+	return blScrollToFit(m), cmd
 }
 
 func (m blModel) updateAssignPicker(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -814,7 +834,9 @@ func blDoAssignCmd(client api.Client, keys []string, accountID string) tea.Cmd {
 func blAssignParentCmd(client api.Client, keys []string, parentKey string) tea.Cmd {
 	return func() tea.Msg {
 		errors := client.BulkSetParent(keys, parentKey)
-		return blBulkDoneMsg{Keys: keys, Errors: errors}
+		// GetIssue preserves the board-only epic fields from the current issue,
+		// so parent changes require an authoritative board refresh.
+		return blBulkDoneMsg{Keys: keys, Errors: errors, FullRefresh: true}
 	}
 }
 

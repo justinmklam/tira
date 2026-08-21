@@ -7,7 +7,7 @@ tira provides the following commands:
 | `get <key\|url> [--edit]` | Fetch and display a single issue (accepts an issue key or a full browse URL); `--edit` is a **deprecated** alias for `update <key> --edit`-style interactive editing |
 | `update <key\|url> [--show] [--no-edit] [--file <path>]` | Update an existing issue; non-interactively (agents) via `--show`/`--no-edit`/`--file`, or interactively via `$EDITOR` |
 | `create [--project <key>] [--type <type>] [--parent <key>]` | Create a new issue via `$EDITOR` |
-| `board [--view backlog\|kanban] [--board-id <id>]` | Launch the unified TUI (backlog + kanban views) |
+| `board [--view backlog\|kanban\|epics] [--board-id <id>]` | Launch the unified TUI (backlog + kanban + epics views) |
 | `backlog` | **Deprecated** — alias for `board --view backlog` |
 | `kanban` | **Deprecated** — alias for `board --view kanban` |
 | `version` | Print the tira version (also available as `tira --version`) |
@@ -252,10 +252,10 @@ AI agents can use this to generate properly formatted issue templates programmat
 
 **File:** `cmd/tira/board.go`
 
-All three commands launch the same unified TUI. `board` is the canonical command; `backlog` and
+The three commands launch the same unified TUI. `board` is the canonical command; `backlog` and
 `kanban` are **deprecated** aliases kept for backward compatibility (print a deprecation warning,
 still fully functional):
-- `board [--view backlog|kanban]` — starts in the given view (`backlog` if `--view` omitted)
+- `board [--view backlog|kanban|epics]` — starts in the given view (`backlog` if `--view` omitted)
 - `backlog` — deprecated alias for `board --view backlog`
 - `kanban` — deprecated alias for `board --view kanban`
 
@@ -295,6 +295,9 @@ Manual refresh (`R`) fetches everything at once via `GetSprintGroups`.
 # Start in kanban view
 ./tira board --view kanban
 
+# Start in epics view
+./tira board --view epics
+
 # Override the configured board ID
 ./tira board --board-id 42
 
@@ -309,9 +312,11 @@ Manual refresh (`R`) fetches everything at once via `GetSprintGroups`.
 ### View Switching
 
 Once the TUI is running:
-- `Tab` — toggle between backlog and kanban
+- `Tab` — cycle through backlog, kanban, and epics
 - `1` — switch to backlog
 - `2` — switch to kanban
+- `3` — switch to epics
+- `b` from Epics — switch to Backlog with the selected epic filter applied
 - `q` or `Ctrl+C` — quit
 
 ---

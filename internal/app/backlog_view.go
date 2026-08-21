@@ -279,17 +279,7 @@ func (m blModel) renderIssueRow(row blRow, isSelected bool, width int) string {
 
 	issueType := tui.FixedWidth(issue.IssueType, blTypeW)
 
-	var spText string
-	if issue.StoryPoints > 0 {
-		if issue.StoryPoints == float64(int(issue.StoryPoints)) {
-			spText = fmt.Sprintf("%d", int(issue.StoryPoints))
-		} else {
-			spText = fmt.Sprintf("%.1f", issue.StoryPoints)
-		}
-	} else {
-		spText = "—"
-	}
-	sp := tui.FixedWidth(spText, blSpW)
+	sp := tui.FixedWidth(tui.FormatStoryPoints(issue.StoryPoints), blSpW)
 
 	assignee := issue.Assignee
 	if assignee == "" {

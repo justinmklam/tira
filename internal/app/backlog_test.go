@@ -3,6 +3,7 @@ package app
 import (
 	"testing"
 
+	"github.com/justinmklam/tira/internal/api"
 	"github.com/justinmklam/tira/internal/models"
 )
 
@@ -243,4 +244,70 @@ func TestBlMatchesFilter_EpicFilterOnly(t *testing.T) {
 	if blMatchesFilter(issue2, "", "Epic A") {
 		t.Error("issue2 should not match epic filter by name")
 	}
+}
+
+func TestBlSetEpicFilterSelectsFirstMatchingIssue(t *testing.T) {
+	groups := []models.SprintGroup{
+		{
+			Sprint: models.Sprint{Name: "Sprint 1"},
+			Issues: []models.Issue{
+				{Key: "PROJ-1", EpicKey: "EPIC-A"},
+				{Key: "PROJ-2", EpicKey: "EPIC-B"},
+			},
+		},
+		{
+			Sprint: models.Sprint{Name: "Backlog"},
+			Issues: []models.Issue{
+				{Key: "PROJ-3", EpicKey: "EPIC-A"},
+			},
+		},
+	}
+	m := blModel{
+		state:     blList,
+		groups:    groups,
+		rows:      blBuildRows(groups, map[int]bool{}, "", ""),
+		collapsed: map[int]bool{},
+		cursor:    2,
+	}
+
+	got, _ := m.setEpicFilter("EPIC-A")
+
+	if got.filterEpic != "EPIC-A" {
+		t.Fatalf("filterEpic = %q, want EPIC-A", got.filterEpic)
+	}
+	if got.cursor >= len(got.rows) || got.rows[got.cursor].kind != blRowIssue {
+		t.Fatalf("cursor = %d, want an issue row", got.cursor)
+	}
+	selected := got.groups[got.rows[got.cursor].groupIdx].Issues[got.rows[got.cursor].issueIdx]
+	if selected.Key != "PROJ-1" {
+		t.Fatalf("selected issue = %s, want PROJ-1", selected.Key)
+	}
+	for _, row := range got.rows {
+		if row.kind == blRowIssue {
+			issue := got.groups[row.groupIdx].Issues[row.issueIdx]
+			if issue.EpicKey != "EPIC-A" {
+				t.Fatalf("filtered rows contain %s", issue.Key)
+			}
+		}
+	}
+}
+
+func TestBlAssignParentRequestsFullRefresh(t *testing.T) {
+	cmd := blAssignParentCmd(parentRefreshClient{}, []string{"PROJ-1"}, "EPIC-1")
+	result := cmd()
+	msg, ok := result.(blBulkDoneMsg)
+	if !ok {
+		t.Fatalf("command returned %T, want blBulkDoneMsg", result)
+	}
+	if !msg.FullRefresh {
+		t.Fatal("parent assignment should request a full board refresh")
+	}
+}
+
+type parentRefreshClient struct {
+	api.Client
+}
+
+func (parentRefreshClient) BulkSetParent([]string, string) []error {
+	return []error{nil}
 }

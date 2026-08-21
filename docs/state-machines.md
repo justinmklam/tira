@@ -12,9 +12,11 @@ The top-level board TUI state machine manages view switching and overlay states.
 stateDiagram-v2
     [*] --> viewBacklog : startView=backlog
     [*] --> viewKanban : startView=kanban
+    [*] --> viewEpics : startView=epics
     
     viewBacklog --> viewKanban : Tab / 2
-    viewKanban --> viewBacklog : Tab / 1
+    viewKanban --> viewEpics : Tab / 3
+    viewEpics --> viewBacklog : Tab / 1
     
     viewBacklog --> viewEditLoading : e key (from backlog)
     viewKanban --> viewEditLoading : e key (from kanban)
@@ -46,9 +48,11 @@ stateDiagram-v2
     
     viewBacklog --> viewHelp : ?
     viewKanban --> viewHelp : ?
+    viewEpics --> viewHelp : ?
     
     viewHelp --> viewBacklog : esc / ?
     viewHelp --> viewKanban : esc / ?
+    viewHelp --> viewEpics : esc / ?
 ```
 
 ### State Descriptions
@@ -57,6 +61,7 @@ stateDiagram-v2
 |-------|-------------|
 | `viewBacklog` | Backlog view active (base state) |
 | `viewKanban` | Kanban view active (base state) |
+| `viewEpics` | Epics view active (base state) |
 | `viewEditLoading` | Fetching issue + valid values for edit |
 | `viewEdit` | Edit form active (huh-like multi-field input) |
 | `viewEditSaving` | API call to update issue in flight |
@@ -70,10 +75,28 @@ stateDiagram-v2
 
 ### View Switching Rules
 
-View switching (Tab, 1, 2) is **gated** by `canSwitchView()`:
+View switching (Tab, 1, 2, 3) is **gated** by `canSwitchView()`:
 
 - Returns `true` only when the active sub-model is in its base navigation state
 - Blocked when: filter active, detail view open, visual mode active
+
+## epicModel (Epics)
+
+The epics view is a projection of the ordered backlog groups and has its own
+selection/sidebar state:
+
+```mermaid
+stateDiagram-v2
+    [*] --> epicList
+    epicList --> epicLoading : Enter on epic
+    epicLoading --> epicDetail : issueFetchedMsg
+    epicDetail --> epicList : Esc / q
+    epicList --> viewBacklog : b (apply epic filter)
+```
+
+`j`/`k`, `g`/`G`, and page movement navigate the list. `o` opens the selected
+epic in Jira. The list can grow after `blLazyLoadDoneMsg`; a lazy-load error is
+shown without treating the partial list as complete.
 
 ---
 

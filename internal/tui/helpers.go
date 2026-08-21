@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -19,6 +20,17 @@ func FixedWidth(s string, n int) string {
 		return string(r[:n-1]) + "…"
 	}
 	return s + strings.Repeat(" ", n-len(r))
+}
+
+// FormatStoryPoints returns a compact display value for story points.
+func FormatStoryPoints(points float64) string {
+	if !(points > 0) {
+		return "—"
+	}
+	if points == float64(int(points)) {
+		return fmt.Sprintf("%d", int(points))
+	}
+	return fmt.Sprintf("%.1f", points)
 }
 
 // Clamp constrains v to the range [lo, hi].
