@@ -2,7 +2,7 @@
 
 Modelled on yazi's philosophy: modal only where the modality is obvious from context, not as a first-class concept the user has to track.
 
-> **Note:** This document reflects the actual implemented keybindings. Last updated: 2026-08-21
+> **Note:** This document reflects the actual implemented keybindings. Last updated: 2026-08-25
 
 ---
 
@@ -43,6 +43,7 @@ Modelled on yazi's philosophy: modal only where the modality is obvious from con
 | `g` / `G` | Jump to first / last epic |
 | `d` / `u` | Scroll the epic list by 1/4 page |
 | `<C-d>` / `<C-u>` | Scroll the selected epic sidebar |
+| `/` | Filter epics (fuzzy search by name or key) |
 | `<Enter>` | Open selected epic detail |
 | `<Esc>` / `q` | Close epic detail / cancel action |
 | `o` | Open selected epic in Jira |
@@ -154,7 +155,7 @@ When the help overlay is open (`?`), use these keys to navigate:
 |------|-------|------|
 | Normal | — | — |
 | Visual | `v` | `<Enter>` to confirm, `<Esc>` to cancel |
-| Filter | `/` | `<Enter>` to apply, `<Esc>` to clear |
+| Filter (backlog or epics) | `/` | `<Enter>` to apply, `<Esc>` to clear |
 | Key search | `f` | `<Enter>` to jump, `<Esc>` to cancel |
 | Detail view | `<Enter>` on issue | `<Esc>` or `q` to close |
 | Epic detail view | `<Enter>` on epic | `<Esc>` or `q` to close |

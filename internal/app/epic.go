@@ -19,6 +19,7 @@ type epicState int
 
 const (
 	epicList epicState = iota
+	epicFilter
 	epicLoading
 	epicDetail
 	epicLabelLoading
@@ -69,11 +70,15 @@ type epicModel struct {
 	client  api.Client
 	jiraURL string
 
-	items  []epicItem
-	cursor int
-	offset int
-	width  int
-	height int
+	items    []epicItem
+	allItems []epicItem
+	cursor   int
+	offset   int
+	width    int
+	height   int
+
+	filter      string
+	filterInput textinput.Model
 
 	loadSpinner spinner.Model
 	loading     bool
@@ -160,16 +165,44 @@ func buildEpicItems(groups []models.SprintGroup) []epicItem {
 	return openItems
 }
 
+func epicMatchesFilter(item epicItem, filter string) bool {
+	f := strings.ToLower(filter)
+	return strings.Contains(strings.ToLower(item.Key), f) ||
+		strings.Contains(strings.ToLower(item.Name), f) ||
+		strings.Contains(strings.ToLower(item.Summary), f)
+}
+
+func filterEpicItems(items []epicItem, filter string) []epicItem {
+	if filter == "" {
+		return items
+	}
+
+	filtered := make([]epicItem, 0, len(items))
+	for _, item := range items {
+		if epicMatchesFilter(item, filter) {
+			filtered = append(filtered, item)
+		}
+	}
+	return filtered
+}
+
 func newEpicModel(client api.Client, groups []models.SprintGroup, jiraURL string, loading bool) (epicModel, tea.Cmd) {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	s.Style = lipgloss.NewStyle().Foreground(tui.ColorSpinner)
 
+	items := buildEpicItems(groups)
+	filterInput := textinput.New()
+	filterInput.Placeholder = "type to filter…"
+	filterInput.CharLimit = 60
+
 	m := epicModel{
 		state:       epicList,
 		client:      client,
 		jiraURL:     strings.TrimRight(jiraURL, "/"),
-		items:       buildEpicItems(groups),
+		items:       items,
+		allItems:    items,
+		filterInput: filterInput,
 		loadSpinner: s,
 		loading:     loading,
 	}
@@ -182,7 +215,8 @@ func newEpicModel(client api.Client, groups []models.SprintGroup, jiraURL string
 // needed.
 func (m *epicModel) refreshData(groups []models.SprintGroup, loading bool, loadErr error) tea.Cmd {
 	selectedKey := m.selectedKey()
-	m.items = buildEpicItems(groups)
+	m.allItems = buildEpicItems(groups)
+	m.items = filterEpicItems(m.allItems, m.filter)
 	m.loading = loading
 	m.loadError = ""
 	if loadErr != nil {
@@ -209,6 +243,25 @@ func (m *epicModel) refreshData(groups []models.SprintGroup, loading bool, loadE
 	}
 	m.updateSidebar()
 	return nil
+}
+
+func (m *epicModel) applyFilter() tea.Cmd {
+	selectedKey := m.selectedKey()
+	if m.allItems == nil {
+		m.allItems = m.items
+	}
+	source := m.allItems
+	m.items = filterEpicItems(source, m.filter)
+	m.cursor = tui.Clamp(m.cursor, 0, max(len(m.items)-1, 0))
+	m.ensureVisible()
+
+	if selectedKey == m.selectedKey() {
+		return nil
+	}
+	m.sidebarIssueKey = ""
+	m.sidebarFullIssue = nil
+	m.updateSidebar()
+	return m.sidebarCommand()
 }
 
 func (m epicModel) selectedKey() string {
@@ -442,6 +495,10 @@ func (m epicModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	if m.state == epicFilter {
+		return m.updateFilter(msg)
+	}
+
 	key, ok := msg.(tea.KeyPressMsg)
 	if !ok {
 		if m.state == epicDetail {
@@ -562,6 +619,17 @@ func (m epicModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.result.filterBacklogKey = item.Key
 		}
 		return m, nil
+	case "esc":
+		if m.filter != "" {
+			m.filter = ""
+			m.filterInput.SetValue("")
+			return m, m.applyFilter()
+		}
+		return m, nil
+	case "/":
+		m.state = epicFilter
+		m.filterInput.SetValue(m.filter)
+		return m, m.filterInput.Focus()
 	case "l":
 		return m, m.beginLabelEdit()
 	case "R":
@@ -570,6 +638,40 @@ func (m epicModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+func (m epicModel) updateFilter(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if key, ok := msg.(tea.KeyPressMsg); ok {
+		switch key.String() {
+		case "esc":
+			m.filter = ""
+			m.filterInput.SetValue("")
+			m.filterInput.Blur()
+			m.state = epicList
+			return m, m.applyFilter()
+		case "enter":
+			m.filter = m.filterInput.Value()
+			m.filterInput.Blur()
+			m.state = epicList
+			return m, m.applyFilter()
+		case "ctrl+c":
+			m.quitting = true
+			m.result.quit = true
+			return m, nil
+		}
+	}
+
+	var cmd tea.Cmd
+	m.filterInput, cmd = m.filterInput.Update(msg)
+	m.filter = m.filterInput.Value()
+	filterCmd := m.applyFilter()
+	if cmd == nil {
+		return m, filterCmd
+	}
+	if filterCmd == nil {
+		return m, cmd
+	}
+	return m, tea.Batch(cmd, filterCmd)
 }
 
 func (m *epicModel) clampSidebarOffset() {

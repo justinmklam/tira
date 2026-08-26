@@ -69,6 +69,7 @@ func HelpSections() []HelpSection {
 				{Key: "g / G", Description: "Jump to first / last epic"},
 				{Key: "d / u", Description: "Scroll the epic list by 1/4 page"},
 				{Key: "ctrl+d / ctrl+u", Description: "Scroll selected epic details"},
+				{Key: "/", Description: "Filter epics (fuzzy search by name or key)"},
 				{Key: "Enter", Description: "Open epic detail pane"},
 				{Key: "Esc / q", Description: "Close epic detail / cancel action"},
 				{Key: "o", Description: "Open selected epic in Jira"},

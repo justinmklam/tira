@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"charm.land/bubbles/v2/textinput"
 	"charm.land/lipgloss/v2"
 	"github.com/justinmklam/tira/internal/api"
 	"github.com/justinmklam/tira/internal/models"
@@ -118,6 +119,69 @@ func TestEpicRefreshPreservesSelectionAndClampsCursor(t *testing.T) {
 	m.refreshData(nil, false, nil)
 	if m.cursor != 0 || m.selectedKey() != "" {
 		t.Fatalf("empty projection was not cursor-safe: cursor=%d key=%q", m.cursor, m.selectedKey())
+	}
+}
+
+func TestEpicFilterMatchesKeyAndName(t *testing.T) {
+	items := []epicItem{
+		{Key: "EPIC-A", Name: "Alpha"},
+		{Key: "EPIC-B", Name: "Beta"},
+		{Key: "EPIC-C", Name: "Gamma"},
+	}
+	filterInput := textinput.New()
+	m := epicModel{
+		state:       epicList,
+		items:       items,
+		allItems:    items,
+		filterInput: filterInput,
+		cursor:      0,
+		height:      40,
+	}
+
+	updated, cmd := m.Update(keyPress("/"))
+	m = updated.(epicModel)
+	if m.state != epicFilter {
+		t.Fatalf("state after filter hotkey = %v, want epicFilter", m.state)
+	}
+	if cmd == nil {
+		t.Fatal("filter hotkey should focus the filter input")
+	}
+
+	m.filterInput.SetValue("beta")
+	updated, _ = m.Update(keyPress("enter"))
+	m = updated.(epicModel)
+	if m.state != epicList {
+		t.Fatalf("state after applying filter = %v, want epicList", m.state)
+	}
+	if len(m.items) != 1 || m.items[0].Key != "EPIC-B" {
+		t.Fatalf("filtered epics = %#v, want EPIC-B only", m.items)
+	}
+}
+
+func TestEpicFilterCancelRestoresAllItems(t *testing.T) {
+	items := []epicItem{
+		{Key: "EPIC-A", Name: "Alpha"},
+		{Key: "EPIC-B", Name: "Beta"},
+	}
+	filterInput := textinput.New()
+	m := epicModel{
+		state:       epicFilter,
+		items:       items[:1],
+		allItems:    items,
+		filter:      "alpha",
+		filterInput: filterInput,
+		cursor:      0,
+		height:      40,
+	}
+	m.filterInput.SetValue("alpha")
+
+	updated, _ := m.Update(keyPress("esc"))
+	m = updated.(epicModel)
+	if m.state != epicList {
+		t.Fatalf("state after cancelling filter = %v, want epicList", m.state)
+	}
+	if m.filter != "" || len(m.items) != len(items) {
+		t.Fatalf("filter cancel left filter=%q items=%#v", m.filter, m.items)
 	}
 }
 

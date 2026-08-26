@@ -88,15 +88,18 @@ selection/sidebar state:
 ```mermaid
 stateDiagram-v2
     [*] --> epicList
+    epicList --> epicFilter : /
+    epicFilter --> epicList : Enter (apply) / Esc (clear)
     epicList --> epicLoading : Enter on epic
     epicLoading --> epicDetail : issueFetchedMsg
     epicDetail --> epicList : Esc / q
     epicList --> viewBacklog : b (apply epic filter)
 ```
 
-`j`/`k`, `g`/`G`, and page movement navigate the list. `o` opens the selected
-epic in Jira. The list can grow after `blLazyLoadDoneMsg`; a lazy-load error is
-shown without treating the partial list as complete.
+`j`/`k`, `g`/`G`, and page movement navigate the list. `/` filters epics by key
+or name, updating matches as the query is entered. `o` opens the selected epic
+in Jira. The list can grow after `blLazyLoadDoneMsg`; a lazy-load error is shown
+without treating the partial list as complete.
 
 ---
 

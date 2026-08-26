@@ -86,6 +86,9 @@ func (m epicModel) viewList() string {
 	}
 
 	header := tui.BoldAccent.Padding(0, 1).Render("Epics")
+	if m.filter != "" {
+		header += " " + lipgloss.NewStyle().Foreground(tui.ColorWarning).Render("/ "+m.filter)
+	}
 	if m.loading {
 		header += " " + tui.MutedStyle.Render("(loading more…)")
 	}
@@ -118,9 +121,18 @@ func (m epicModel) viewList() string {
 		sidebar = append(sidebar, "")
 	}
 
-	footer := "  j/k ↑/↓: move   enter: details   l: edit labels   b: filter backlog   o: open Jira   R: refresh   ctrl+d/u: scroll   q: quit"
-	if m.state == epicLoading {
-		footer = "  " + m.loadSpinner.View() + tui.MutedStyle.Render(" Loading epic…") + "   " + footer
+	baseFooter := "  j/k ↑/↓: move   enter: details   /: filter   l: edit labels   b: filter backlog   o: open Jira   R: refresh   ctrl+d/u: scroll   q: quit"
+	var footer string
+	switch m.state {
+	case epicFilter:
+		footer = lipgloss.NewStyle().Foreground(tui.ColorAccent).Render("/") +
+			" " + m.filterInput.View() +
+			"  " + tui.MutedStyle.Render("esc: clear  enter: apply")
+	case epicLoading:
+		footer = "  " + m.loadSpinner.View() + tui.MutedStyle.Render(" Loading epic…") +
+			"   " + baseFooter
+	default:
+		footer = baseFooter
 	}
 
 	return header + "\n" +

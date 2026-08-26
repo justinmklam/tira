@@ -232,20 +232,21 @@ and their issue slices. Epics whose Jira status is `Closed` are excluded.
 ### Epic State
 
 ```text
-epicList -> epicLoading -> epicDetail
-    |             |             |
-    +--> epicLabelLoading -> epicLabelInput -> epicLabelSaving
-    |                              ^                |
-    +------------------------------+----------------+
+epicList -> epicFilter -> epicList
+epicList -> epicLoading -> epicDetail -> epicList
+epicList -> epicLabelLoading -> epicLabelInput -> epicLabelSaving -> epicList
+                                      ^                 |
+                                      +-----------------+
 ```
 
 The list supports `j`/`k`, `g`/`G`, page movement, sidebar scrolling, and
-progressive loading status. `Enter` opens the selected epic detail, `o` opens
-the epic in Jira, `l` edits the selected epic's complete comma-separated label
-set, and `b` switches to Backlog with the epic filter applied. Label editing
-prefills all current labels, replaces the full set on save, and clears labels
-when the submitted value is empty. The detail overlay does not expose label
-editing.
+progressive loading status. `/` filters epics by key or name, updating the
+projection as the query is entered; `Enter` applies the filter and `Esc`
+clears it. `Enter` opens the selected epic detail, `o` opens the epic in Jira,
+`l` edits the selected epic's complete comma-separated label set, and `b`
+switches to Backlog with the epic filter applied. Label editing prefills all
+current labels, replaces the full set on save, and clears labels when the
+submitted value is empty. The detail overlay does not expose label editing.
 
 ### Epic Projection
 
