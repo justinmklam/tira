@@ -140,6 +140,8 @@ blList ──/──→ blFilter ──enter/esc──→ blList
        ──S──→ blStoryPointInput ──enter/esc──→ blList
        ──s──→ blStatusPicker ──enter/esc──→ blList
        ──F──→ blEpicFilterPicker ──enter/esc──→ blList
+       ──L──→ blLinkPicker ──enter/esc──→ blList
+blDetail ──L──→ blLinkPicker ──enter/esc──→ blDetail
 ```
 
 ### Row Model
@@ -237,6 +239,8 @@ epicList -> epicLoading -> epicDetail -> epicList
 epicList -> epicLabelLoading -> epicLabelInput -> epicLabelSaving -> epicList
                                       ^                 |
                                       +-----------------+
+epicList   -> epicLinkPicker -> epicList
+epicDetail -> epicLinkPicker -> epicDetail
 ```
 
 The list supports `j`/`k`, `g`/`G`, page movement, sidebar scrolling, and
@@ -247,6 +251,66 @@ clears it. `Enter` opens the selected epic detail, `o` opens the epic in Jira,
 switches to Backlog with the epic filter applied. Label editing prefills all
 current labels, replaces the full set on save, and clears labels when the
 submitted value is empty. The detail overlay does not expose label editing.
+
+### Child Work Items and the Linked Items Picker
+
+Selecting an epic triggers two fetches: the epic's full issue (via `GetIssue`,
+for the sidebar) and its child work items (via `GetEpicChildren`, JQL
+`parent = "<EPIC-KEY>"`). `selectionCommand` batches both. Children are cached
+per epic key in the model and cleared whenever the selection changes, so a stale
+fetch result is discarded by comparing the message key against the current
+selection. The key is recorded at request time, so a second call does not
+duplicate an in-flight request, and the sidebar shows `Loading child work
+items…` until the request completes.
+
+The sidebar and detail pane render children with the shared
+`display.LinkedItemsSection` under a `Child Work Items` heading, formatted as
+`child KEY: summary (Type · Priority · Status · N subtasks)`. A fetch failure is
+reported inline as `Child work items unavailable: …` rather than being hidden.
+The sidebar is glamour-rendered markdown, so children are wrapped in a muted
+style only when no glamour output is present; glamour output is appended
+unwrapped so its own styling survives.
+
+`L` opens `epicLinkPicker`, a filterable overlay listing the selected epic's
+related items: explicit issue links, subtasks, and child work items, deduplicated
+by key. Arrow keys move the selection and typing filters the list; `Enter` opens
+the highlighted item in the browser instead of moving the cursor, because
+related items frequently are not on the board. `Esc` returns to the state the
+picker was opened from (`linkPickerReturn`). The picker opens even when there
+are no related items, where it reports that nothing matched.
+
+### Shared Linked Items Picker
+
+`internal/app/linked_items.go` holds the picker used by the backlog
+(`blLinkPicker`), kanban (`stateLinkPicker`), and epics (`epicLinkPicker`) views:
+
+- `linkedItemsForIssue` returns the related work items carried by a fully
+  fetched issue: explicit issue links, subtasks, and the parent
+- `collectLinkedItems` flattens groups while keeping only the first entry per
+  key, so a work item is never listed twice
+- `linkedPickerRows` maps items onto `tui.PickerItem` rows: `relationship KEY`
+  as the label, `summary (type · status · N subtasks)` as the sub-label, and the
+  issue key as the value
+- `linkedItemPicker` wraps `tui.PickerModel` (constructed with
+  `tui.NewLocalPickerModel`, so typing filters in memory with no debounce or
+  loading state) and returns a `linkedPickerAction` (confirmed/aborted) so each
+  view keeps ownership of the states it returns to; `ctrl+c` stays with the
+  caller because quitting is view-specific
+- `viewLinkedItemsPicker` renders the overlay through `tui.RenderPickerOverlay`
+
+The backlog builds items from the same full issue fetch that populates the
+sidebar, so its picker is empty until that fetch completes. The epics view adds
+the epic's fetched child work items on top of those items. Both views call
+`reopen` when a fetch lands while their picker is open, which refreshes the
+contents while keeping the highlighted row in place.
+
+The kanban board holds only list-view fields, so `L` there first fetches the
+full issue via `fetchKanbanLinkIssueCmd` and opens the picker when
+`kanbanLinkIssueFetchedMsg` arrives. The pending key is tracked in
+`linkPickerKey` so a fetch is discarded if the cursor moved on, the footer shows
+a spinner while waiting, and a failed fetch still opens an empty picker so the
+key press is visible rather than silently ignored. Opening `L` from the kanban
+detail pane uses the already-loaded `detailIssue` and fetches nothing.
 
 ### Epic Projection
 
@@ -274,6 +338,8 @@ index, so each displayed sprint has a distinct color until the palette cycles.
 stateBoard ──enter──→ stateLoading ──issueFetchedMsg──→ stateDetail ──esc/q──→ stateBoard
            ──A──→ stateAssignPicker ──enter/esc──→ stateBoard
            ──s──→ stateStatusPicker ──enter/esc──→ stateBoard
+           ──L──→ (fetch) ──kanbanLinkIssueFetchedMsg──→ stateLinkPicker ──enter/esc──→ stateBoard
+stateDetail ──L──→ stateLinkPicker ──enter/esc──→ stateDetail
 ```
 
 ### Column Model

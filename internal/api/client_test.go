@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
+	"sync"
 	"testing"
 
 	jira "github.com/andygrunwald/go-jira/v2/cloud"
@@ -34,7 +36,25 @@ func TestFetchFullIssue_ParsesAllFields(t *testing.T) {
 			"issuelinks": [
 				{
 					"type": {"outward": "blocks", "inward": "is blocked by"},
-					"outwardIssue": {"key": "PROJ-456", "fields": {"summary": "Blocked issue", "status": {"name": "To Do"}}}
+					"outwardIssue": {
+						"key": "PROJ-456",
+						"fields": {
+							"summary": "Blocked issue",
+							"status": {"name": "To Do"},
+							"issuetype": {"name": "Bug"},
+							"priority": {"name": "High"}
+						}
+					}
+				}
+			],
+			"subtasks": [
+				{
+					"key": "PROJ-124",
+					"fields": {
+						"summary": "Sub task",
+						"status": {"name": "In Progress"},
+						"issuetype": {"name": "Sub-task"}
+					}
 				}
 			],
 			"customfield_10010": "Sprint Name",
@@ -96,6 +116,27 @@ func TestFetchFullIssue_ParsesAllFields(t *testing.T) {
 	}
 	if len(got.LinkedIssues) != 1 {
 		t.Errorf("LinkedIssues = %d, want 1", len(got.LinkedIssues))
+	}
+	if len(got.LinkedIssues) == 1 {
+		link := got.LinkedIssues[0]
+		if link.IssueType != "Bug" {
+			t.Errorf("linked IssueType = %q, want %q", link.IssueType, "Bug")
+		}
+		if link.Priority != "High" {
+			t.Errorf("linked Priority = %q, want %q", link.Priority, "High")
+		}
+	}
+	if len(got.SubTasks) != 1 {
+		t.Fatalf("SubTasks = %d, want 1", len(got.SubTasks))
+	}
+	if got.SubTasks[0].Key != "PROJ-124" {
+		t.Errorf("subtask key = %q, want %q", got.SubTasks[0].Key, "PROJ-124")
+	}
+	if got.SubTasks[0].Relationship != "subtask" {
+		t.Errorf("subtask relationship = %q, want %q", got.SubTasks[0].Relationship, "subtask")
+	}
+	if got.SubTasks[0].Summary != "Sub task" {
+		t.Errorf("subtask summary = %q, want %q", got.SubTasks[0].Summary, "Sub task")
 	}
 	if got.Description != "Description text\n\n" {
 		t.Errorf("Description = %q, want %q", got.Description, "Description text\n\n")
@@ -562,4 +603,132 @@ func findSubstring(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+func TestGetEpicChildren_PagesUntilExhausted(t *testing.T) {
+	var (
+		mu       sync.Mutex
+		payloads []map[string]any
+	)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("method = %s, want POST", r.Method)
+		}
+		if r.URL.Path != "/rest/api/3/search/jql" {
+			t.Errorf("path = %s, want /rest/api/3/search/jql", r.URL.Path)
+		}
+
+		var payload map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Errorf("decoding request payload: %v", err)
+		}
+		mu.Lock()
+		payloads = append(payloads, payload)
+		page := len(payloads)
+		mu.Unlock()
+
+		w.Header().Set("Content-Type", "application/json")
+		switch page {
+		case 1:
+			_, _ = w.Write([]byte(`{
+				"issues": [
+					{
+						"key": "PROJ-1",
+						"fields": {
+							"summary": "First child",
+							"status": {"name": "To Do"},
+							"issuetype": {"name": "Story"},
+							"priority": {"name": "High"},
+							"subtasks": [{"key": "PROJ-90"}]
+						}
+					}
+				],
+				"nextPageToken": "page-2"
+			}`))
+		default:
+			_, _ = w.Write([]byte(`{
+				"issues": [
+					{
+						"key": "PROJ-2",
+						"fields": {
+							"summary": "Second child",
+							"status": {"name": "Done"},
+							"issuetype": {"name": "Task"}
+						}
+					}
+				],
+				"isLast": true
+			}`))
+		}
+	}))
+	defer server.Close()
+
+	children, err := newTestClient(server).GetEpicChildren("EPIC-1")
+	if err != nil {
+		t.Fatalf("GetEpicChildren() error = %v", err)
+	}
+	if len(children) != 2 {
+		t.Fatalf("children = %d, want 2", len(children))
+	}
+	if children[0].Key != "PROJ-1" || children[1].Key != "PROJ-2" {
+		t.Errorf("children order = %s, %s; want PROJ-1, PROJ-2", children[0].Key, children[1].Key)
+	}
+	if children[0].IssueType != "Story" {
+		t.Errorf("child IssueType = %q, want %q", children[0].IssueType, "Story")
+	}
+	if children[0].Priority != "High" {
+		t.Errorf("child Priority = %q, want %q", children[0].Priority, "High")
+	}
+	if children[0].SubTaskCount != 1 {
+		t.Errorf("child SubTaskCount = %d, want 1", children[0].SubTaskCount)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(payloads) != 2 {
+		t.Fatalf("requests = %d, want 2 (one per page)", len(payloads))
+	}
+	jql, _ := payloads[0]["jql"].(string)
+	if !strings.Contains(jql, `parent = "EPIC-1"`) {
+		t.Errorf("jql = %q, want it to filter on parent", jql)
+	}
+	if strings.Contains(jql, "Epic Link") {
+		t.Errorf("jql = %q, should not use the retired Epic Link field", jql)
+	}
+	if _, ok := payloads[0]["nextPageToken"]; ok {
+		t.Error("first request should not send a nextPageToken")
+	}
+	if token, _ := payloads[1]["nextPageToken"].(string); token != "page-2" {
+		t.Errorf("second request nextPageToken = %q, want %q", token, "page-2")
+	}
+}
+
+func TestGetEpicChildren_EmptyAndError(t *testing.T) {
+	t.Run("no children", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"issues": [], "isLast": true}`))
+		}))
+		defer server.Close()
+
+		children, err := newTestClient(server).GetEpicChildren("EPIC-1")
+		if err != nil {
+			t.Fatalf("GetEpicChildren() error = %v", err)
+		}
+		if len(children) != 0 {
+			t.Errorf("children = %d, want 0", len(children))
+		}
+	})
+
+	t.Run("api error", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"errorMessages": ["bad jql"]}`))
+		}))
+		defer server.Close()
+
+		if _, err := newTestClient(server).GetEpicChildren("EPIC-1"); err == nil {
+			t.Fatal("GetEpicChildren() error = nil, want error")
+		}
+	})
 }

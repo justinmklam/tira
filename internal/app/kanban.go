@@ -1,6 +1,7 @@
 package app
 
 import (
+	"fmt"
 	"strings"
 
 	"charm.land/bubbles/v2/spinner"
@@ -8,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/justinmklam/tira/internal/api"
+	"github.com/justinmklam/tira/internal/debug"
 	"github.com/justinmklam/tira/internal/models"
 	"github.com/justinmklam/tira/internal/tui"
 )
@@ -22,6 +24,7 @@ const (
 	stateDetail
 	stateAssignPicker
 	stateStatusPicker
+	stateLinkPicker // floating linked work items picker
 )
 
 type kanbanColumn struct {
@@ -42,6 +45,14 @@ type kanbanResult struct {
 	refresh        bool
 }
 
+// kanbanLinkIssueFetchedMsg carries the full issue fetched to supply the linked
+// items picker opened from the board, where no full issue is loaded yet.
+type kanbanLinkIssueFetchedMsg struct {
+	key   string
+	issue *models.Issue
+	err   error
+}
+
 // kanbanBulkDoneMsg carries results from parallel bulk operations.
 // Keys and Errors are parallel slices (nil error = success for that key).
 // FullRefresh is set for status transitions where GetIssue does not return
@@ -56,6 +67,7 @@ type kanbanModel struct {
 	state    kanbanState
 	client   api.Client
 	project  string
+	jiraURL  string
 	width    int
 	height   int
 	quitting bool
@@ -82,6 +94,11 @@ type kanbanModel struct {
 	// Status picker state
 	statusPicker     tui.PickerModel
 	statusTargetKeys []string
+
+	// linkPicker lists the selected issue's related work items.
+	linkPicker       linkedItemPicker
+	linkPickerReturn kanbanState
+	linkPickerKey    string // issue key whose fetch will populate the picker
 }
 
 // buildColumns maps sprint issues into the board's fixed column order.
@@ -168,7 +185,7 @@ func (m *kanbanModel) ensureScrolled(ci int) {
 	}
 }
 
-func newKanbanModel(client api.Client, boardCols []models.BoardColumn, issues []models.Issue, sprintName, project string) kanbanModel {
+func newKanbanModel(client api.Client, boardCols []models.BoardColumn, issues []models.Issue, sprintName, project, jiraURL string) kanbanModel {
 	cols := buildColumns(boardCols, issues)
 	s := spinner.New()
 	s.Spinner = spinner.Dot
@@ -177,12 +194,18 @@ func newKanbanModel(client api.Client, boardCols []models.BoardColumn, issues []
 		state:       stateBoard,
 		client:      client,
 		project:     project,
+		jiraURL:     strings.TrimRight(jiraURL, "/"),
 		columns:     cols,
 		rowIdxs:     make([]int, len(cols)),
 		colScrolls:  make([]int, len(cols)),
 		sprintName:  sprintName,
 		loadSpinner: s,
 	}
+}
+
+// issueURL returns the absolute URL for an issue key.
+func (m kanbanModel) issueURL(key string) string {
+	return fmt.Sprintf("%s/browse/%s", strings.TrimRight(m.jiraURL, "/"), key)
 }
 
 // refreshData replaces the kanban columns with new data, preserving cursor
@@ -278,8 +301,17 @@ func (m kanbanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.state = stateDetail
 		return m, nil
 
+	case kanbanLinkIssueFetchedMsg:
+		if msg.key != m.linkPickerKey {
+			return m, nil
+		}
+		m.linkPickerKey = ""
+		// An empty picker is still opened on failure so the key press gives
+		// visible feedback instead of appearing to do nothing.
+		return m, m.openLinkPicker(msg.issue)
+
 	case spinner.TickMsg:
-		if m.state == stateLoading {
+		if m.state == stateLoading || m.linkPickerKey != "" {
 			var cmd tea.Cmd
 			m.loadSpinner, cmd = m.loadSpinner.Update(msg)
 			return m, cmd
@@ -312,6 +344,8 @@ func (m kanbanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateAssignPicker(msg)
 	case stateStatusPicker:
 		return m.updateStatusPicker(msg)
+	case stateLinkPicker:
+		return m.updateLinkPicker(msg)
 	}
 	return m, nil
 }
@@ -383,8 +417,54 @@ func (m kanbanModel) updateBoard(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case "R":
 		m.result = kanbanResult{refresh: true}
 		return m, nil
+	case "L":
+		if issue := m.currentIssue(); issue != nil {
+			m.linkPickerKey = issue.Key
+			return m, tea.Batch(m.loadSpinner.Tick, fetchKanbanLinkIssueCmd(m.client, issue.Key))
+		}
 	}
 	return m, nil
+}
+
+// openLinkPicker opens the related work items picker for the given issue, which
+// may be nil when the full issue could not be fetched.
+func (m *kanbanModel) openLinkPicker(issue *models.Issue) tea.Cmd {
+	m.linkPickerReturn = m.state
+	m.state = stateLinkPicker
+	return m.linkPicker.open(linkedItemsForIssue(issue))
+}
+
+// updateLinkPicker handles the shared related work items picker.
+func (m kanbanModel) updateLinkPicker(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if key, ok := msg.(tea.KeyPressMsg); ok && key.String() == "ctrl+c" {
+		m.quitting = true
+		return m, nil
+	}
+
+	action, cmd := m.linkPicker.handleKey(msg)
+	switch action {
+	case linkedPickerAborted:
+		m.state = m.linkPickerReturn
+	case linkedPickerConfirmed:
+		key := m.linkPicker.selectedKey()
+		m.state = m.linkPickerReturn
+		if key != "" {
+			return m, openInBrowserCmd(m.issueURL(key))
+		}
+	}
+	return m, cmd
+}
+
+// fetchKanbanLinkIssueCmd fetches the full issue that supplies the linked items
+// picker when it is opened from the board, which holds only list-view fields.
+func fetchKanbanLinkIssueCmd(client api.Client, key string) tea.Cmd {
+	return func() tea.Msg {
+		issue, err := client.GetIssue(key)
+		if err != nil {
+			debug.LogError("client.GetIssue for linked items", err)
+		}
+		return kanbanLinkIssueFetchedMsg{key: key, issue: issue, err: err}
+	}
 }
 
 func (m kanbanModel) updateDetail(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -403,6 +483,10 @@ func (m kanbanModel) updateDetail(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.detailIssue != nil {
 				m.result = kanbanResult{commentKey: m.detailIssue.Key, commentSummary: m.detailIssue.Summary}
 				return m, nil
+			}
+		case "L":
+			if m.detailIssue != nil {
+				return m, m.openLinkPicker(m.detailIssue)
 			}
 		case "ctrl+c":
 			m.quitting = true

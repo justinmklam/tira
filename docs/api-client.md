@@ -24,6 +24,7 @@ type Client interface {
     GetBacklogIssues(boardID int) ([]models.Issue, error)
     GetBacklog(projectKey string) ([]models.Sprint, error)  // NOT IMPLEMENTED
     GetEpics(projectKey, query string) ([]models.Issue, error)
+    GetEpicChildren(epicKey string) ([]models.Issue, error)
     MoveIssuesToSprint(sprintID int, keys []string) error
     MoveIssuesToBacklog(keys []string) error
     RankIssues(keys []string, rankAfterKey, rankBeforeKey string) error
@@ -122,6 +123,23 @@ The board TUI minimizes time-to-first-render by splitting the load:
 3. **Manual refresh** (`R` key): Uses `fetchAllBoardDataCore` → `GetSprintGroups` to reload everything at once.
 
 **Status change dates** are NOT fetched during board load. They are fetched lazily when an issue is selected for the sidebar (via `GetIssue`, which fetches the full changelog).
+
+### GetEpicChildren — Paginated JQL Search
+
+`GetEpicChildren(epicKey)` returns the direct children of an epic using JQL:
+
+```sql
+parent = "<EPIC-KEY>" ORDER BY created ASC
+```
+
+- **Why `parent` and not `"Epic Link"`:** `"Epic Link"` has been retired in favour of `parent` and fails with an unknown-field error on team-managed projects. `parent` works for both team-managed and company-managed projects.
+- **Pagination:** posts to `rest/api/3/search/jql` with `maxResults=100` and pages on `nextPageToken` until the API stops returning one, so epics with more than one page of children are complete. The legacy `/rest/api/3/search` endpoint is removed from Jira Cloud and must not be used.
+- **Requested fields:** `summary, status, issuetype, priority, subtasks`. The child's subtask count is derived from `fields.subtasks`.
+- Returned as `[]models.Issue`; the epic view projects them into `models.LinkedIssue` via `epicChildLinks` so children render with the same flat format as issue links.
+
+### Issue Links, Subtasks, and Parents
+
+`GetIssue` parses `fields.issuelinks` (with issue type and priority for each linked issue) and `fields.subtasks` (exposed as `Issue.SubTasks` with relationship `subtask`). `fields.parent` provides `ParentKey`, and `ParentSummary` falls back to the parent's inline summary when the field-name lookup misses.
 
 ### Custom Field Resolution
 

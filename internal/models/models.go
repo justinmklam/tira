@@ -21,16 +21,21 @@ type Issue struct {
 	ParentKey          string
 	ParentSummary      string
 	LinkedIssues       []LinkedIssue
+	SubTasks           []LinkedIssue
+	SubTaskCount       int // number of subtasks, populated by child listings
 	Comments           []Comment
 	StatusChangedDate  string // ISO date when status last changed, e.g. "2026-03-01"
 	ProjectKey         string
 }
 
 type LinkedIssue struct {
-	Relationship string // e.g. "blocks", "is blocked by", "relates to"
+	Relationship string // e.g. "blocks", "is blocked by", "relates to", "child", "subtask"
 	Key          string
 	Summary      string
 	Status       string
+	IssueType    string
+	Priority     string
+	SubTaskCount int // subtasks of this item, when known
 }
 
 type Comment struct {

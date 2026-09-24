@@ -20,6 +20,7 @@ Modelled on yazi's philosophy: modal only where the modality is obvious from con
 | `Z` | Toggle collapse all sprints |
 | `/` | Filter tickets (fuzzy search by summary or key) |
 | `f` | Jump to issue by number (e.g. type `123` to jump to `DEV-123`) |
+| `L` | Pick a linked item to open in Jira (see [Linked Items](#linked-items-l)) |
 | `<Enter>` | Toggle expand/collapse sprint or open ticket detail |
 | `<Esc>` | Clear filter / cancel current action / clear selection |
 
@@ -30,6 +31,7 @@ Modelled on yazi's philosophy: modal only where the modality is obvious from con
 | Key | Action |
 |-----|--------|
 | `h` / `j` / `k` / `l` | Move left / down / up / right between columns and issues |
+| `L` | Pick a linked item to open in Jira (see [Linked Items](#linked-items-l)) |
 | `<Enter>` | Open ticket detail pane |
 | `<Esc>` | Close detail pane / cancel action |
 
@@ -46,6 +48,7 @@ Modelled on yazi's philosophy: modal only where the modality is obvious from con
 | `/` | Filter epics (fuzzy search by name or key) |
 | `<Enter>` | Open selected epic detail |
 | `<Esc>` / `q` | Close epic detail / cancel action |
+| `L` | Pick a linked item or child work item and open it in Jira |
 | `o` | Open selected epic in Jira |
 | `b` | Switch to Backlog and filter by selected epic |
 
@@ -99,6 +102,7 @@ labels; existing labels are replaced by the submitted list.
 | `A` | Set assignee — fuzzy picker (works on selection or cursor ticket) |
 | `F` | Filter by epic — fuzzy picker |
 | `<Enter>` | Open ticket detail pane (press `e` from there to edit) |
+| `L` | Pick a linked item to open in Jira (works in the list and the detail pane) |
 | `o` | Open ticket in browser (cursor issue) |
 | `O` | Open all selected tickets in browser |
 | `y` | Copy ticket URL to clipboard (cursor issue) |
@@ -118,6 +122,7 @@ Quick pickers (`s`, `P`, `A`, `F`) open a small overlay, navigate with `j`/`k`, 
 | `e` | Edit ticket in `$EDITOR` (full template flow) |
 | `s` | Change status — picker |
 | `A` | Set assignee — fuzzy picker |
+| `L` | Pick a linked item to open in Jira (works on the board and in the detail pane) |
 | `o` | Open ticket in browser |
 
 ---
@@ -159,6 +164,7 @@ When the help overlay is open (`?`), use these keys to navigate:
 | Key search | `f` | `<Enter>` to jump, `<Esc>` to cancel |
 | Detail view | `<Enter>` on issue | `<Esc>` or `q` to close |
 | Epic detail view | `<Enter>` on epic | `<Esc>` or `q` to close |
+| Linked items picker | `L` on a ticket or epic (list, board, or detail) | `<Enter>` to open in browser, `<Esc>` to cancel |
 | Label edit | `l` on an epic | `<Enter>` to save, `<Esc>` to cancel |
 | Pickers (`s`, `P`, `A`, `F`) | Key press | `<Enter>` to select, `<Esc>` to cancel |
 
@@ -186,6 +192,29 @@ When the help overlay is open (`?`), use these keys to navigate:
 ### Epic Filter (`F`)
 - Filters visible tickets to show only those belonging to selected epic
 - Select `(none)` to clear filter
+
+### Linked Items (`L`)
+- Available in the backlog (ticket list and detail pane), the kanban view (board and detail
+  pane), and the epics view (epic list and detail pane)
+- Opens a picker of everything related to the selection:
+  - Backlog: explicit issue links, subtasks, and the parent
+  - Kanban: explicit issue links, subtasks, and the parent
+  - Epics: explicit issue links, subtasks, and child work items (stories and tasks whose
+    parent is the epic)
+- Epic children are fetched from JQL (`parent = "<EPIC-KEY>"`), so they include items that
+  are not on the board and items that are closed
+- The backlog and kanban read items from a full issue fetch. The backlog already fetches
+  one for its sidebar, so its picker fills in when that lands; the kanban board holds only
+  list-view fields, so pressing `L` on the board fetches the full issue first (the footer
+  shows a spinner while it waits)
+- Items are listed flat as `relationship KEY` with the summary, type, and status alongside;
+  deduplicated by key
+- The list is filterable: type to narrow it (matching key, summary, type, or status) and use
+  arrow keys to move the selection, the same way the Set Parent picker works
+- `<Enter>` opens the highlighted item in the browser; related items are often not on the
+  board, so the picker opens in Jira instead of moving the cursor
+- The epic sidebar and detail pane list child work items under a `Child Work Items`
+  heading; a failed fetch is reported inline rather than hidden
 
 ---
 

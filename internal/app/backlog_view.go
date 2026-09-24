@@ -44,6 +44,8 @@ func (m blModel) View() tea.View {
 		return tea.NewView(m.viewEpicFilterPicker())
 	case blSprintForm:
 		return tea.NewView(m.viewSprintForm())
+	case blLinkPicker:
+		return tea.NewView(viewLinkedItemsPicker(m.linkPicker.picker, m.width, m.height))
 	default:
 		return tea.NewView(m.viewList())
 	}
@@ -66,7 +68,11 @@ func (m blModel) viewDetail() string {
 	overlayW, _ := tui.OverlaySize(width, height)
 	innerW := overlayW - 2
 
-	return renderIssueDetailView(m.detailIssue, m.detailView, width, height, overlayW, innerW)
+	return renderIssueDetailView(
+		m.detailView,
+		"  e: edit   c: comment   L: linked items   o: open in browser   esc/q: back   j/k: scroll",
+		width, height, overlayW, innerW,
+	)
 }
 
 // blColumnHeader returns a dim header row aligned with issue row columns.
@@ -162,7 +168,7 @@ func (m blModel) viewList() string {
 			"e: edit", "c: comment", "o: open", "y: copy", "s: status", "S: story pts",
 			"x: cut", "p: paste", ">/<: adj sprint", "B: backlog",
 			"/: filter", "F: epic", "ctrl+n: new sprint", "E: edit sprint", "R: refresh",
-			"ctrl+d/u: scroll details",
+			"L: linked", "ctrl+d/u: scroll details",
 		}
 		left := "  " + strings.Join(hints, "   ")
 		if n := len(m.allSelected()); n > 0 {

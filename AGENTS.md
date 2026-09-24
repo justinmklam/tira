@@ -269,6 +269,7 @@ func (m boardModel) refreshCmd() tea.Cmd {
 - Backlog rendering is split: `backlog.go` (model + update) and `backlog_view.go` (rendering)
 - Kanban similarly split: `kanban.go` (model + update) and `kanban_view.go` (rendering)
 - Edit form split: `edit_form.go` (model) and `edit_cmds.go` (commands)
+- Shared view widgets live in their own file, e.g. `linked_items.go` (the `L` picker used by both backlog and epics)
 - The `board` command runs a unified TUI that wraps backlog, kanban, and epics views — Tab cycles between them
 
 ### Editor/Validator Packages
@@ -369,6 +370,18 @@ runtime.SetFinalizer(new(struct{}), func(_ *struct{}) {
     debug.Close()  // May never run
 })
 ```
+
+### 12. Epic Children Use the `parent` JQL Field, Not `"Epic Link"`
+
+`GetEpicChildren` queries `parent = "<EPIC-KEY>"`. The legacy `"Epic Link"` JQL field is
+retired and returns an unknown-field error on team-managed projects, so it must not be
+used. The endpoint is `rest/api/3/search/jql`, which pages with `nextPageToken` and has no
+`total`; the legacy `/rest/api/3/search` endpoint has been removed and must not be used.
+
+Epic children are not part of the board projection — `buildEpicItems` only counts them.
+They are fetched on demand, cached per epic key (`epic_children:<key>`), and dropped when
+the selection changes or when a reparenting or status mutation occurs. A failed fetch is
+reported inline in the sidebar rather than silently ignored.
 
 ## Documentation
 

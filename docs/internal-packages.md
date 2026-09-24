@@ -96,9 +96,22 @@ issue, err := tui.RunWithSpinner("Fetching issue...", func() (*models.Issue, err
 - `InitialValue` positions cursor on matching item when results load
 - `Completed`/`Aborted` flags set by Enter/Esc
 
+Two constructors:
+
+| Constructor | Behaviour |
+|-------------|-----------|
+| `NewPickerModel(search SearchFunc)` | Debounced server-side search via `SearchFunc`. Used where choices must be queried (assignees, parents, statuses, epic filters). |
+| `NewLocalPickerModel(items []PickerItem)` | Filters a fixed in-memory list with no debounce or loading state. `Local()` reports which kind a picker is. Used by the Linked Items picker, whose choices are already held by the caller. |
+
+In both cases the input is focused by `Init()`, arrow keys (`up`/`down`, `ctrl+p`/`ctrl+n`) move the selection, and typed characters go to the filter input. For local pickers, typing narrows the list synchronously via `filterPickerItems`, which matches case-insensitively across `Label`, `SubLabel`, and `Value` (an empty query matches everything).
+
 **View** takes `(innerW, maxListRows int)` — does NOT include a border; caller wraps it in a lipgloss bordered box.
 
-**Used for:** assignee selection, parent/epic selection, status transition selection, epic filter selection.
+**Used for:** assignee selection, parent/epic selection, status transition selection, epic filter selection, and the Linked Items picker (local).
+
+### option_picker.go — Static Option Picker
+
+`OptionPickerModel` is a simpler static list picker (`NewOptionPickerModel(items, initialValue)`) with no text input: `j`/`k` or arrow keys navigate, `Enter` selects, `Esc` cancels. `Cursor` is exported, so callers can map the highlighted row back to their own data. Used for issue type and priority selection, where the choice set is small and fixed.
 
 ### help.go — Scrollable Help Overlay
 
@@ -127,6 +140,8 @@ type Issue struct {
     SprintName                                     string
     ParentKey, ParentSummary                       string
     LinkedIssues                                   []LinkedIssue
+    SubTasks                                       []LinkedIssue
+    SubTaskCount                                   int // populated by child listings
     Comments                                       []Comment
     StatusChangedDate                              string // ISO date "YYYY-MM-DD"
 }
@@ -193,6 +208,8 @@ type Status struct {
 Comments are sorted newest-first (Jira returns them `orderBy=-created`). Each comment is separated by `---`.
 
 **Timestamp formatting:** tries multiple Jira timestamp formats in order, falls back to the raw string.
+
+`LinkedItemsSection(title, items)` and `FormatLinkedItem(item)` render related work items as a flat bullet list, e.g. `- **blocks** MP-50: Other issue (Bug · High · In Progress)`. The section is shared: `RenderIssue` uses it for `# Linked Work Items`, and the epic view uses it for `# Child Work Items`, so every surface formats links identically. Issue type, priority, status, and subtask count are appended in that order, skipping empty values.
 
 ---
 

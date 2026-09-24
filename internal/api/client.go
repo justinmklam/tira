@@ -35,6 +35,9 @@ type Client interface {
 	GetBacklogIssues(boardID int) ([]models.Issue, error)
 	GetBacklog(projectKey string) ([]models.Sprint, error)
 	GetEpics(projectKey, query string) ([]models.Issue, error)
+	// GetEpicChildren returns the direct children of an epic, including closed
+	// ones, paging through the JQL search API until exhausted.
+	GetEpicChildren(epicKey string) ([]models.Issue, error)
 	MoveIssuesToSprint(sprintID int, keys []string) error
 	MoveIssuesToBacklog(keys []string) error
 	RankIssues(keys []string, rankAfterKey, rankBeforeKey string) error
@@ -67,6 +70,24 @@ type fieldDef struct {
 	id           string
 	name         string // lower-cased
 	schemaCustom string // schema.custom plugin key, e.g. "com.pyxis.greenhopper.jira:gh-story-points"
+}
+
+// linkIssueFields holds the fields needed to summarise a related issue
+// (issue link, parent, subtask, or epic child).
+type linkIssueFields struct {
+	Summary   string `json:"summary"`
+	IssueType struct {
+		Name string `json:"name"`
+	} `json:"issuetype"`
+	Priority *struct {
+		Name string `json:"name"`
+	} `json:"priority"`
+	Status struct {
+		Name string `json:"name"`
+	} `json:"status"`
+	SubTasks []struct {
+		Key string `json:"key"`
+	} `json:"subtasks"`
 }
 
 func NewClient(cfg *config.Config) (Client, error) {
@@ -220,7 +241,8 @@ func (c *jiraClient) fetchFullIssue(key string) (*models.Issue, error) {
 			DisplayName string `json:"displayName"`
 		} `json:"reporter"`
 		Parent *struct {
-			Key string `json:"key"`
+			Key    string           `json:"key"`
+			Fields *linkIssueFields `json:"fields"`
 		} `json:"parent"`
 		Labels     []string `json:"labels"`
 		IssueLinks []struct {
@@ -229,24 +251,18 @@ func (c *jiraClient) fetchFullIssue(key string) (*models.Issue, error) {
 				Inward  string `json:"inward"`
 			} `json:"type"`
 			OutwardIssue *struct {
-				Key    string `json:"key"`
-				Fields *struct {
-					Summary string `json:"summary"`
-					Status  struct {
-						Name string `json:"name"`
-					} `json:"status"`
-				} `json:"fields"`
+				Key    string           `json:"key"`
+				Fields *linkIssueFields `json:"fields"`
 			} `json:"outwardIssue"`
 			InwardIssue *struct {
-				Key    string `json:"key"`
-				Fields *struct {
-					Summary string `json:"summary"`
-					Status  struct {
-						Name string `json:"name"`
-					} `json:"status"`
-				} `json:"fields"`
+				Key    string           `json:"key"`
+				Fields *linkIssueFields `json:"fields"`
 			} `json:"inwardIssue"`
 		} `json:"issuelinks"`
+		SubTasks []struct {
+			Key    string           `json:"key"`
+			Fields *linkIssueFields `json:"fields"`
+		} `json:"subtasks"`
 	}
 	if err := json.Unmarshal(envelope.Fields, &sf); err != nil {
 		return nil, err
@@ -274,27 +290,17 @@ func (c *jiraClient) fetchFullIssue(key string) (*models.Issue, error) {
 	}
 	for _, link := range sf.IssueLinks {
 		if link.OutwardIssue != nil {
-			li := models.LinkedIssue{
-				Relationship: link.Type.Outward,
-				Key:          link.OutwardIssue.Key,
-			}
-			if link.OutwardIssue.Fields != nil {
-				li.Summary = link.OutwardIssue.Fields.Summary
-				li.Status = link.OutwardIssue.Fields.Status.Name
-			}
-			result.LinkedIssues = append(result.LinkedIssues, li)
+			result.LinkedIssues = append(result.LinkedIssues,
+				linkedIssueFromFields(link.Type.Outward, link.OutwardIssue.Key, link.OutwardIssue.Fields))
 		}
 		if link.InwardIssue != nil {
-			li := models.LinkedIssue{
-				Relationship: link.Type.Inward,
-				Key:          link.InwardIssue.Key,
-			}
-			if link.InwardIssue.Fields != nil {
-				li.Summary = link.InwardIssue.Fields.Summary
-				li.Status = link.InwardIssue.Fields.Status.Name
-			}
-			result.LinkedIssues = append(result.LinkedIssues, li)
+			result.LinkedIssues = append(result.LinkedIssues,
+				linkedIssueFromFields(link.Type.Inward, link.InwardIssue.Key, link.InwardIssue.Fields))
 		}
+	}
+	for _, sub := range sf.SubTasks {
+		result.SubTasks = append(result.SubTasks,
+			linkedIssueFromFields("subtask", sub.Key, sub.Fields))
 	}
 
 	// Raw field map for custom/ADF fields.
@@ -357,9 +363,29 @@ func (c *jiraClient) fetchFullIssue(key string) (*models.Issue, error) {
 		if fieldID, ok := nameToID["parent"]; ok {
 			result.ParentSummary = c.extractParentSummary(rawFields, fieldID)
 		}
+		if result.ParentSummary == "" && sf.Parent.Fields != nil {
+			result.ParentSummary = sf.Parent.Fields.Summary
+		}
 	}
 
 	return result, nil
+}
+
+// linkedIssueFromFields builds a summary entry for a related issue from its
+// resolved Jira fields. Missing fields leave the corresponding value empty.
+func linkedIssueFromFields(relationship, key string, fields *linkIssueFields) models.LinkedIssue {
+	li := models.LinkedIssue{Relationship: relationship, Key: key}
+	if fields == nil {
+		return li
+	}
+	li.Summary = fields.Summary
+	li.Status = fields.Status.Name
+	li.IssueType = fields.IssueType.Name
+	li.SubTaskCount = len(fields.SubTasks)
+	if fields.Priority != nil {
+		li.Priority = fields.Priority.Name
+	}
+	return li
 }
 
 func (c *jiraClient) fetchComments(key string) ([]models.Comment, error) {
@@ -1288,6 +1314,78 @@ func (c *jiraClient) GetEpics(projectKey, query string) ([]models.Issue, error) 
 		})
 	}
 	return issues, nil
+}
+
+// epicChildrenPageSize is the page size used when paging through epic children.
+const epicChildrenPageSize = 100
+
+// GetEpicChildren returns the direct children of an epic, including closed
+// ones. It pages through /rest/api/3/search/jql until the API stops returning a
+// continuation token, so epics with more than one page of children are complete.
+//
+// The query filter uses the `parent` field, which works for both team-managed
+// and company-managed projects. The legacy `"Epic Link"` JQL field is
+// deliberately not used: it has been retired in favour of `parent` and errors
+// on team-managed projects.
+func (c *jiraClient) GetEpicChildren(epicKey string) ([]models.Issue, error) {
+	jql := fmt.Sprintf(`parent = "%s" ORDER BY created ASC`, epicKey)
+
+	children := make([]models.Issue, 0)
+	nextPageToken := ""
+	for {
+		page, next, err := c.searchEpicChildrenPage(jql, nextPageToken)
+		if err != nil {
+			return nil, err
+		}
+		children = append(children, page...)
+		if next == "" {
+			return children, nil
+		}
+		nextPageToken = next
+	}
+}
+
+// searchEpicChildrenPage fetches one page of a JQL search and returns the parsed
+// children alongside the token for the next page ("" when exhausted).
+func (c *jiraClient) searchEpicChildrenPage(jql, nextPageToken string) ([]models.Issue, string, error) {
+	payload := map[string]any{
+		"jql":        jql,
+		"maxResults": epicChildrenPageSize,
+		"fields":     []string{"summary", "status", "issuetype", "priority", "subtasks"},
+	}
+	if nextPageToken != "" {
+		payload["nextPageToken"] = nextPageToken
+	}
+
+	req, err := c.client.NewRequest(context.Background(), http.MethodPost, "rest/api/3/search/jql", payload)
+	if err != nil {
+		return nil, "", err
+	}
+
+	var data struct {
+		Issues []struct {
+			Key    string           `json:"key"`
+			Fields *linkIssueFields `json:"fields"`
+		} `json:"issues"`
+		NextPageToken string `json:"nextPageToken"`
+	}
+	if _, err := c.client.Do(req, &data); err != nil {
+		return nil, "", fmt.Errorf("searching epic children: %w", err)
+	}
+
+	children := make([]models.Issue, 0, len(data.Issues))
+	for _, raw := range data.Issues {
+		li := linkedIssueFromFields("child", raw.Key, raw.Fields)
+		children = append(children, models.Issue{
+			Key:          li.Key,
+			Summary:      li.Summary,
+			Status:       li.Status,
+			IssueType:    li.IssueType,
+			Priority:     li.Priority,
+			SubTaskCount: li.SubTaskCount,
+		})
+	}
+	return children, data.NextPageToken, nil
 }
 
 func (c *jiraClient) SetParent(issueKey, parentKey string) error {

@@ -44,6 +44,7 @@ func HelpSections() []HelpSection {
 				{Key: "z", Description: "Toggle collapse current sprint"},
 				{Key: "Z", Description: "Toggle collapse all sprints"},
 				{Key: "/", Description: "Filter tickets (fuzzy search by summary or key)"},
+				{Key: "L", Description: "Pick a linked item to open in Jira"},
 				{Key: "Enter", Description: "Toggle expand/collapse sprint or open ticket detail"},
 				{Key: "Esc", Description: "Clear filter / cancel current action / clear selection"},
 			},
@@ -52,6 +53,7 @@ func HelpSections() []HelpSection {
 			Title: "Issue Details Sidebar (Backlog)",
 			Keybindings: []HelpKeybinding{
 				{Key: "ctrl+d / ctrl+u", Description: "Scroll details down / up by 1/4 page"},
+				{Key: "L", Description: "Pick a linked item to open in Jira"},
 			},
 		},
 		{
@@ -59,6 +61,7 @@ func HelpSections() []HelpSection {
 			Keybindings: []HelpKeybinding{
 				{Key: "h / j / k / l", Description: "Move left / down / up / right between columns and issues"},
 				{Key: "Enter", Description: "Open ticket detail pane"},
+				{Key: "L", Description: "Pick a linked item to open in Jira"},
 				{Key: "Esc", Description: "Close detail pane / cancel action"},
 			},
 		},
@@ -72,6 +75,7 @@ func HelpSections() []HelpSection {
 				{Key: "/", Description: "Filter epics (fuzzy search by name or key)"},
 				{Key: "Enter", Description: "Open epic detail pane"},
 				{Key: "Esc / q", Description: "Close epic detail / cancel action"},
+				{Key: "L", Description: "Pick a linked or child item to open in Jira"},
 				{Key: "o", Description: "Open selected epic in Jira"},
 				{Key: "b", Description: "Filter backlog by selected epic"},
 			},
@@ -126,6 +130,7 @@ func HelpSections() []HelpSection {
 				{Key: "c", Description: "Add comment — inline text input (ctrl+s to save, esc to cancel)"},
 				{Key: "s", Description: "Change status — picker"},
 				{Key: "A", Description: "Set assignee — fuzzy picker"},
+				{Key: "L", Description: "Pick a linked item to open in Jira"},
 				{Key: "o", Description: "Open ticket in browser"},
 			},
 		},

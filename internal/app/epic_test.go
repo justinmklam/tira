@@ -2,6 +2,7 @@ package app
 
 import (
 	"errors"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -439,5 +440,269 @@ func TestParseLabelsTrimsAndReturnsEmptySlice(t *testing.T) {
 	}
 	if len(empty) != 0 {
 		t.Fatalf("empty labels = %v, want empty", empty)
+	}
+}
+
+type epicChildrenTestClient struct {
+	api.Client
+	children    []models.Issue
+	childrenErr error
+	calls       int
+	lastKey     string
+}
+
+func (c *epicChildrenTestClient) GetEpicChildren(epicKey string) ([]models.Issue, error) {
+	c.calls++
+	c.lastKey = epicKey
+	return c.children, c.childrenErr
+}
+
+func newEpicChildrenTestModel(client api.Client, issue *models.Issue) epicModel {
+	return epicModel{
+		state:  epicList,
+		client: client,
+		items: []epicItem{{
+			Key:           issue.Key,
+			Name:          issue.Summary,
+			ChildCount:    2,
+			FirstLocation: "Sprint 1",
+		}},
+		sidebarFullIssue: issue,
+		sidebarIssueKey:  issue.Key,
+		width:            100,
+		height:           40,
+	}
+}
+
+func TestEpicChildrenFetchedUpdatesSidebar(t *testing.T) {
+	issue := &models.Issue{Key: "EPIC-A", Summary: "Alpha"}
+	client := &epicChildrenTestClient{children: []models.Issue{
+		{Key: "PROJ-1", Summary: "First child", Status: "In Progress", IssueType: "Story", Priority: "High"},
+		{Key: "PROJ-2", Summary: "Second child", Status: "Done", IssueType: "Task", SubTaskCount: 2},
+	}}
+	m := newEpicChildrenTestModel(client, issue)
+
+	fetched := fetchEpicChildrenCmd(client, issue.Key)()
+	updated, _ := m.Update(fetched)
+	m = updated.(epicModel)
+
+	if len(m.children.items) != 2 {
+		t.Fatalf("children = %d, want 2", len(m.children.items))
+	}
+	if m.children.key != issue.Key {
+		t.Fatalf("children key = %q, want %q", m.children.key, issue.Key)
+	}
+	if m.children.err != "" {
+		t.Fatalf("children error = %q, want empty", m.children.err)
+	}
+	plain := stripANSI(m.sidebarContent)
+	for _, want := range []string{"Child Work Items", "PROJ-1", "PROJ-2", "First child", "Second child"} {
+		if !strings.Contains(plain, want) {
+			t.Errorf("sidebar content missing %q:\n%s", want, plain)
+		}
+	}
+}
+
+// stripANSI removes terminal escape sequences so tests can assert on the plain
+// text of a glamour-rendered string.
+func stripANSI(s string) string {
+	return ansiEscapePattern.ReplaceAllString(s, "")
+}
+
+var ansiEscapePattern = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
+
+func TestEpicChildrenFetchedRecordsErrorAndIgnoresStaleSelection(t *testing.T) {
+	issue := &models.Issue{Key: "EPIC-A", Summary: "Alpha"}
+	client := &epicChildrenTestClient{childrenErr: errors.New("boom")}
+	m := newEpicChildrenTestModel(client, issue)
+
+	updated, _ := m.Update(epicChildrenFetchedMsg{key: "EPIC-OTHER", children: []models.LinkedIssue{{Key: "PROJ-9"}}})
+	m = updated.(epicModel)
+	if len(m.children.items) != 0 {
+		t.Fatalf("children = %v, want none for a stale selection", m.children.items)
+	}
+
+	updated, _ = m.Update(fetchEpicChildrenCmd(client, issue.Key)())
+	m = updated.(epicModel)
+	if m.children.err != "boom" {
+		t.Fatalf("children error = %q, want %q", m.children.err, "boom")
+	}
+	if !strings.Contains(m.sidebarContent, "Child work items unavailable") {
+		t.Errorf("sidebar should report the failure:\n%s", m.sidebarContent)
+	}
+}
+
+func TestEpicLinkPickerListsChildrenLinksAndSubTasks(t *testing.T) {
+	issue := &models.Issue{
+		Key:     "EPIC-A",
+		Summary: "Alpha",
+		LinkedIssues: []models.LinkedIssue{
+			{Relationship: "blocks", Key: "PROJ-2", Summary: "Linked"},
+		},
+		SubTasks: []models.LinkedIssue{
+			{Relationship: "subtask", Key: "PROJ-3", Summary: "Sub"},
+		},
+	}
+	client := &epicChildrenTestClient{}
+	m := newEpicChildrenTestModel(client, issue)
+	m.children = epicChildren{items: []models.LinkedIssue{
+		{Relationship: "child", Key: "PROJ-2", Summary: "Duplicate child"},
+		{Relationship: "child", Key: "PROJ-4", Summary: "Only child"},
+	}}
+
+	updated, _ := m.Update(keyPress("L"))
+	m = updated.(epicModel)
+	if m.state != epicLinkPicker {
+		t.Fatalf("state = %v, want epicLinkPicker", m.state)
+	}
+	if got := len(m.linkPicker.items); got != 3 {
+		t.Fatalf("picker items = %d, want 3 (duplicates removed)", got)
+	}
+	if m.linkPicker.items[0].Key != "PROJ-2" || m.linkPicker.items[0].Relationship != "blocks" {
+		t.Errorf("first item = %+v, want the explicit link", m.linkPicker.items[0])
+	}
+	if m.linkPicker.items[1].Key != "PROJ-3" || m.linkPicker.items[2].Key != "PROJ-4" {
+		t.Errorf("items = %+v, want subtask then child", m.linkPicker.items)
+	}
+	if m.linkPickerReturn != epicList {
+		t.Errorf("return state = %v, want epicList", m.linkPickerReturn)
+	}
+
+	updated, _ = m.Update(keyPress("esc"))
+	m = updated.(epicModel)
+	if m.state != epicList {
+		t.Fatalf("state after cancel = %v, want epicList", m.state)
+	}
+}
+
+func TestEpicLinkPickerOpensSelectedItemInBrowser(t *testing.T) {
+	issue := &models.Issue{
+		Key:     "EPIC-A",
+		Summary: "Alpha",
+		SubTasks: []models.LinkedIssue{
+			{Relationship: "subtask", Key: "PROJ-3"},
+		},
+	}
+	m := newEpicChildrenTestModel(&epicChildrenTestClient{}, issue)
+	m.jiraURL = "https://example.atlassian.net"
+	m.children = epicChildren{key: issue.Key, items: []models.LinkedIssue{{Relationship: "child", Key: "PROJ-4"}}}
+
+	updated, _ := m.Update(keyPress("L"))
+	m = updated.(epicModel)
+	updated, _ = m.Update(keyPress("down"))
+	m = updated.(epicModel)
+
+	selectedKey := m.linkPicker.selectedKey()
+	if selectedKey != "PROJ-4" {
+		t.Fatalf("selected link = %q, want PROJ-4", selectedKey)
+	}
+
+	updated, cmd := m.Update(keyPress("enter"))
+	m = updated.(epicModel)
+	if m.state != epicList {
+		t.Fatalf("state after select = %v, want epicList", m.state)
+	}
+	if cmd == nil {
+		t.Fatal("selecting a link should return a browser command")
+	}
+	if url := m.issueURL(selectedKey); url != "https://example.atlassian.net/browse/PROJ-4" {
+		t.Errorf("issue URL = %q", url)
+	}
+}
+
+func TestEpicLinkPickerOpensFromDetailAndReturnsToDetail(t *testing.T) {
+	issue := &models.Issue{Key: "EPIC-A", Summary: "Alpha"}
+	m := newEpicChildrenTestModel(&epicChildrenTestClient{}, issue)
+	m.state = epicDetail
+	m.detailIssue = issue
+	m.children = epicChildren{key: issue.Key, items: []models.LinkedIssue{{Relationship: "child", Key: "PROJ-4"}}}
+
+	updated, _ := m.Update(keyPress("L"))
+	m = updated.(epicModel)
+	if m.state != epicLinkPicker {
+		t.Fatalf("state = %v, want epicLinkPicker", m.state)
+	}
+	if m.linkPickerReturn != epicDetail {
+		t.Fatalf("return state = %v, want epicDetail", m.linkPickerReturn)
+	}
+
+	updated, _ = m.Update(keyPress("esc"))
+	m = updated.(epicModel)
+	if m.state != epicDetail {
+		t.Fatalf("state after cancel = %v, want epicDetail", m.state)
+	}
+}
+
+func TestEpicSelectionChangeClearsCachedChildren(t *testing.T) {
+	issue := &models.Issue{Key: "EPIC-A", Summary: "Alpha"}
+	client := &epicChildrenTestClient{}
+	m := newEpicChildrenTestModel(client, issue)
+	m.items = append(m.items, epicItem{Key: "EPIC-B", Name: "Beta"})
+	m.children = epicChildren{key: "EPIC-A", items: []models.LinkedIssue{{Relationship: "child", Key: "PROJ-1"}}}
+
+	cmd := m.updateSelection(1)
+	if m.cursor != 1 {
+		t.Fatalf("cursor = %d, want 1", m.cursor)
+	}
+	if len(m.children.items) != 0 {
+		t.Fatalf("children = %v, want cleared", m.children.items)
+	}
+	if m.children.key != "EPIC-B" || !m.children.loading {
+		t.Fatalf("children state = %+v, want a fetch in flight for EPIC-B", m.children)
+	}
+	if cmd == nil {
+		t.Fatal("selecting a different epic should fetch its sidebar and children")
+	}
+}
+
+func TestEpicEmptyLinkPickerIsNotFatal(t *testing.T) {
+	issue := &models.Issue{Key: "EPIC-A", Summary: "Alpha"}
+	m := newEpicChildrenTestModel(&epicChildrenTestClient{}, issue)
+	m.sidebarFullIssue = nil
+
+	updated, cmd := m.Update(keyPress("L"))
+	m = updated.(epicModel)
+	if m.state != epicLinkPicker {
+		t.Fatalf("state = %v, want epicLinkPicker", m.state)
+	}
+	if len(m.linkPicker.items) != 0 {
+		t.Fatalf("items = %v, want none", m.linkPicker.items)
+	}
+	if cmd == nil {
+		t.Error("opening the picker should focus the filter input")
+	}
+
+	updated, cmd = m.Update(keyPress("enter"))
+	m = updated.(epicModel)
+	if m.state != epicList {
+		t.Fatalf("state after empty select = %v, want epicList", m.state)
+	}
+	if cmd != nil {
+		t.Error("selecting nothing should not open a browser")
+	}
+}
+
+func TestEpicChildrenLoadingNoteClearsWhenFetchCompletes(t *testing.T) {
+	issue := &models.Issue{Key: "EPIC-A", Summary: "Alpha"}
+	client := &epicChildrenTestClient{children: []models.Issue{{Key: "PROJ-1", Summary: "Child"}}}
+	m := newEpicChildrenTestModel(client, issue)
+
+	if cmd := m.childrenCommand(); cmd == nil {
+		t.Fatal("childrenCommand should fetch when nothing is cached")
+	}
+	if !strings.Contains(m.sidebarContent, "Loading child work items") {
+		t.Fatalf("sidebar should show a loading note:\n%s", stripANSI(m.sidebarContent))
+	}
+	if cmd := m.childrenCommand(); cmd != nil {
+		t.Error("childrenCommand should not refetch while a request is in flight")
+	}
+
+	updated, _ := m.Update(fetchEpicChildrenCmd(client, issue.Key)())
+	m = updated.(epicModel)
+	if strings.Contains(stripANSI(m.sidebarContent), "Loading child work items") {
+		t.Errorf("loading note should clear once children arrive:\n%s", stripANSI(m.sidebarContent))
+	}
+	if client.calls != 1 {
+		t.Errorf("GetEpicChildren calls = %d, want 1", client.calls)
 	}
 }

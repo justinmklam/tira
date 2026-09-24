@@ -85,7 +85,11 @@ type PickerModel struct {
 }
 ```
 
-Create with `tui.NewPickerModel(searchFunc)`. Embed in a parent model and delegate `Update` to it. Check `Completed`/`Aborted` after each `Update`. Call `Init()` to start the initial search.
+Create with `tui.NewPickerModel(searchFunc)` for a debounced server-side search, or
+`tui.NewLocalPickerModel(items)` for a fixed list filtered in memory. Embed in a parent
+model and delegate `Update` to it. Check `Completed`/`Aborted` after each `Update`. Call
+`Init()` to focus the filter input (and, for server-backed pickers, start the initial
+search). Arrow keys move the selection; typed characters filter the list.
 
 **See:** [Internal Packages](internal-packages.md)
 
@@ -210,7 +214,7 @@ type Config struct {
 
 ### models.Issue (struct)
 
-The core domain type. Populated by `GetIssue` (full detail including ADF fields) or `fetchAgileIssues` (list view fields only — no Description, AcceptanceCriteria, LinkedIssues, Comments).
+The core domain type. Populated by `GetIssue` (full detail including ADF fields, issue links, subtasks, comments) or `fetchAgileIssues` (list view fields only — no Description, AcceptanceCriteria, LinkedIssues, SubTasks, Comments).
 
 ```go
 type Issue struct {
@@ -225,10 +229,24 @@ type Issue struct {
     SprintName                                     string
     ParentKey, ParentSummary                       string
     LinkedIssues                                   []LinkedIssue
+    SubTasks                                       []LinkedIssue
+    SubTaskCount                                   int // populated by child listings
     Comments                                       []Comment
     StatusChangedDate                              string // ISO date "YYYY-MM-DD"
 }
 ```
+
+`LinkedIssue` describes one related item and is reused for explicit issue links, subtasks, and epic children:
+
+```go
+type LinkedIssue struct {
+    Relationship string // "blocks", "is blocked by", "relates to", "parent", "subtask", "child"
+    Key, Summary, Status, IssueType, Priority string
+    SubTaskCount int
+}
+```
+
+**Child work item:** a story or task whose Jira `parent` is an epic. Unlike the epic's own issue links, children are not part of the board data — they are fetched on demand with `GetEpicChildren` (JQL `parent = "<EPIC-KEY>"`) and shown in the epic sidebar and detail pane.
 
 **See:** [Internal Packages](internal-packages.md)
 

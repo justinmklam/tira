@@ -25,6 +25,7 @@ const (
 	epicLabelLoading
 	epicLabelInput
 	epicLabelSaving
+	epicLinkPicker
 )
 
 // epicItem is the board-derived projection of an epic and its represented
@@ -51,10 +52,28 @@ type epicResult struct {
 	quit             bool
 }
 
+// epicChildren holds the child work items of the selected epic together with
+// the state of the fetch that produced them.
+type epicChildren struct {
+	items   []models.LinkedIssue
+	key     string
+	err     string
+	loading bool
+}
+
+// epicLabelsFetchedMsg is sent when the full epic is fetched for label editing.
 type epicLabelsFetchedMsg struct {
 	key   string
 	issue *models.Issue
 	err   error
+}
+
+// epicChildrenFetchedMsg carries the child work items of an epic fetched from
+// the JQL search API.
+type epicChildrenFetchedMsg struct {
+	key      string
+	children []models.LinkedIssue
+	err      error
 }
 
 type epicLabelsSavedMsg struct {
@@ -91,8 +110,14 @@ type epicModel struct {
 	sidebarIssueKey  string
 	sidebarFullIssue *models.Issue
 
+	// Child work items of the selected epic, fetched via JQL search.
+	children epicChildren
+
 	detailIssue *models.Issue
 	detailView  viewport.Model
+
+	linkPicker       linkedItemPicker
+	linkPickerReturn epicState
 
 	labelInput     textinput.Model
 	labelTargetKey string
@@ -207,7 +232,7 @@ func newEpicModel(client api.Client, groups []models.SprintGroup, jiraURL string
 		loading:     loading,
 	}
 	m.updateSidebar()
-	return m, m.sidebarCommand()
+	return m, m.selectionCommand()
 }
 
 // refreshData replaces the projection while preserving the selected epic by
@@ -238,8 +263,9 @@ func (m *epicModel) refreshData(groups []models.SprintGroup, loading bool, loadE
 
 	if m.selectedKey() != m.sidebarIssueKey {
 		m.sidebarFullIssue = nil
+		m.clearChildren()
 		m.updateSidebar()
-		return m.sidebarCommand()
+		return m.selectionCommand()
 	}
 	m.updateSidebar()
 	return nil
@@ -260,8 +286,9 @@ func (m *epicModel) applyFilter() tea.Cmd {
 	}
 	m.sidebarIssueKey = ""
 	m.sidebarFullIssue = nil
+	m.clearChildren()
 	m.updateSidebar()
-	return m.sidebarCommand()
+	return m.selectionCommand()
 }
 
 func (m epicModel) selectedKey() string {
@@ -269,6 +296,26 @@ func (m epicModel) selectedKey() string {
 		return ""
 	}
 	return m.items[m.cursor].Key
+}
+
+// clearChildren drops cached child work items so the next render fetches them
+// for the newly selected epic.
+func (m *epicModel) clearChildren() {
+	m.children = epicChildren{}
+}
+
+// renderDetail rebuilds the detail viewport for the open epic, keeping the
+// current scroll position so late-arriving child work items do not reset it.
+func (m *epicModel) renderDetail() {
+	if m.detailIssue == nil {
+		return
+	}
+	vpW, vpH := tui.OverlayViewportSize(m.width, m.height)
+	offset := m.detailView.YOffset()
+	vp := viewport.New(viewport.WithWidth(vpW), viewport.WithHeight(vpH))
+	vp.SetContent(renderEpicIssueContent(m.detailIssue, m.children.items, vpW))
+	vp.SetYOffset(offset)
+	m.detailView = vp
 }
 
 func (m epicModel) selectedItem() *epicItem {
@@ -304,16 +351,37 @@ func (m *epicModel) updateSidebar() {
 	if m.sidebarFullIssue != nil && m.sidebarFullIssue.Key == m.selectedKey() {
 		issue = m.sidebarFullIssue
 	}
-	m.sidebarContent = renderEpicSidebarContent(issue, m.selectedItem(), width)
+	m.sidebarContent = renderEpicSidebarContent(issue, m.selectedItem(), m.children, width)
 	m.sidebarOffset = 0
 }
 
-func (m epicModel) sidebarCommand() tea.Cmd {
+func (m *epicModel) sidebarCommand() tea.Cmd {
 	key := m.selectedKey()
 	if key == "" || key == m.sidebarIssueKey || m.client == nil {
 		return nil
 	}
 	return fetchSidebarIssueCmd(m.client, key)
+}
+
+// childrenCommand fetches the child work items for the selected epic when they
+// are not already loaded.
+func (m *epicModel) childrenCommand() tea.Cmd {
+	key := m.selectedKey()
+	if key == "" || key == m.children.key || m.client == nil {
+		return nil
+	}
+	// Record the key immediately so a second call does not fetch the same epic
+	// twice while the first request is still in flight.
+	m.children = epicChildren{key: key, loading: true}
+	// Re-render so the sidebar shows the in-flight state immediately.
+	m.updateSidebar()
+	return fetchEpicChildrenCmd(m.client, key)
+}
+
+// selectionCommand batches the sidebar and child-work-item fetches needed for
+// the currently selected epic.
+func (m *epicModel) selectionCommand() tea.Cmd {
+	return tea.Batch(m.sidebarCommand(), m.childrenCommand())
 }
 
 func (m epicModel) viewHeight() int {
@@ -332,8 +400,9 @@ func (m *epicModel) updateSelection(next int) tea.Cmd {
 	}
 	m.sidebarIssueKey = ""
 	m.sidebarFullIssue = nil
+	m.clearChildren()
 	m.updateSidebar()
-	return m.sidebarCommand()
+	return m.selectionCommand()
 }
 
 func (m *epicModel) ensureVisible() {
@@ -418,7 +487,7 @@ func (m epicModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.updateSidebar()
 		if m.sidebarIssueKey == "" {
-			return m, m.sidebarCommand()
+			return m, m.selectionCommand()
 		}
 		return m, nil
 
@@ -429,12 +498,12 @@ func (m epicModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.detailIssue = msg.issue
-		vpW, vpH := tui.OverlayViewportSize(m.width, m.height)
-		vp := viewport.New(viewport.WithWidth(vpW), viewport.WithHeight(vpH))
-		vp.SetContent(msg.content)
-		m.detailView = vp
 		m.state = epicDetail
-		return m, nil
+		m.renderDetail()
+		if m.children.key == msg.issue.Key {
+			return m, nil
+		}
+		return m, m.childrenCommand()
 
 	case epicLabelsFetchedMsg:
 		if m.state != epicLabelLoading || msg.key != m.labelTargetKey {
@@ -483,6 +552,29 @@ func (m epicModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.sidebarIssueKey = msg.issue.Key
 			m.sidebarFullIssue = msg.issue
 			m.updateSidebar()
+			// The picker reads its items from the full issue, so an open picker
+			// has to be refreshed when the fetch lands.
+			if m.state == epicLinkPicker {
+				m.linkPicker.reopen(m.linkPickerItems())
+			}
+		}
+		return m, nil
+
+	case epicChildrenFetchedMsg:
+		if msg.key != m.selectedKey() {
+			return m, nil
+		}
+		if msg.err != nil {
+			m.children = epicChildren{key: msg.key, err: msg.err.Error()}
+		} else {
+			m.children = epicChildren{key: msg.key, items: msg.children}
+		}
+		m.updateSidebar()
+		if m.state == epicDetail {
+			m.renderDetail()
+		}
+		if m.state == epicLinkPicker {
+			m.linkPicker.reopen(m.linkPickerItems())
 		}
 		return m, nil
 
@@ -548,6 +640,26 @@ func (m epicModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	if m.state == epicLinkPicker {
+		if key, ok := msg.(tea.KeyPressMsg); ok && key.String() == "ctrl+c" {
+			m.quitting = true
+			m.result.quit = true
+			return m, nil
+		}
+		action, cmd := m.linkPicker.handleKey(msg)
+		switch action {
+		case linkedPickerAborted:
+			m.state = m.linkPickerReturn
+		case linkedPickerConfirmed:
+			key := m.linkPicker.selectedKey()
+			m.state = m.linkPickerReturn
+			if key != "" {
+				return m, openInBrowserCmd(m.issueURL(key))
+			}
+		}
+		return m, cmd
+	}
+
 	if m.state == epicDetail {
 		switch key.String() {
 		case "esc", "q":
@@ -558,6 +670,8 @@ func (m epicModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.detailIssue != nil {
 				return m, openInBrowserCmd(m.issueURL(m.detailIssue.Key))
 			}
+		case "L":
+			return m, m.openLinkPicker()
 		}
 		var cmd tea.Cmd
 		m.detailView, cmd = m.detailView.Update(msg)
@@ -608,8 +722,7 @@ func (m epicModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.state = epicLoading
 		m.detailIssue = nil
-		vpW, _ := tui.OverlayViewportSize(m.width, m.height)
-		return m, tea.Batch(m.loadSpinner.Tick, fetchIssueCmd(m.client, item.Key, vpW))
+		return m, tea.Batch(m.loadSpinner.Tick, fetchEpicIssueCmd(m.client, item.Key))
 	case "o":
 		if item := m.selectedItem(); item != nil {
 			return m, openInBrowserCmd(m.issueURL(item.Key))
@@ -632,6 +745,8 @@ func (m epicModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.filterInput.Focus()
 	case "l":
 		return m, m.beginLabelEdit()
+	case "L":
+		return m, m.openLinkPicker()
 	case "R":
 		m.result.refresh = true
 		return m, nil
@@ -688,6 +803,63 @@ func fetchEpicLabelsCmd(client api.Client, key string) tea.Cmd {
 		issue, err := client.GetIssue(key)
 		return epicLabelsFetchedMsg{key: key, issue: issue, err: err}
 	}
+}
+
+// fetchEpicIssueCmd fetches an epic for the detail overlay. Unlike
+// fetchIssueCmd it does not pre-render the body, because the epic detail also
+// renders child work items that arrive from a separate request.
+func fetchEpicIssueCmd(client api.Client, key string) tea.Cmd {
+	return func() tea.Msg {
+		issue, err := client.GetIssue(key)
+		return issueFetchedMsg{issue: issue, err: err}
+	}
+}
+
+// fetchEpicChildrenCmd fetches the child work items of an epic via JQL search.
+func fetchEpicChildrenCmd(client api.Client, key string) tea.Cmd {
+	return func() tea.Msg {
+		children, err := client.GetEpicChildren(key)
+		if err != nil {
+			debug.LogError("client.GetEpicChildren", err)
+		}
+		return epicChildrenFetchedMsg{key: key, children: epicChildLinks(children), err: err}
+	}
+}
+
+// epicChildLinks projects fetched child issues into the shared link representation.
+func epicChildLinks(children []models.Issue) []models.LinkedIssue {
+	links := make([]models.LinkedIssue, 0, len(children))
+	for _, child := range children {
+		links = append(links, models.LinkedIssue{
+			Relationship: "child",
+			Key:          child.Key,
+			Summary:      child.Summary,
+			Status:       child.Status,
+			IssueType:    child.IssueType,
+			Priority:     child.Priority,
+			SubTaskCount: child.SubTaskCount,
+		})
+	}
+	return links
+}
+
+// openLinkPicker opens a picker of the selected epic's related work items.
+// Related items may live outside the board, so the picker opens in the browser
+// rather than moving the cursor.
+func (m *epicModel) openLinkPicker() tea.Cmd {
+	m.linkPickerReturn = m.state
+	m.state = epicLinkPicker
+	return m.linkPicker.open(m.linkPickerItems())
+}
+
+// linkPickerItems returns the related work items for the selected epic:
+// explicit issue links, subtasks, and child work items, deduplicated by key.
+func (m *epicModel) linkPickerItems() []models.LinkedIssue {
+	var issue *models.Issue
+	if m.sidebarFullIssue != nil && m.sidebarFullIssue.Key == m.selectedKey() {
+		issue = m.sidebarFullIssue
+	}
+	return collectLinkedItems(linkedItemsForIssue(issue), m.children.items)
 }
 
 func setEpicLabelsCmd(client api.Client, key string, labels []string) tea.Cmd {

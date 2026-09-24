@@ -143,6 +143,19 @@ func (c *cachedClient) GetEpics(projectKey, query string) ([]models.Issue, error
 	return result, nil
 }
 
+func (c *cachedClient) GetEpicChildren(epicKey string) ([]models.Issue, error) {
+	ckey := "epic_children:" + epicKey
+	if v, ok := c.cget(ckey); ok {
+		return v.([]models.Issue), nil
+	}
+	result, err := c.inner.GetEpicChildren(epicKey)
+	if err != nil {
+		return nil, err
+	}
+	c.cset(ckey, result)
+	return result, nil
+}
+
 // --- Mutating methods: pass through and invalidate affected cache entries ---
 
 func (c *cachedClient) UpdateIssue(key string, fields models.IssueFields) error {
@@ -175,6 +188,7 @@ func (c *cachedClient) SetParent(issueKey, parentKey string) error {
 		return err
 	}
 	c.cdel("issue:" + issueKey)
+	c.cdelPrefix("epic_children:")
 	return nil
 }
 
@@ -183,6 +197,7 @@ func (c *cachedClient) TransitionStatus(issueKey, statusID string) error {
 		return err
 	}
 	c.cdel("issue:" + issueKey)
+	c.cdelPrefix("epic_children:")
 	return nil
 }
 
@@ -237,6 +252,7 @@ func (c *cachedClient) BulkSetParent(keys []string, parentKey string) []error {
 			c.cdel("issue:" + key)
 		}
 	}
+	c.cdelPrefix("epic_children:")
 	return errs
 }
 
@@ -257,6 +273,7 @@ func (c *cachedClient) BulkTransitionStatus(keys []string, transitionID string) 
 			c.cdel("issue:" + key)
 		}
 	}
+	c.cdelPrefix("epic_children:")
 	return errs
 }
 

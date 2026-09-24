@@ -60,6 +60,10 @@ type PickerModel struct {
 	debounce      time.Duration
 	debounceToken int // incremented on each input change
 	searchToken   int // incremented on each actual search dispatch
+
+	// local pickers filter localItems in memory instead of calling search.
+	local      bool
+	localItems []PickerItem
 }
 
 // NewPickerModel creates a picker backed by the given search function.
@@ -75,9 +79,58 @@ func NewPickerModel(search SearchFunc) PickerModel {
 	}
 }
 
-// Init focuses the input and fires the initial empty search.
+// NewLocalPickerModel creates a picker that filters a fixed item list in memory.
+// There is no debounce or loading state: typing narrows the list immediately, so
+// it suits choices that are already held by the caller.
+func NewLocalPickerModel(items []PickerItem) PickerModel {
+	ti := textinput.New()
+	ti.Placeholder = "type to filter…"
+	ti.CharLimit = 100
+	return PickerModel{
+		Input:      ti,
+		Items:      items,
+		local:      true,
+		localItems: items,
+	}
+}
+
+// Local reports whether the picker filters a fixed item list in memory.
+func (m PickerModel) Local() bool { return m.local }
+
+// Init focuses the input. Server-backed pickers also fire the initial search;
+// local pickers already hold their items.
 func (m *PickerModel) Init() tea.Cmd {
+	if m.Local() {
+		return m.Input.Focus()
+	}
 	return tea.Batch(m.Input.Focus(), m.dispatchSearch(""))
+}
+
+// filterLocal narrows the fixed item list to entries matching the query,
+// case-insensitively across the label, sub-label, and value.
+func (m *PickerModel) filterLocal(query string) {
+	m.Items = filterPickerItems(m.localItems, query)
+	m.Loading = false
+	m.Err = ""
+}
+
+// filterPickerItems returns the items matching query. An empty query matches
+// everything.
+func filterPickerItems(items []PickerItem, query string) []PickerItem {
+	q := strings.ToLower(strings.TrimSpace(query))
+	if q == "" {
+		return items
+	}
+
+	matches := make([]PickerItem, 0, len(items))
+	for _, item := range items {
+		if strings.Contains(strings.ToLower(item.Label), q) ||
+			strings.Contains(strings.ToLower(item.SubLabel), q) ||
+			strings.Contains(strings.ToLower(item.Value), q) {
+			matches = append(matches, item)
+		}
+	}
+	return matches
 }
 
 // noneVisible reports whether the NoneItem should currently be shown.
@@ -193,6 +246,10 @@ func (m PickerModel) Update(msg tea.Msg) (PickerModel, tea.Cmd) {
 	m.Input, cmd = m.Input.Update(msg)
 	if newVal := m.Input.Value(); newVal != prev {
 		m.Cursor = 0
+		if m.Local() {
+			m.filterLocal(newVal)
+			return m, cmd
+		}
 		m.debounceToken++
 		debTok := m.debounceToken
 		query := newVal
@@ -245,10 +302,11 @@ func (m PickerModel) View(innerW, maxListRows int) string {
 				end = len(entries)
 			}
 
-			// Label gets 2/3 of usable width, subLabel gets the rest.
-			// "  " prefix (2) + " " separator (1) = 3 chars overhead per row.
-			usable := innerW - 3
-			keyW := usable * 2 / 5
+			// Label gets 1/3 of usable width, subLabel gets the rest. Reserve
+			// one extra column so styled rows never wrap at the modal edge.
+			// "  " prefix (2) + " " separator (1) + safety column (1).
+			usable := innerW - 4
+			keyW := usable / 3
 			subW := usable - keyW
 			if keyW < 8 {
 				keyW = 8

@@ -6,6 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/justinmklam/tira/internal/display"
 	"github.com/justinmklam/tira/internal/models"
 	"github.com/justinmklam/tira/internal/tui"
 )
@@ -44,7 +45,16 @@ func (m epicModel) View() tea.View {
 	if m.state == epicLabelLoading || m.state == epicLabelInput || m.state == epicLabelSaving {
 		return tea.NewView(m.viewLabelEditor())
 	}
+	if m.state == epicLinkPicker {
+		return tea.NewView(m.viewLinkPicker())
+	}
 	return tea.NewView(m.viewList())
+}
+
+// viewLinkPicker renders the related work items picker overlay. Selecting an
+// item opens it in the browser.
+func (m epicModel) viewLinkPicker() string {
+	return viewLinkedItemsPicker(m.linkPicker.picker, m.width, m.height)
 }
 
 func (m epicModel) viewDetail() string {
@@ -60,7 +70,7 @@ func (m epicModel) viewDetail() string {
 	}
 	overlayW, _ := tui.OverlaySize(width, height)
 	innerW := overlayW - 2
-	footer := tui.MutedStyle.Render("  o: open in browser   esc/q: back   j/k: scroll")
+	footer := tui.MutedStyle.Render("  o: open in browser   L: linked items   esc/q: back   j/k: scroll")
 	body := m.detailView.View() + "\n" + footer
 	modal := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
@@ -121,7 +131,7 @@ func (m epicModel) viewList() string {
 		sidebar = append(sidebar, "")
 	}
 
-	baseFooter := "  j/k ↑/↓: move   enter: details   /: filter   l: edit labels   b: filter backlog   o: open Jira   R: refresh   ctrl+d/u: scroll   q: quit"
+	baseFooter := "  j/k ↑/↓: move   enter: details   L: linked items   /: filter   l: edit labels   b: filter backlog   o: open Jira   R: refresh   ctrl+d/u: scroll   q: quit"
 	var footer string
 	switch m.state {
 	case epicFilter:
@@ -229,14 +239,57 @@ func (m epicModel) viewLabelEditor() string {
 	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, modal)
 }
 
-func renderEpicSidebarContent(issue *models.Issue, item *epicItem, width int) string {
+func renderEpicSidebarContent(issue *models.Issue, item *epicItem, children epicChildren, width int) string {
 	if issue == nil {
 		return tui.MutedStyle.Render("No epic selected")
 	}
-	content := renderSidebarContent(issue, width)
-	if item == nil {
+	content := renderIssueContent(issue, width-4)
+
+	// Muted summary lines. Their text is never wrapped around the glamour
+	// output below, which would flatten the section's own styling.
+	var meta strings.Builder
+	if item != nil {
+		fmt.Fprintf(&meta, "\n\nChildren: %d\nFirst appears: %s", item.ChildCount, item.FirstLocation)
+	}
+	if children.err != "" {
+		fmt.Fprintf(&meta, "\n%s", childrenUnavailableText(children.err))
+	}
+	if children.loading && len(children.items) == 0 {
+		meta.WriteString("\nLoading child work items…")
+	}
+	if section := renderChildrenSection(children.items, width-4); section != "" {
+		meta.WriteString("\n" + section)
+	}
+	if meta.Len() == 0 {
 		return content
 	}
-	meta := fmt.Sprintf("\n\nChildren: %d\nFirst appears: %s", item.ChildCount, item.FirstLocation)
-	return content + tui.MutedStyle.Render(meta)
+	return content + tui.MutedStyle.Render(meta.String())
+}
+
+// childrenUnavailableText describes a failed child fetch for inline display.
+func childrenUnavailableText(err string) string {
+	return "Child work items unavailable: " + err
+}
+
+// renderChildrenSection glamour-renders the child work items section at the
+// given wrap width.
+func renderChildrenSection(children []models.LinkedIssue, wrapWidth int) string {
+	section := childrenMarkdown(children)
+	if section == "" {
+		return ""
+	}
+	return strings.TrimRight(renderMarkdownWithGlamour(section, wrapWidth), "\n")
+}
+
+// renderEpicIssueContent renders the epic detail overlay body: the epic itself
+// plus its child work items.
+func renderEpicIssueContent(issue *models.Issue, children []models.LinkedIssue, wrapWidth int) string {
+	markdown := display.RenderIssue(issue) + childrenMarkdown(children)
+	return renderMarkdownWithGlamour(markdown, wrapWidth)
+}
+
+// childrenMarkdown renders child work items as a Markdown section, or "" when
+// the epic has none.
+func childrenMarkdown(children []models.LinkedIssue) string {
+	return display.LinkedItemsSection("Child Work Items", children)
 }

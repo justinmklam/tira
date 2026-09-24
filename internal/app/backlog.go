@@ -37,6 +37,7 @@ const (
 	blEpicFilterPicker // floating epic filter picker
 	blSprintForm       // create or edit sprint (sprintFormEditID == 0 means create)
 	blKeySearch        // jump-to-issue-number search (f key)
+	blLinkPicker       // floating linked work items picker
 )
 
 type blRowKind int
@@ -178,6 +179,10 @@ type blModel struct {
 
 	// lastIssue tracks the most recently selected issue (used when cursor is on sprint header)
 	lastIssue *models.Issue
+
+	// linkPicker lists the selected issue's related work items.
+	linkPicker       linkedItemPicker
+	linkPickerReturn blState
 }
 
 func blBuildRows(groups []models.SprintGroup, collapsed map[int]bool, filter string, filterEpic string) []blRow {
@@ -441,6 +446,20 @@ func (m blModel) currentIssue() *models.Issue {
 	return &m.groups[row.groupIdx].Issues[row.issueIdx]
 }
 
+// linkPickerItems returns the related work items of the issue under the cursor.
+// Only the sidebar's fully fetched issue carries links and subtasks, so the
+// picker is empty until that fetch completes.
+func (m blModel) linkPickerItems() []models.LinkedIssue {
+	issue := m.currentIssue()
+	if issue == nil {
+		return nil
+	}
+	if m.sidebarFullIssue != nil && m.sidebarFullIssue.Key == issue.Key {
+		return linkedItemsForIssue(m.sidebarFullIssue)
+	}
+	return linkedItemsForIssue(issue)
+}
+
 // navigateToKey moves the cursor to the first row matching key.
 func (m *blModel) navigateToKey(key string) {
 	for i, row := range m.rows {
@@ -544,6 +563,11 @@ func (m blModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.sidebarContent = renderSidebarContent(msg.issue, width)
 			m.sidebarOffset = 0
+			// The picker reads its items from the full issue, so an open picker
+			// has to be refreshed when the fetch lands.
+			if m.state == blLinkPicker {
+				m.linkPicker.reopen(m.linkPickerItems())
+			}
 		}
 		return m, nil
 
@@ -677,6 +701,8 @@ func (m blModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateSprintForm(msg)
 	case blKeySearch:
 		return m.updateKeySearch(msg)
+	case blLinkPicker:
+		return m.updateLinkPicker(msg)
 	}
 	return m, nil
 }
@@ -815,11 +841,11 @@ func renderIssueContent(issue *models.Issue, wrapWidth int) string {
 	return renderMarkdownWithGlamour(display.RenderIssue(issue), wrapWidth)
 }
 
-// renderIssueDetailView renders a common issue detail view with border and footer.
-// Used by both backlog and kanban detail overlays.
-func renderIssueDetailView(issue *models.Issue, detailView viewport.Model, width, height, overlayW, innerW int) string {
-	footer := tui.MutedStyle.Render("  e: edit   c: comment   o: open in browser   esc/q: back   j/k: scroll")
-	body := detailView.View() + "\n" + footer
+// renderIssueDetailView renders a common issue detail view with border and
+// footer. Used by both backlog and kanban detail overlays, which supply their
+// own footer hints because their available actions differ.
+func renderIssueDetailView(detailView viewport.Model, footer string, width, height, overlayW, innerW int) string {
+	body := detailView.View() + "\n" + tui.MutedStyle.Render(footer)
 
 	modal := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).

@@ -204,6 +204,9 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, copyToClipboardCmd(m.issueURL(issue.Key))
 		}
 
+	case "L":
+		return m, m.openLinkPicker(m.linkPickerItems())
+
 	case "R":
 		m.result = blResult{refresh: true}
 		return m, nil
@@ -469,6 +472,10 @@ func (m blModel) updateDetail(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "R":
 			m.result = blResult{refresh: true}
 			return m, nil
+		case "L":
+			if m.detailIssue != nil {
+				return m, m.openLinkPicker(linkedItemsForIssue(m.detailIssue))
+			}
 		case "ctrl+c":
 			m.quitting = true
 			return m, nil
@@ -476,6 +483,36 @@ func (m blModel) updateDetail(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	var cmd tea.Cmd
 	m.detailView, cmd = m.detailView.Update(msg)
+	return m, cmd
+}
+
+// openLinkPicker opens the related work items picker for the given items.
+// Related work items are frequently not on the board, so the picker opens the
+// selection in the browser rather than moving the cursor.
+func (m *blModel) openLinkPicker(items []models.LinkedIssue) tea.Cmd {
+	m.linkPickerReturn = m.state
+	m.state = blLinkPicker
+	return m.linkPicker.open(items)
+}
+
+// updateLinkPicker handles the shared related work items picker.
+func (m blModel) updateLinkPicker(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if key, ok := msg.(tea.KeyPressMsg); ok && key.String() == "ctrl+c" {
+		m.quitting = true
+		return m, nil
+	}
+
+	action, cmd := m.linkPicker.handleKey(msg)
+	switch action {
+	case linkedPickerAborted:
+		m.state = m.linkPickerReturn
+	case linkedPickerConfirmed:
+		key := m.linkPicker.selectedKey()
+		m.state = m.linkPickerReturn
+		if key != "" {
+			return m, openInBrowserCmd(m.issueURL(key))
+		}
+	}
 	return m, cmd
 }
 

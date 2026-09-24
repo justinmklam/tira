@@ -17,6 +17,8 @@ func (m kanbanModel) View() tea.View {
 		return tea.NewView(m.viewAssignPicker())
 	case stateStatusPicker:
 		return tea.NewView(m.viewStatusPicker())
+	case stateLinkPicker:
+		return tea.NewView(viewLinkedItemsPicker(m.linkPicker.picker, m.width, m.height))
 	default:
 		return tea.NewView(m.viewBoard())
 	}
@@ -57,7 +59,11 @@ func (m kanbanModel) viewDetail() string {
 	overlayW, _ := tui.OverlaySize(width, height)
 	innerW := overlayW - 2
 
-	return renderIssueDetailView(m.detailIssue, m.detailView, width, height, overlayW, innerW)
+	return renderIssueDetailView(
+		m.detailView,
+		"  e: edit   c: comment   L: linked items   o: open in browser   esc/q: back   j/k: scroll",
+		width, height, overlayW, innerW,
+	)
 }
 
 func (m kanbanModel) viewBoard() string {
@@ -197,9 +203,9 @@ func (m kanbanModel) viewBoard() string {
 			Render("Kanban: "+m.sprintName) + "\n"
 	}
 
-	hintsStr := "  hjkl: navigate   enter: view   e: edit   c: comment   s: status   o: open   tab: backlog   q: quit"
+	hintsStr := "  hjkl: navigate   enter: view   e: edit   c: comment   s: status   L: linked   o: open   tab: backlog   q: quit"
 	var footerStr string
-	if m.state == stateLoading {
+	if m.state == stateLoading || m.linkPickerKey != "" {
 		spinnerStr := m.loadSpinner.View() + tui.MutedStyle.Render(" Loading…")
 		padded := tui.FixedWidth(hintsStr, width-lipgloss.Width(spinnerStr)-2)
 		footerStr = tui.MutedStyle.Render(padded) + "  " + spinnerStr

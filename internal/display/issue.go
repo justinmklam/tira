@@ -92,21 +92,7 @@ func RenderIssue(issue *models.Issue) string {
 	}
 
 	// Linked Work Items
-	if len(issue.LinkedIssues) > 0 {
-		fmt.Fprintf(&sb, "\n# Linked Work Items\n\n")
-		for _, li := range issue.LinkedIssues {
-			status := ""
-			if li.Status != "" {
-				status = fmt.Sprintf(" (%s)", li.Status)
-			}
-			summary := ""
-			if li.Summary != "" {
-				summary = ": " + li.Summary
-			}
-			fmt.Fprintf(&sb, "- **%s** %s%s%s\n", li.Relationship, li.Key, summary, status)
-		}
-		sb.WriteString("\n")
-	}
+	sb.WriteString(LinkedItemsSection("Linked Work Items", issue.LinkedIssues))
 
 	// Comments
 	fmt.Fprintf(&sb, "\n# Comments\n\n")
@@ -121,6 +107,54 @@ func RenderIssue(issue *models.Issue) string {
 	}
 
 	return sb.String()
+}
+
+// LinkedItemsSection returns a Markdown heading and flat bullet list for
+// related work items, or "" when there are none. It is shared by the issue
+// renderer and the epic views so every surface formats links the same way.
+func LinkedItemsSection(title string, items []models.LinkedIssue) string {
+	if len(items) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "\n# %s\n\n", title)
+	for _, li := range items {
+		sb.WriteString(FormatLinkedItem(li))
+	}
+	sb.WriteString("\n")
+	return sb.String()
+}
+
+// FormatLinkedItem renders one related work item as a Markdown bullet, e.g.
+// "- **blocks** PROJ-6: Fix login (Bug · High · In Progress)".
+func FormatLinkedItem(li models.LinkedIssue) string {
+	line := fmt.Sprintf("- **%s** %s", li.Relationship, li.Key)
+	if li.Summary != "" {
+		line += ": " + li.Summary
+	}
+	if detail := linkAttributes(li); detail != "" {
+		line += " (" + detail + ")"
+	}
+	return line + "\n"
+}
+
+// linkAttributes summarises the known issue type, priority, status, and subtask
+// count for display, skipping any that are empty.
+func linkAttributes(li models.LinkedIssue) string {
+	attributes := make([]string, 0, 4)
+	if li.IssueType != "" {
+		attributes = append(attributes, li.IssueType)
+	}
+	if li.Priority != "" {
+		attributes = append(attributes, li.Priority)
+	}
+	if li.Status != "" {
+		attributes = append(attributes, li.Status)
+	}
+	if li.SubTaskCount > 0 {
+		attributes = append(attributes, fmt.Sprintf("%d subtasks", li.SubTaskCount))
+	}
+	return strings.Join(attributes, " · ")
 }
 
 // formatCommentTime parses a Jira timestamp and returns a human-readable string.
