@@ -371,146 +371,54 @@ func (m blModel) viewAssignPicker() string {
 }
 
 func (m blModel) viewParentPicker() string {
-	width := m.width
-	if width == 0 {
-		width = 120
-	}
-	height := m.height
-	if height == 0 {
-		height = 40
-	}
-
-	pickerW := width * 2 / 3
-	if pickerW < 52 {
-		pickerW = 52
-	}
-	if pickerW > 90 {
-		pickerW = 90
-	}
-	innerW := pickerW - 2 // inside border
-
 	n := len(m.parentTargetKeys)
 	noun := "issue"
 	if n != 1 {
 		noun = "issues"
 	}
 	title := fmt.Sprintf("Set Parent  (%d %s)", n, noun)
-	header := tui.BoldAccent.Padding(0, 1).Width(innerW).
-		Render(tui.FixedWidth(title, innerW-2))
 
-	// List rows fit in roughly half the terminal height.
-	listH := height/2 - 6
-	if listH < 4 {
-		listH = 4
-	}
-
-	footer := tui.MutedStyle.Render("  ↑/↓ ctrl+p/n: navigate   enter: select   esc: cancel")
-
-	body := header + "\n" +
-		m.parentPicker.View(innerW, listH) + "\n" +
-		tui.MutedStyle.Render(strings.Repeat("─", innerW)) + "\n" +
-		footer
-
-	modal := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(tui.ColorAccent).
-		Width(innerW).
-		Render(body)
-
-	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, modal)
+	return tui.RenderPickerModal(
+		title,
+		func(innerW, listH int) string { return m.parentPicker.View(innerW, listH) },
+		tui.PickerFooter,
+		m.width,
+		m.height,
+	)
 }
 
 func (m blModel) viewStoryPointInput() string {
-	width := m.width
-	if width == 0 {
-		width = 120
-	}
-	height := m.height
-	if height == 0 {
-		height = 40
-	}
-
-	pickerW := width * 2 / 3
-	if pickerW < 52 {
-		pickerW = 52
-	}
-	if pickerW > 90 {
-		pickerW = 90
-	}
-	innerW := pickerW - 2
-
 	n := len(m.storyPointTargetKeys)
 	noun := "issue"
 	if n != 1 {
 		noun = "issues"
 	}
 	title := fmt.Sprintf("Set Story Points  (%d %s)", n, noun)
-	header := tui.BoldAccent.Padding(0, 1).Width(innerW).
-		Render(tui.FixedWidth(title, innerW-2))
 
-	inputLine := "  " + m.storyPointInput.View()
-
-	footer := tui.MutedStyle.Render("  enter: set   esc: cancel")
-
-	body := header + "\n" +
-		inputLine + "\n" +
-		tui.MutedStyle.Render(strings.Repeat("─", innerW)) + "\n" +
-		footer
-
-	modal := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(tui.ColorAccent).
-		Width(innerW).
-		Render(body)
-
-	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, modal)
+	return tui.RenderPickerModal(
+		title,
+		func(innerW, _ int) string {
+			return "  " + tui.FitInput(m.storyPointInput, innerW-2)
+		},
+		"  enter: set   esc: cancel",
+		m.width,
+		m.height,
+	)
 }
 
 func (m blModel) viewEpicFilterPicker() string {
-	width := m.width
-	if width == 0 {
-		width = 120
-	}
-	height := m.height
-	if height == 0 {
-		height = 40
-	}
-
-	pickerW := width * 2 / 3
-	if pickerW < 52 {
-		pickerW = 52
-	}
-	if pickerW > 90 {
-		pickerW = 90
-	}
-	innerW := pickerW - 2
-
 	title := "Filter by Epic"
 	if m.filterEpic != "" {
 		title = "Filter by Epic  (current: " + m.filterEpic + ")"
 	}
-	header := tui.BoldAccent.Padding(0, 1).Width(innerW).
-		Render(tui.FixedWidth(title, innerW-2))
 
-	listH := height/2 - 6
-	if listH < 4 {
-		listH = 4
-	}
-
-	footer := tui.MutedStyle.Render("  ↑/↓ ctrl+p/n: navigate   enter: select   esc: cancel")
-
-	body := header + "\n" +
-		m.epicFilterPicker.View(innerW, listH) + "\n" +
-		tui.MutedStyle.Render(strings.Repeat("─", innerW)) + "\n" +
-		footer
-
-	modal := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(tui.ColorAccent).
-		Width(innerW).
-		Render(body)
-
-	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, modal)
+	return tui.RenderPickerModal(
+		title,
+		func(innerW, listH int) string { return m.epicFilterPicker.View(innerW, listH) },
+		tui.PickerFooter,
+		m.width,
+		m.height,
+	)
 }
 
 // formatSprintDate converts "YYYY-MM-DD" to "Jan 2" for compact display.

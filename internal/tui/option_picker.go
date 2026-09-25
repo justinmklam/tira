@@ -51,6 +51,9 @@ func (m OptionPickerModel) Update(msg tea.Msg) (OptionPickerModel, tea.Cmd) {
 	case "esc":
 		m.Aborted = true
 	case "enter":
+		if len(m.Items) == 0 {
+			return m, nil // nothing selectable
+		}
 		m.Completed = true
 	case "j", "down", "ctrl+n":
 		if m.Cursor < len(m.Items)-1 {
@@ -65,26 +68,39 @@ func (m OptionPickerModel) Update(msg tea.Msg) (OptionPickerModel, tea.Cmd) {
 }
 
 // View renders the list content sized to innerW columns and at most maxRows rows.
-// This signature is compatible with RenderPickerOverlay's pickerView parameter.
+// Every line is at most innerW display cells wide and the highlighted row is
+// always inside the rendered window. This signature is compatible with
+// RenderPickerOverlay's pickerView parameter.
 func (m OptionPickerModel) View(innerW, maxRows int) string {
+	if innerW < 1 {
+		innerW = 1
+	}
+	if maxRows < 1 {
+		maxRows = 1
+	}
 	if len(m.Items) == 0 {
-		return MutedStyle.Render("  (no options)")
+		return MutedStyle.Render(FixedWidth("  (no options)", innerW))
 	}
 
+	cursor := Clamp(m.Cursor, 0, len(m.Items)-1)
 	start := 0
-	if m.Cursor >= maxRows {
-		start = m.Cursor - maxRows + 1
+	if cursor >= maxRows {
+		start = cursor - maxRows + 1
 	}
-	end := start + maxRows
-	if end > len(m.Items) {
-		end = len(m.Items)
+	if last := len(m.Items) - maxRows; start > last {
+		start = last
 	}
+	if start < 0 {
+		start = 0
+	}
+	end := min(start+maxRows, len(m.Items))
 
-	labelW := innerW - 4 // reserve 2 chars for "▶ " / "  " prefix + 2 padding
+	// "▶ " prefix (2) leaves innerW-2 cells for the label, so the row is
+	// exactly innerW wide.
 	var lines []string
 	for i := start; i < end; i++ {
-		label := FixedWidth(m.Items[i], labelW)
-		if i == m.Cursor {
+		label := FixedWidth(SanitizeRow(m.Items[i]), innerW-2)
+		if i == cursor {
 			lines = append(lines, lipgloss.NewStyle().Foreground(ColorAccent).Bold(true).Render("▶ "+label))
 		} else {
 			lines = append(lines, MutedStyle.Render("  "+label))

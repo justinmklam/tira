@@ -61,6 +61,11 @@ type PickerModel struct {
 	debounceToken int // incremented on each input change
 	searchToken   int // incremented on each actual search dispatch
 
+	// initialValueApplied records that the cursor has already been placed on
+	// InitialValue, so a later search result cannot yank the cursor back while
+	// the user is navigating.
+	initialValueApplied bool
+
 	// local pickers filter localItems in memory instead of calling search.
 	local      bool
 	localItems []PickerItem
@@ -100,6 +105,7 @@ func (m PickerModel) Local() bool { return m.local }
 // Init focuses the input. Server-backed pickers also fire the initial search;
 // local pickers already hold their items.
 func (m *PickerModel) Init() tea.Cmd {
+	m.applyInitialValue()
 	if m.Local() {
 		return m.Input.Focus()
 	}
@@ -153,6 +159,37 @@ func (m PickerModel) SelectedItem() *PickerItem {
 	return &item
 }
 
+// applyInitialValue positions the cursor on the first item whose value matches
+// InitialValue. It runs at most once per picker, so typing a new query never
+// jumps the highlight back to the original value.
+func (m *PickerModel) applyInitialValue() {
+	if m.InitialValue == "" || m.initialValueApplied {
+		return
+	}
+	m.initialValueApplied = true
+	offset := 0
+	if m.noneVisible() {
+		offset = 1
+	}
+	for i, item := range m.Items {
+		if item.Value == m.InitialValue {
+			m.Cursor = offset + i
+			return
+		}
+	}
+}
+
+// clampCursor keeps Cursor on a selectable row. Every path that replaces Items
+// calls it, so a shrinking list can never leave the highlight (or the scroll
+// window) pointing past the end, which would render an empty list.
+func (m *PickerModel) clampCursor() {
+	maxRow := m.totalRows() - 1
+	if maxRow < 0 {
+		maxRow = 0
+	}
+	m.Cursor = Clamp(m.Cursor, 0, maxRow)
+}
+
 func (m *PickerModel) totalRows() int {
 	n := len(m.Items)
 	if m.noneVisible() {
@@ -165,6 +202,10 @@ func (m *PickerModel) dispatchSearch(query string) tea.Cmd {
 	m.Loading = true
 	m.Err = ""
 	m.searchToken++
+	if m.search == nil { // no search function: nothing to fetch
+		m.Loading = false
+		return nil
+	}
 	tok := m.searchToken
 	fn := m.search
 	return func() tea.Msg {
@@ -187,21 +228,8 @@ func (m PickerModel) Update(msg tea.Msg) (PickerModel, tea.Cmd) {
 			return m, nil
 		}
 		m.Items = msg.items
-		// Position cursor on InitialValue match if set.
-		if m.InitialValue != "" {
-			offset := 0
-			if m.noneVisible() {
-				offset = 1
-			}
-			for i, item := range msg.items {
-				if item.Value == m.InitialValue {
-					m.Cursor = offset + i
-					break
-				}
-			}
-		} else if m.Cursor >= m.totalRows() {
-			m.Cursor = 0
-		}
+		m.applyInitialValue()
+		m.clampCursor()
 		return m, nil
 
 	case pickerDebounceMsg:
@@ -224,6 +252,9 @@ func (m PickerModel) Update(msg tea.Msg) (PickerModel, tea.Cmd) {
 		return m, nil
 
 	case "enter":
+		if m.totalRows() == 0 {
+			return m, nil // nothing selectable; enter must not clear the value
+		}
 		m.Completed = true
 		return m, nil
 
@@ -248,6 +279,7 @@ func (m PickerModel) Update(msg tea.Msg) (PickerModel, tea.Cmd) {
 		m.Cursor = 0
 		if m.Local() {
 			m.filterLocal(newVal)
+			m.clampCursor()
 			return m, cmd
 		}
 		m.debounceToken++
@@ -261,74 +293,122 @@ func (m PickerModel) Update(msg tea.Msg) (PickerModel, tea.Cmd) {
 	return m, cmd
 }
 
-// View renders the picker content (input + list) sized to innerW columns and
-// at most maxListRows list rows. Does not include a border; the caller wraps it.
+// pickerRow is a single rendered list row: a label column and a sub-label.
+type pickerRow struct{ label, subLabel string }
+
+// rows returns the display entries: the optional NoneItem followed by results.
+func (m PickerModel) rows() []pickerRow {
+	rows := make([]pickerRow, 0, len(m.Items)+1)
+	if m.noneVisible() {
+		rows = append(rows, pickerRow{m.NoneItem.Label, m.NoneItem.SubLabel})
+	}
+	for _, item := range m.Items {
+		rows = append(rows, pickerRow{item.Label, item.SubLabel})
+	}
+	return rows
+}
+
+// View renders the picker content (input + separator + rows) sized to innerW
+// columns and at most maxListRows list rows. Every returned line is at most
+// innerW display cells wide, so the caller can wrap it in a border without any
+// line wrapping. Does not include a border; the caller wraps it.
 func (m PickerModel) View(innerW, maxListRows int) string {
-	var lines []string
+	if innerW < 1 {
+		innerW = 1
+	}
+	if maxListRows < 0 {
+		maxListRows = 0
+	}
+	m.clampCursor()
 
-	lines = append(lines, " "+m.Input.View())
+	lines := make([]string, 0, maxListRows+3)
+	lines = append(lines, " "+FixedWidth(FitInput(m.Input, innerW-1), innerW-1))
+	lines = append(lines, m.separatorLine(innerW))
 
-	sep := MutedStyle.Render(strings.Repeat("─", innerW))
-	lines = append(lines, sep)
+	rows, status := m.listLines(innerW, maxListRows)
+	lines = append(lines, rows...)
+	if status != "" {
+		lines = append(lines, status)
+	}
+	return strings.Join(lines, "\n")
+}
 
-	switch {
-	case m.Loading:
-		lines = append(lines, MutedStyle.Render("  Searching…"))
+// separatorLine renders the rule under the input. While a search is in flight
+// the indicator sits on its right edge, so the current results stay on screen
+// instead of being replaced for the duration of the request.
+func (m PickerModel) separatorLine(innerW int) string {
+	const status = " searching… "
+	if !m.Loading || DisplayWidth(status) >= innerW {
+		return MutedStyle.Render(strings.Repeat("─", innerW))
+	}
+	bar := strings.Repeat("─", innerW-DisplayWidth(status))
+	return MutedStyle.Render(bar) + MutedStyle.Render(status)
+}
 
-	case m.Err != "":
-		lines = append(lines, lipgloss.NewStyle().Foreground(ColorError).Render("  Error: "+m.Err))
-
-	default:
-		// Build display entries: optional NoneItem followed by results.
-		type entry struct{ label, subLabel string }
-		var entries []entry
-		if m.noneVisible() {
-			entries = append(entries, entry{m.NoneItem.Label, m.NoneItem.SubLabel})
-		}
-		for _, item := range m.Items {
-			entries = append(entries, entry{item.Label, item.SubLabel})
-		}
-
-		if len(entries) == 0 {
-			lines = append(lines, MutedStyle.Render("  No results"))
-		} else {
-			// Scroll window so the cursor stays visible.
-			start := 0
-			if m.Cursor >= maxListRows {
-				start = m.Cursor - maxListRows + 1
-			}
-			end := start + maxListRows
-			if end > len(entries) {
-				end = len(entries)
-			}
-
-			// Label gets 1/3 of usable width, subLabel gets the rest. Reserve
-			// one extra column so styled rows never wrap at the modal edge.
-			// "  " prefix (2) + " " separator (1) + safety column (1).
-			usable := innerW - 4
-			keyW := usable / 3
-			subW := usable - keyW
-			if keyW < 8 {
-				keyW = 8
-			}
-			if subW < 4 {
-				subW = 4
-			}
-
-			for i := start; i < end; i++ {
-				e := entries[i]
-				label := FixedWidth(e.label, keyW)
-				sub := FixedWidth(e.subLabel, subW)
-				if i == m.Cursor {
-					row := lipgloss.NewStyle().Foreground(ColorAccent).Bold(true).Render("▶ "+label) +
-						" " + lipgloss.NewStyle().Foreground(ColorForegroundBright).Render(sub)
-					lines = append(lines, row)
-				} else {
-					lines = append(lines, "  "+MutedStyle.Render(label)+" "+MutedStyle.Render(sub))
-				}
-			}
-		}
+// listLines renders at most maxRows list rows plus an optional status line (a
+// search error). It never returns an empty block while rows exist, so the
+// highlight is always visible.
+func (m PickerModel) listLines(innerW, maxRows int) (rows []string, status string) {
+	if m.Err != "" {
+		status = lipgloss.NewStyle().Foreground(ColorError).
+			Render(FixedWidth("  ! "+SanitizeRow(m.Err), innerW))
+		maxRows--
+	}
+	if maxRows < 0 {
+		maxRows = 0
 	}
 
-	return strings.Join(lines, "\n")
+	entries := m.rows()
+	if len(entries) == 0 {
+		if m.Loading {
+			return []string{MutedStyle.Render(FixedWidth("  Searching…", innerW))}, status
+		}
+		return []string{MutedStyle.Render(FixedWidth("  No results", innerW))}, status
+	}
+	if maxRows == 0 {
+		return nil, status
+	}
+
+	// Scroll window that always keeps the cursor on screen.
+	start := 0
+	if m.Cursor >= maxRows {
+		start = m.Cursor - maxRows + 1
+	}
+	if last := len(entries) - maxRows; start > last {
+		start = last
+	}
+	if start < 0 {
+		start = 0
+	}
+	end := min(start+maxRows, len(entries))
+
+	// Label gets 1/3 of the row, sub-label the rest. The row is exactly innerW
+	// cells: "▶ " prefix (2) + label + " " separator (1) + sub-label.
+	usable := innerW - 3
+	if usable < 1 {
+		usable = 1
+	}
+	keyW := usable / 3
+	if keyW < 8 {
+		keyW = 8
+	}
+	if keyW > usable {
+		keyW = usable
+	}
+	subW := usable - keyW
+
+	rows = make([]string, 0, end-start)
+	for i := start; i < end; i++ {
+		e := entries[i]
+		label := FixedWidth(SanitizeRow(e.label), keyW)
+		sub := FixedWidth(SanitizeRow(e.subLabel), subW)
+		if i == m.Cursor {
+			row := lipgloss.NewStyle().Foreground(ColorAccent).Bold(true).Render("▶ "+label) +
+				" " + lipgloss.NewStyle().Foreground(ColorForegroundBright).Render(sub)
+			rows = append(rows, row)
+		} else {
+			rows = append(rows, "  "+MutedStyle.Render(label)+" "+MutedStyle.Render(sub))
+		}
+	}
+	return rows, status
 }

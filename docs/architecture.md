@@ -305,7 +305,7 @@ See [Configuration](configuration.md) for details.
 |------|---------|
 | `spinner.go` | `RunWithSpinner[T]` — generic async spinner for any blocking operation |
 | `styles.go` | Color constants (`ColorRed`, `ColorBlue`, etc.), shared styles (`DimStyle`, `BoldBlue`), `IssueTypeColor()`, `EpicColor()` |
-| `helpers.go` | `FixedWidth`, `Clamp`, `SplitPanes`, `ListPaneWidth`, `DetailPaneWidth`, `ContainsCI` |
+| `helpers.go` | `FixedWidth`, `DisplayWidth`, `SanitizeRow`, `FitInput`, `Clamp`, `SplitPanes`, `ListPaneWidth`, `DetailPaneWidth`, `RenderPickerModal`, `ContainsCI` |
 | `picker.go` | `PickerModel` — reusable search picker; debounced server search or local in-memory filtering |
 | `option_picker.go` | `OptionPickerModel` — static list picker without a text input |
 | `help.go` | `HelpModel` — scrollable keybinding overlay |

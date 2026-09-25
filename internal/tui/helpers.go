@@ -4,22 +4,78 @@ import (
 	"fmt"
 	"strings"
 
+	"charm.land/bubbles/v2/textinput"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
-// FixedWidth returns s padded or truncated to exactly n runes.
-func FixedWidth(s string, n int) string {
-	r := []rune(s)
-	if len(r) == n {
-		return s
+// DisplayWidth returns the number of terminal cells s occupies when rendered.
+// Unlike a rune count it treats wide characters (CJK, emoji) as two cells and
+// ignores ANSI escape sequences, which is what decides whether a line wraps.
+func DisplayWidth(s string) int { return ansi.StringWidth(s) }
+
+// SanitizeRow flattens arbitrary text into a single displayable line. Newlines,
+// carriage returns, and tabs become spaces, escape and other control characters
+// are dropped, and runs of whitespace collapse. Data supplied by a caller (an
+// issue summary, a display name) therefore cannot break out of a fixed-width
+// row or inject its own styling.
+func SanitizeRow(s string) string {
+	if s == "" {
+		return ""
 	}
-	if len(r) > n {
-		if n <= 1 {
-			return string(r[:n])
+	flat := strings.Map(func(r rune) rune {
+		switch {
+		case r == '\n' || r == '\r' || r == '\t':
+			return ' '
+		case r < 0x20 || r == 0x7f: // control characters, including ESC
+			return -1
 		}
-		return string(r[:n-1]) + "…"
+		return r
+	}, s)
+	return strings.Join(strings.Fields(flat), " ")
+}
+
+// FixedWidth returns s padded or truncated to exactly n display cells, so a
+// column never overflows its slot no matter how wide the characters are. ANSI
+// escape sequences are preserved. A non-positive n yields the empty string.
+func FixedWidth(s string, n int) string {
+	if n <= 0 {
+		return ""
 	}
-	return s + strings.Repeat(" ", n-len(r))
+	w := DisplayWidth(s)
+	switch {
+	case w == n:
+		return s
+	case w > n:
+		if n == 1 {
+			return ansi.Truncate(s, 1, "")
+		}
+		// A wide character that would cross the boundary is dropped rather than
+		// split, which can leave the result short of n cells: pad it back out.
+		truncated := ansi.Truncate(s, n, "…")
+		if pad := n - DisplayWidth(truncated); pad > 0 {
+			truncated += strings.Repeat(" ", pad)
+		}
+		return truncated
+	default:
+		return s + strings.Repeat(" ", n-w)
+	}
+}
+
+// FitInput renders input within the given number of terminal cells, sizing its
+// scrolling viewport so a long value stays on a single line with the cursor in
+// view. The prompt and the cursor cell are counted against the budget. The input
+// is taken by value, so the caller's model keeps its own width.
+func FitInput(input textinput.Model, cells int) string {
+	width := cells - DisplayWidth(input.Prompt) - 1
+	if width < 1 {
+		width = 1
+	}
+	input.SetWidth(width)
+	// The viewport offsets are only recomputed when the value or cursor
+	// changes, so nudge the cursor to reflow for the width set above.
+	input.SetCursor(input.Position())
+	return input.View()
 }
 
 // FormatStoryPoints returns a compact display value for story points.
@@ -127,47 +183,123 @@ func ContainsCI(list []string, val string) bool {
 	return false
 }
 
-// RenderPickerOverlay renders a centered picker modal with consistent styling.
-// The picker model's View method is called to render the list content.
-func RenderPickerOverlay(pickerView func(innerW, listH int) string, title string, totalW, totalH int) string {
-	width := totalW
-	if width == 0 {
-		width = 120
+// PickerFooter is the navigation hint shown at the bottom of a picker modal.
+const PickerFooter = "  ↑/↓ ctrl+p/n: navigate   enter: select   esc: cancel"
+
+// pickerFooterNarrow replaces PickerFooter when the modal is too narrow for it.
+const pickerFooterNarrow = "  ↑/↓ enter: select   esc: cancel"
+
+// Smallest terminal a picker modal can be drawn into without overflowing it.
+const (
+	pickerMinTermW = 40
+	pickerMinTermH = 10
+)
+
+// PickerOverlaySize returns the outer modal width (border included), the usable
+// inner width, and the number of list rows that fit, for a terminal of the
+// given size. modalW and innerW are the values to hand to lipgloss Width: they
+// already account for the border, so a body line of innerW cells fits exactly.
+// Both results are clamped so the modal can never be larger than the terminal.
+func PickerOverlaySize(totalW, totalH int) (modalW, innerW, listH int) {
+	w, h := totalW, totalH
+	if w == 0 {
+		w = 120
 	}
-	height := totalH
-	if height == 0 {
-		height = 40
+	if h == 0 {
+		h = 40
 	}
 
-	pickerW := width * 2 / 3
-	if pickerW < 52 {
-		pickerW = 52
+	modalW = w * 2 / 3
+	if modalW > 90 {
+		modalW = 90
 	}
-	if pickerW > 90 {
-		pickerW = 90
+	if modalW < 52 {
+		modalW = 52
 	}
-	innerW := pickerW - 2
+	if modalW > w {
+		modalW = w
+	}
+	innerW = modalW - 2
+
+	// Chrome is five rows: two border rows, header, separator, footer.
+	listH = h/2 - 6
+	if maxRows := h - 5; listH > maxRows {
+		listH = maxRows
+	}
+	if listH < 1 {
+		listH = 1
+	}
+	return modalW, innerW, listH
+}
+
+// RenderPickerModal renders a centered picker modal with one shared frame: a
+// bold title header, content, a separator, and a muted footer.
+//
+// content is called with the usable inner width and the number of list rows,
+// and must return at most listH+2 lines (a picker returns its input line, a
+// separator, and up to listH rows). Every line is clamped to innerW display
+// cells, so a long value can never wrap and break the frame. Footers wider than
+// the modal are swapped for a compact hint, then truncated as a last resort.
+func RenderPickerModal(title string, content func(innerW, listH int) string, footer string, totalW, totalH int) string {
+	w, h := totalW, totalH
+	if w == 0 {
+		w = 120
+	}
+	if h == 0 {
+		h = 40
+	}
+
+	if w < pickerMinTermW || h < pickerMinTermH {
+		const msg = "Terminal too small"
+		if w < DisplayWidth(msg)+2 || h < 3 {
+			return ""
+		}
+		return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, MutedStyle.Render(msg))
+	}
+
+	modalW, innerW, listH := PickerOverlaySize(w, h)
 
 	header := BoldAccent.Padding(0, 1).Width(innerW).
-		Render(FixedWidth(title, innerW-2))
+		Render(FixedWidth(SanitizeRow(title), innerW-2))
 
-	listH := height/2 - 6
-	if listH < 4 {
-		listH = 4
+	contentStr := ""
+	if content != nil {
+		contentStr = content(innerW, listH)
+	}
+	bodyLines := clampLines(strings.Split(contentStr, "\n"), innerW, listH+2)
+
+	if DisplayWidth(footer) > innerW {
+		footer = pickerFooterNarrow
 	}
 
-	footer := MutedStyle.Render("  ↑/↓ ctrl+p/n: navigate   enter: select   esc: cancel")
-
 	body := header + "\n" +
-		pickerView(innerW, listH) + "\n" +
-		MutedStyle.Render(strings.Repeat("─", innerW)) + "\n" +
-		footer
+		strings.Join(bodyLines, "\n") + "\n" +
+		MutedStyle.Render(FixedWidth(footer, innerW))
 
 	modal := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(ColorAccent).
-		Width(innerW).
+		Width(modalW).
 		Render(body)
 
-	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, modal)
+	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, modal)
+}
+
+// clampLines forces each line to exactly width display cells and limits the
+// block to maxLines lines. Styled lines keep their ANSI sequences.
+func clampLines(lines []string, width, maxLines int) []string {
+	if len(lines) > maxLines {
+		lines = lines[:maxLines]
+	}
+	out := make([]string, len(lines))
+	for i, line := range lines {
+		out[i] = FixedWidth(line, width)
+	}
+	return out
+}
+
+// RenderPickerOverlay renders a centered picker modal with consistent styling.
+// The picker model's View method is called to render the list content.
+func RenderPickerOverlay(pickerView func(innerW, listH int) string, title string, totalW, totalH int) string {
+	return RenderPickerModal(title, pickerView, PickerFooter, totalW, totalH)
 }

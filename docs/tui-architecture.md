@@ -205,7 +205,7 @@ Fixed column widths:
 KEY(10)  SUMMARY(dynamic)  EPIC(16)  TYPE(8)  SP(5)  ASSIGNEE(14)
 ```
 
-The summary column takes all remaining space. All columns are rendered with `tui.FixedWidth` (pads or truncates to exact rune count with `…` for overflow).
+The summary column takes all remaining space. All columns are rendered with `tui.FixedWidth` (pads or truncates to exact display-cell count with `…` for overflow, so CJK and emoji cannot overflow a column).
 
 ### Epic Coloring
 
@@ -297,6 +297,45 @@ are no related items, where it reports that nothing matched.
   view keeps ownership of the states it returns to; `ctrl+c` stays with the
   caller because quitting is view-specific
 - `viewLinkedItemsPicker` renders the overlay through `tui.RenderPickerOverlay`
+
+### Picker Rendering Contract
+
+The picker models render into a modal frame supplied by `internal/tui/helpers.go`.
+Two rules keep every picker overlay intact:
+
+1. **The modal owns the width.** `PickerOverlaySize` returns `modalW` (border
+   included) and `innerW` (usable columns). `lipgloss.Style.Width` already
+   includes the border, so the modal is rendered with `Width(modalW)` and the
+   picker is handed `innerW`; a body line of `innerW` cells therefore fits
+   exactly. Passing `innerW` to `Width` instead would render a body two columns
+   too wide, which wraps and leaves stray separator fragments behind.
+2. **Every line is a fixed number of display cells.** `FixedWidth`,
+   `DisplayWidth`, and `SanitizeRow` measure in terminal cells rather than runes,
+   so wide characters never overrun a column, and item text from Jira cannot
+   inject a newline or an escape sequence into a row. `RenderPickerModal`
+   re-clamps every line and limits the body to `listH+2` lines as a backstop, so
+   a picker cannot break the frame even if its own width math is wrong.
+
+Other behaviours that follow from this:
+
+- The query input is sized with `tui.FitInput`, which reflows the text input's
+  scrolling viewport so a long query stays on one line with the cursor visible.
+- The footer swaps to a compact hint when the modal is narrower than the full
+  navigation string, and a terminal too small for the modal shows
+  `Terminal too small` instead of overflowing the screen.
+- While a debounced search is running, the previous results stay on screen and
+  the indicator sits on the right of the separator; a search error keeps the
+  results and adds an error row. The list never blinks out mid-typing.
+- `Enter` only completes when at least one row is selectable. Pressing it on an
+  empty result list is a no-op rather than a signal to clear the field, because
+  a `nil` selection already means "(none)" to the callers.
+- `InitialValue` positions the cursor once; later search results never move it
+  back, and the cursor is clamped after every result so a shrinking list cannot
+  leave the highlight (and the scroll window) past the end.
+
+Regression tests covering these invariants live in
+`internal/tui/helpers_test.go` (`TestRenderPickerOverlayKeepsFrameIntact`) and
+`internal/tui/picker_test.go`.
 
 The backlog builds items from the same full issue fetch that populates the
 sidebar, so its picker is empty until that fetch completes. The epics view adds

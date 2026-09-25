@@ -216,6 +216,12 @@ keyCol := tui.FixedWidth(issue.Key, 10)
 keyCol := fmt.Sprintf("%-10s", issue.Key)
 ```
 
+Widths are measured in **terminal display cells**, not runes. Use `tui.DisplayWidth` to measure
+(CJK and emoji are two cells, ANSI escapes are zero) and `tui.SanitizeRow` on any text that came
+from Jira before putting it in a fixed-width row — a newline or an escape sequence in a summary
+otherwise breaks the layout around it. `tui.FitInput` renders a `textinput.Model` within a cell
+budget, reflowing its scrolling viewport so a long value stays on one line.
+
 ### Code Deduplication
 
 **Extract shared helpers early.** If similar code appears 2-3 times, extract it:
@@ -382,6 +388,16 @@ Epic children are not part of the board projection — `buildEpicItems` only cou
 They are fetched on demand, cached per epic key (`epic_children:<key>`), and dropped when
 the selection changes or when a reparenting or status mutation occurs. A failed fetch is
 reported inline in the sidebar rather than silently ignored.
+
+### 13. Picker Modals: `Width` Includes the Border
+
+`lipgloss.Style.Width(n)` produces a block exactly `n` columns wide *including* the border, so the
+usable content width is `n-2`. Render picker modals through `tui.RenderPickerModal` (or
+`tui.RenderPickerOverlay`) and get the sizes from `tui.PickerOverlaySize`: it returns the outer
+`modalW` for `Style.Width` and the inner `innerW` for the picker's `View(innerW, listH)`. Handing
+`innerW` to `Width` instead renders a body two columns too wide; every line wraps and leaves stray
+separator fragments inside the box. `RenderPickerModal` clamps every body line to `innerW`, which is
+regression-tested by `TestRenderPickerOverlayKeepsFrameIntact`, so do not hand-roll this frame.
 
 ## Documentation
 

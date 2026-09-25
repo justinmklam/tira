@@ -75,7 +75,10 @@ issue, err := tui.RunWithSpinner("Fetching issue...", func() (*models.Issue, err
 
 | Function | Description |
 |----------|-------------|
-| `FixedWidth(s string, n int) string` | Pad/truncate to exactly `n` runes; uses `…` for overflow |
+| `DisplayWidth(s string) int` | Terminal cells `s` occupies; wide characters count as two, ANSI escapes as zero |
+| `SanitizeRow(s string) string` | Flatten text to one line: newlines/tabs become spaces, control chars dropped, whitespace collapsed |
+| `FixedWidth(s string, n int) string` | Pad/truncate to exactly `n` display cells; uses `…` for overflow; returns `""` for `n <= 0` |
+| `FitInput(input textinput.Model, cells int) string` | Render a text input within `cells` cells, reflowing its scrolling viewport so long values stay on one line |
 | `FormatStoryPoints(points float64) string` | Compact story-point formatting shared by Backlog and Epics |
 | `Clamp(v, lo, hi int) int` | Constrain `v` to `[lo, hi]` |
 | `SplitPanes(left, right string, leftWidth, height int) string` | Side-by-side layout with dim `│` separator |
@@ -84,6 +87,9 @@ issue, err := tui.RunWithSpinner("Fetching issue...", func() (*models.Issue, err
 | `OverlaySize(w, h int) (w, h int)` | 85% width (max 140, min 60); 95% height (min 15) |
 | `OverlayViewportSize(w, h int) (vpW, vpH int)` | Subtracts border + chrome from OverlaySize |
 | `HelpOverlaySize(w, h int) (w, h int)` | 70% width (max 100, min 60); 90% height (max 50, min 25) |
+| `PickerOverlaySize(w, h int) (modalW, innerW, listH int)` | Picker modal outer width, usable inner width, and list rows that fit |
+| `RenderPickerModal(title string, content func(innerW, listH int) string, footer string, w, h int) string` | Centered picker modal: title header, content, separator, footer; clamps every line |
+| `RenderPickerOverlay(pickerView func(innerW, listH int) string, title string, w, h int) string` | `RenderPickerModal` with the default `PickerFooter` navigation hint |
 | `ContainsCI(list []string, val string) bool` | Case-insensitive membership check |
 
 ### picker.go — Reusable Search Picker
