@@ -3,6 +3,7 @@ package app
 import (
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/justinmklam/tira/internal/models"
 )
 
@@ -143,4 +144,93 @@ func TestBuildColumns_MultipleStatusesPerColumn(t *testing.T) {
 	if len(cols[2].issues) != 1 {
 		t.Errorf("Complete column: expected 1 issue, got %d", len(cols[2].issues))
 	}
+}
+
+func kanbanArrowTestModel() kanbanModel {
+	boardCols := []models.BoardColumn{
+		{Name: "To Do", StatusIDs: []string{"1"}},
+		{Name: "In Progress", StatusIDs: []string{"2"}},
+		{Name: "Done", StatusIDs: []string{"3"}},
+	}
+	issues := []models.Issue{
+		{Key: "PROJ-1", StatusID: "1", Summary: "First"},
+		{Key: "PROJ-2", StatusID: "1", Summary: "Second"},
+		{Key: "PROJ-3", StatusID: "2", Summary: "Third"},
+		{Key: "PROJ-4", StatusID: "3", Summary: "Fourth"},
+	}
+	m := newKanbanModel(nil, boardCols, issues, "", "PROJ", "https://example.atlassian.net")
+	m.width, m.height = 120, 40
+	return m
+}
+
+func TestKanbanArrowKeys(t *testing.T) {
+	moves := []struct {
+		name  string
+		arrow tea.KeyPressMsg
+		plain tea.KeyPressMsg
+	}{
+		{"down matches j", arrowKey(tea.KeyDown), keyPress("j")},
+		{"up matches k", arrowKey(tea.KeyUp), keyPress("k")},
+		{"left matches h", arrowKey(tea.KeyLeft), keyPress("h")},
+		{"right matches l", arrowKey(tea.KeyRight), keyPress("l")},
+	}
+
+	for _, mv := range moves {
+		t.Run(mv.name, func(t *testing.T) {
+			base := kanbanArrowTestModel()
+			base.colIdx = 1
+			base.rowIdxs[1] = 1
+
+			withArrow, _ := base.updateBoard(mv.arrow)
+			withPlain, _ := base.updateBoard(mv.plain)
+			arrowModel := withArrow.(kanbanModel)
+			plainModel := withPlain.(kanbanModel)
+
+			if arrowModel.colIdx != plainModel.colIdx {
+				t.Errorf("colIdx = %d, want %d", arrowModel.colIdx, plainModel.colIdx)
+			}
+			for ci := range plainModel.rowIdxs {
+				if arrowModel.rowIdxs[ci] != plainModel.rowIdxs[ci] {
+					t.Errorf("rowIdxs[%d] = %d, want %d", ci, arrowModel.rowIdxs[ci], plainModel.rowIdxs[ci])
+				}
+			}
+		})
+	}
+}
+
+func TestKanbanArrowKeys_AtBoundaries(t *testing.T) {
+	t.Run("right on the last column is a no-op", func(t *testing.T) {
+		m := kanbanArrowTestModel()
+		m.colIdx = len(m.columns) - 1
+		got, _ := m.updateBoard(arrowKey(tea.KeyRight))
+		if got.(kanbanModel).colIdx != m.colIdx {
+			t.Errorf("colIdx = %d, want %d", got.(kanbanModel).colIdx, m.colIdx)
+		}
+	})
+
+	t.Run("left on the first column is a no-op", func(t *testing.T) {
+		m := kanbanArrowTestModel()
+		got, _ := m.updateBoard(arrowKey(tea.KeyLeft))
+		if got.(kanbanModel).colIdx != 0 {
+			t.Errorf("colIdx = %d, want 0", got.(kanbanModel).colIdx)
+		}
+	})
+
+	t.Run("up on the first card is a no-op", func(t *testing.T) {
+		m := kanbanArrowTestModel()
+		got, _ := m.updateBoard(arrowKey(tea.KeyUp))
+		if got.(kanbanModel).rowIdxs[0] != 0 {
+			t.Errorf("rowIdxs[0] = %d, want 0", got.(kanbanModel).rowIdxs[0])
+		}
+	})
+
+	t.Run("down on the last card is a no-op", func(t *testing.T) {
+		m := kanbanArrowTestModel()
+		last := len(m.columns[0].issues) - 1
+		m.rowIdxs[0] = last
+		got, _ := m.updateBoard(arrowKey(tea.KeyDown))
+		if got.(kanbanModel).rowIdxs[0] != last {
+			t.Errorf("rowIdxs[0] = %d, want %d", got.(kanbanModel).rowIdxs[0], last)
+		}
+	})
 }

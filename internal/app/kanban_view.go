@@ -203,7 +203,7 @@ func (m kanbanModel) viewBoard() string {
 			Render("Kanban: "+m.sprintName) + "\n"
 	}
 
-	hintsStr := "  hjkl: navigate   enter: view   e: edit   c: comment   s: status   L: linked   o: open   tab: backlog   q: quit"
+	hintsStr := "  hjkl/arrows: navigate   enter: view   e: edit   c: comment   s: status   L: linked   o: open   tab: backlog   q: quit"
 	var footerStr string
 	if m.state == stateLoading || m.linkPickerKey != "" {
 		spinnerStr := m.loadSpinner.View() + tui.MutedStyle.Render(" Loading…")

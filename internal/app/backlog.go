@@ -68,6 +68,7 @@ type blMoveMultiDoneMsg struct {
 	movedKeys      []string
 	firstMovedKey  string
 	targetGroupIdx int
+	followCursor   bool
 	err            error
 }
 
@@ -604,19 +605,30 @@ func (m blModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cutKeys = make(map[string]bool)
 			m.visualMode = false
 			m.rows = blBuildRows(m.groups, m.collapsed, m.filter, m.filterEpic)
-			// Navigate cursor to the first moved issue's new position.
-			if msg.firstMovedKey != "" {
-				for i, row := range m.rows {
-					if row.kind == blRowIssue && row.groupIdx == msg.targetGroupIdx &&
-						m.groups[msg.targetGroupIdx].Issues[row.issueIdx].Key == msg.firstMovedKey {
-						m.cursor = i
-						break
+			if msg.followCursor {
+				// Navigate cursor to the first moved issue's new position.
+				if msg.firstMovedKey != "" {
+					for i, row := range m.rows {
+						if row.kind == blRowIssue && row.groupIdx == msg.targetGroupIdx &&
+							m.groups[msg.targetGroupIdx].Issues[row.issueIdx].Key == msg.firstMovedKey {
+							m.cursor = i
+							break
+						}
 					}
+				} else {
+					m.cursor = tui.Clamp(m.cursor, 0, len(m.rows)-1)
 				}
 			} else {
+				// Keep the cursor at the same row index rather than following the
+				// moved ticket; step forward if a spacer row now sits under it.
 				m.cursor = tui.Clamp(m.cursor, 0, len(m.rows)-1)
+				for m.cursor < len(m.rows)-1 && m.rows[m.cursor].kind == blRowSpacer {
+					m.cursor++
+				}
 			}
-			return blScrollToFit(m), nil
+			var cmd tea.Cmd
+			m, cmd = m.updateSidebarContent()
+			return blScrollToFit(m), cmd
 		}
 		return m, nil
 
@@ -709,7 +721,9 @@ func (m blModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // blMoveMultiCmd moves keys to a sprint (or backlog) and, when rankAfterKey is
 // non-empty, explicitly ranks them after that issue so they land at the bottom.
-func blMoveMultiCmd(client api.Client, keys []string, targetSprintID, targetGroupIdx int, rankAfterKey string) tea.Cmd {
+// followCursor controls whether the cursor navigates to the first moved issue
+// once the move completes.
+func blMoveMultiCmd(client api.Client, keys []string, targetSprintID, targetGroupIdx int, rankAfterKey string, followCursor bool) tea.Cmd {
 	return func() tea.Msg {
 		var err error
 		if targetSprintID == 0 {
@@ -724,7 +738,7 @@ func blMoveMultiCmd(client api.Client, keys []string, targetSprintID, targetGrou
 		if len(keys) > 0 {
 			firstKey = keys[0]
 		}
-		return blMoveMultiDoneMsg{movedKeys: keys, firstMovedKey: firstKey, targetGroupIdx: targetGroupIdx, err: err}
+		return blMoveMultiDoneMsg{movedKeys: keys, firstMovedKey: firstKey, targetGroupIdx: targetGroupIdx, followCursor: followCursor, err: err}
 	}
 }
 

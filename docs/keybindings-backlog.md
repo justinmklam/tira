@@ -2,7 +2,7 @@
 
 Modelled on yazi's philosophy: modal only where the modality is obvious from context, not as a first-class concept the user has to track.
 
-> **Note:** This document reflects the actual implemented keybindings. Last updated: 2026-08-25
+> **Note:** This document reflects the actual implemented keybindings. Last updated: 2026-09-24
 
 ---
 
@@ -10,9 +10,9 @@ Modelled on yazi's philosophy: modal only where the modality is obvious from con
 
 | Key | Action |
 |-----|--------|
-| `j` / `k` | Move down / up within a sprint |
-| `J` / `}` | Jump to next sprint header |
-| `K` / `{` | Jump to previous sprint header |
+| `j` / `k` / `↓` / `↑` | Move down / up within a sprint |
+| `l` / `→` / `J` / `}` | Jump to next sprint header |
+| `h` / `←` / `K` / `{` | Jump to previous sprint header |
 | `g` / `G` | Jump to first / last ticket in the list |
 | `d` / `u` | Scroll issue list 1/4 page down / up |
 | `<C-d>` / `<C-u>` | Scroll sidebar 1/4 page down / up |
@@ -30,7 +30,7 @@ Modelled on yazi's philosophy: modal only where the modality is obvious from con
 
 | Key | Action |
 |-----|--------|
-| `h` / `j` / `k` / `l` | Move left / down / up / right between columns and issues |
+| `h` / `j` / `k` / `l` (`←` / `↓` / `↑` / `→`) | Move left / down / up / right between columns and issues |
 | `L` | Pick a linked item to open in Jira (see [Linked Items](#linked-items-l)) |
 | `<Enter>` | Open ticket detail pane |
 | `<Esc>` | Close detail pane / cancel action |
@@ -177,6 +177,12 @@ When the help overlay is open (`?`), use these keys to navigate:
 2. Press `x` to cut (marks tickets for move)
 3. Navigate to target sprint
 4. Press `p` to paste — tickets are moved to the target sprint
+
+### Adjacent Sprint Move (`>` / `<`)
+- `>` / `<` move the cursor ticket(s) to the next / previous sprint.
+- The cursor stays at the same row index instead of following the moved ticket, so
+  you can keep moving tickets down a list without being dragged along.
+- Other move keys (`p`, `B`) still follow the moved ticket.
 
 ### Visual Mode (`v`)
 1. Press `v` to start visual selection at current cursor position

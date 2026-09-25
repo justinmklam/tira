@@ -3,6 +3,7 @@ package app
 import (
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/justinmklam/tira/internal/api"
 	"github.com/justinmklam/tira/internal/models"
 )
@@ -310,4 +311,189 @@ type parentRefreshClient struct {
 
 func (parentRefreshClient) BulkSetParent([]string, string) []error {
 	return []error{nil}
+}
+
+// blSprintJumpGroups returns three sprints with issues so every sprint header
+// has an issue row before it.
+func blSprintJumpGroups() []models.SprintGroup {
+	return []models.SprintGroup{
+		{
+			Sprint: models.Sprint{ID: 1, Name: "Sprint 1"},
+			Issues: []models.Issue{{Key: "PROJ-1", Summary: "First"}, {Key: "PROJ-2", Summary: "Second"}},
+		},
+		{
+			Sprint: models.Sprint{ID: 2, Name: "Sprint 2"},
+			Issues: []models.Issue{{Key: "PROJ-3", Summary: "Third"}},
+		},
+		{
+			Sprint: models.Sprint{ID: 3, Name: "Sprint 3"},
+			Issues: []models.Issue{{Key: "PROJ-4", Summary: "Fourth"}},
+		},
+	}
+}
+
+// blTestModel builds a list-state model over the given groups with the cursor
+// at startCursor. Rows are rebuilt from the groups, so mutate the model's copy
+// only through its own Update/handler paths.
+func blTestModel(groups []models.SprintGroup, startCursor int) blModel {
+	collapsed := map[int]bool{}
+	return blModel{
+		state:     blList,
+		width:     120,
+		height:    40,
+		groups:    groups,
+		rows:      blBuildRows(groups, collapsed, "", ""),
+		collapsed: collapsed,
+		cursor:    startCursor,
+		selected:  map[string]bool{},
+		cutKeys:   map[string]bool{},
+	}
+}
+
+// blIssueKeyAtCursor returns the issue key under the cursor, or "" when the
+// cursor is not on an issue row.
+func blIssueKeyAtCursor(m blModel) string {
+	if m.cursor < 0 || m.cursor >= len(m.rows) {
+		return ""
+	}
+	row := m.rows[m.cursor]
+	if row.kind != blRowIssue {
+		return ""
+	}
+	return m.groups[row.groupIdx].Issues[row.issueIdx].Key
+}
+
+func TestBlSprintJumpKeys(t *testing.T) {
+	// Rows: 0=Sprint 1, 1=PROJ-1, 2=PROJ-2, 3=spacer, 4=Sprint 2,
+	//       5=PROJ-3, 6=spacer, 7=Sprint 3, 8=PROJ-4
+	cases := []struct {
+		name       string
+		key        tea.KeyPressMsg
+		startRow   int
+		wantCursor int
+	}{
+		{"l jumps to next header", keyPress("l"), 1, 4},
+		{"right jumps to next header", arrowKey(tea.KeyRight), 1, 4},
+		{"J jumps to next header", keyPress("J"), 2, 4},
+		{"} jumps to next header", keyPress("}"), 5, 7},
+		{"l on last header is a no-op", keyPress("l"), 7, 7},
+		{"right on last header is a no-op", arrowKey(tea.KeyRight), 7, 7},
+		{"h jumps to previous header", keyPress("h"), 5, 4},
+		{"left jumps to previous header", arrowKey(tea.KeyLeft), 8, 7},
+		{"K jumps to previous header", keyPress("K"), 5, 4},
+		{"{ jumps to previous header", keyPress("{"), 2, 0},
+		{"h on first header is a no-op", keyPress("h"), 0, 0},
+		{"left on first header is a no-op", arrowKey(tea.KeyLeft), 0, 0},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := blTestModel(blSprintJumpGroups(), tc.startRow)
+			got, _ := m.updateList(tc.key)
+			m = got.(blModel)
+			if m.cursor != tc.wantCursor {
+				t.Fatalf("cursor = %d, want %d", m.cursor, tc.wantCursor)
+			}
+			if m.rows[m.cursor].kind != blRowSprint {
+				t.Fatalf("cursor row kind = %v, want a sprint header", m.rows[m.cursor].kind)
+			}
+		})
+	}
+}
+
+func TestBlMoveDoneNoFollow(t *testing.T) {
+	t.Run("adjacent sprint move keeps the cursor row", func(t *testing.T) {
+		m := blTestModel(blSprintJumpGroups()[:2], 1) // cursor on PROJ-1
+		if got := blIssueKeyAtCursor(m); got != "PROJ-1" {
+			t.Fatalf("setup: cursor issue = %q, want PROJ-1", got)
+		}
+
+		updated, _ := m.Update(blMoveMultiDoneMsg{
+			movedKeys:      []string{"PROJ-1"},
+			firstMovedKey:  "PROJ-1",
+			targetGroupIdx: 1,
+			followCursor:   false,
+		})
+		got := updated.(blModel)
+
+		if got.moving {
+			t.Error("moving = true, want false after a completed move")
+		}
+		if got.cursor != 1 {
+			t.Errorf("cursor = %d, want 1 (unchanged row index)", got.cursor)
+		}
+		if got.rows[got.cursor].kind == blRowSpacer {
+			t.Error("cursor landed on a spacer row")
+		}
+		if key := blIssueKeyAtCursor(got); key != "PROJ-2" {
+			t.Errorf("cursor issue = %q, want PROJ-2", key)
+		}
+		if !blGroupHasIssue(got.groups[1], "PROJ-1") {
+			t.Error("target group does not contain PROJ-1")
+		}
+		if blGroupHasIssue(got.groups[0], "PROJ-1") {
+			t.Error("source group still contains PROJ-1")
+		}
+	})
+
+	t.Run("follow still lands on the moved issue", func(t *testing.T) {
+		m := blTestModel(blSprintJumpGroups()[:2], 1)
+
+		updated, _ := m.Update(blMoveMultiDoneMsg{
+			movedKeys:      []string{"PROJ-1"},
+			firstMovedKey:  "PROJ-1",
+			targetGroupIdx: 1,
+			followCursor:   true,
+		})
+		got := updated.(blModel)
+
+		if key := blIssueKeyAtCursor(got); key != "PROJ-1" {
+			t.Errorf("cursor issue = %q, want PROJ-1", key)
+		}
+		if got.rows[got.cursor].groupIdx != 1 {
+			t.Errorf("cursor group = %d, want 1", got.rows[got.cursor].groupIdx)
+		}
+	})
+
+	t.Run("cursor steps past a spacer row", func(t *testing.T) {
+		groups := []models.SprintGroup{
+			{
+				Sprint: models.Sprint{ID: 1, Name: "Sprint 1"},
+				Issues: []models.Issue{{Key: "PROJ-1"}, {Key: "PROJ-2"}},
+			},
+			{Sprint: models.Sprint{ID: 2, Name: "Sprint 2"}},
+			{
+				Sprint: models.Sprint{ID: 3, Name: "Sprint 3"},
+				Issues: []models.Issue{{Key: "PROJ-3"}},
+			},
+		}
+		// Rows: 0=Sprint 1, 1=PROJ-1, 2=PROJ-2, 3=spacer, 4=Sprint 2, ...
+		m := blTestModel(groups, 2) // cursor on PROJ-2
+
+		updated, _ := m.Update(blMoveMultiDoneMsg{
+			movedKeys:      []string{"PROJ-1"},
+			firstMovedKey:  "PROJ-1",
+			targetGroupIdx: 1,
+			followCursor:   false,
+		})
+		got := updated.(blModel)
+
+		// PROJ-1 removed from Sprint 1 shifts the rows, so row 2 becomes the
+		// spacer between Sprint 1 and Sprint 2.
+		if got.cursor != 3 {
+			t.Fatalf("cursor = %d, want 3 (stepped past the spacer)", got.cursor)
+		}
+		if got.rows[got.cursor].kind != blRowSprint {
+			t.Errorf("cursor row kind = %v, want a sprint header", got.rows[got.cursor].kind)
+		}
+	})
+}
+
+func blGroupHasIssue(group models.SprintGroup, key string) bool {
+	for _, issue := range group.Issues {
+		if issue.Key == key {
+			return true
+		}
+	}
+	return false
 }

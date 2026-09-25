@@ -12,6 +12,30 @@ import (
 	"github.com/justinmklam/tira/internal/tui"
 )
 
+// sprintHeaderJump moves the cursor to the next sprint header when dir is
+// positive, or the previous one when dir is negative. The cursor is left
+// unchanged when there is no sprint header in that direction.
+func (m blModel) sprintHeaderJump(dir int) (blModel, tea.Cmd) {
+	if dir > 0 {
+		for i := m.cursor + 1; i < len(m.rows); i++ {
+			if m.rows[i].kind == blRowSprint {
+				m.cursor = i
+				break
+			}
+		}
+	} else {
+		for i := m.cursor - 1; i >= 0; i-- {
+			if m.rows[i].kind == blRowSprint {
+				m.cursor = i
+				break
+			}
+		}
+	}
+	var cmd tea.Cmd
+	m, cmd = m.updateSidebarContent()
+	return blScrollToFit(m), cmd
+}
+
 func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 	key, ok := msg.(tea.KeyPressMsg)
 	if !ok {
@@ -23,7 +47,7 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.quitting = true
 		return m, nil
 
-	case "j":
+	case "j", "down":
 		next := tui.Clamp(m.cursor+1, 0, len(m.rows)-1)
 		if next < len(m.rows) && m.rows[next].kind == blRowSpacer {
 			next = tui.Clamp(next+1, 0, len(m.rows)-1)
@@ -33,7 +57,7 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m, cmd = m.updateSidebarContent()
 		return blScrollToFit(m), cmd
 
-	case "k":
+	case "k", "up":
 		prev := tui.Clamp(m.cursor-1, 0, len(m.rows)-1)
 		if prev >= 0 && m.rows[prev].kind == blRowSpacer {
 			prev = tui.Clamp(prev-1, 0, len(m.rows)-1)
@@ -43,27 +67,11 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m, cmd = m.updateSidebarContent()
 		return blScrollToFit(m), cmd
 
-	case "J", "}":
-		for i := m.cursor + 1; i < len(m.rows); i++ {
-			if m.rows[i].kind == blRowSprint {
-				m.cursor = i
-				break
-			}
-		}
-		var cmd tea.Cmd
-		m, cmd = m.updateSidebarContent()
-		return blScrollToFit(m), cmd
+	case "J", "}", "l", "right":
+		return m.sprintHeaderJump(1)
 
-	case "K", "{":
-		for i := m.cursor - 1; i >= 0; i-- {
-			if m.rows[i].kind == blRowSprint {
-				m.cursor = i
-				break
-			}
-		}
-		var cmd tea.Cmd
-		m, cmd = m.updateSidebarContent()
-		return blScrollToFit(m), cmd
+	case "K", "{", "h", "left":
+		return m.sprintHeaderJump(-1)
 
 	case "g":
 		m.cursor = 0
@@ -277,7 +285,7 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		keys := m.keysInDisplayOrder(m.cutKeys)
 		rankAfter := lastIssueKey(target.Issues, m.cutKeys)
 		m.moving = true
-		return m, tea.Batch(m.loadSpinner.Tick, blMoveMultiCmd(m.client, keys, target.Sprint.ID, targetGroupIdx, rankAfter))
+		return m, tea.Batch(m.loadSpinner.Tick, blMoveMultiCmd(m.client, keys, target.Sprint.ID, targetGroupIdx, rankAfter, true))
 
 	case "ctrl+j":
 		return m.moveSelectionDown()
@@ -298,7 +306,7 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		target := m.groups[nextIdx]
 		rankAfter := lastIssueKey(target.Issues, make(map[string]bool))
 		m.moving = true
-		return m, tea.Batch(m.loadSpinner.Tick, blMoveMultiCmd(m.client, keys, target.Sprint.ID, nextIdx, rankAfter))
+		return m, tea.Batch(m.loadSpinner.Tick, blMoveMultiCmd(m.client, keys, target.Sprint.ID, nextIdx, rankAfter, false))
 
 	case "<":
 		keys := m.moveKeys()
@@ -313,7 +321,7 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		target := m.groups[prevIdx]
 		rankAfter := lastIssueKey(target.Issues, make(map[string]bool))
 		m.moving = true
-		return m, tea.Batch(m.loadSpinner.Tick, blMoveMultiCmd(m.client, keys, target.Sprint.ID, prevIdx, rankAfter))
+		return m, tea.Batch(m.loadSpinner.Tick, blMoveMultiCmd(m.client, keys, target.Sprint.ID, prevIdx, rankAfter, false))
 
 	case "B":
 		keys := m.moveKeys()
@@ -332,7 +340,7 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.moving = true
-		return m, tea.Batch(m.loadSpinner.Tick, blMoveMultiCmd(m.client, keys, 0, backlogIdx, ""))
+		return m, tea.Batch(m.loadSpinner.Tick, blMoveMultiCmd(m.client, keys, 0, backlogIdx, "", true))
 
 	case "a":
 		if m.cursor < len(m.rows) {

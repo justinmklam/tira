@@ -17,6 +17,11 @@ func keyPress(text string) tea.KeyPressMsg {
 	return tea.KeyPressMsg(tea.Key{Code: code, Text: text})
 }
 
+// arrowKey builds a key press for a named special key such as tea.KeyDown.
+func arrowKey(code rune) tea.KeyPressMsg {
+	return tea.KeyPressMsg(tea.Key{Code: code})
+}
+
 func testBoardGroups() []models.SprintGroup {
 	return []models.SprintGroup{
 		{

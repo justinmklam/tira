@@ -166,7 +166,7 @@ func (m blModel) viewList() string {
 	default:
 		hints := []string{
 			"e: edit", "c: comment", "o: open", "y: copy", "s: status", "S: story pts",
-			"x: cut", "p: paste", ">/<: adj sprint", "B: backlog",
+			"x: cut", "p: paste", ">/<: adj sprint", "h/l: jump sprint", "B: backlog",
 			"/: filter", "F: epic", "ctrl+n: new sprint", "E: edit sprint", "R: refresh",
 			"L: linked", "ctrl+d/u: scroll details",
 		}

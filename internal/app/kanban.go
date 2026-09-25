@@ -359,22 +359,22 @@ func (m kanbanModel) updateBoard(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case "ctrl+c", "q":
 		m.quitting = true
 		return m, nil
-	case "j":
+	case "j", "down":
 		col := m.columns[m.colIdx]
 		if m.rowIdxs[m.colIdx] < len(col.issues)-1 {
 			m.rowIdxs[m.colIdx]++
 			m.ensureScrolled(m.colIdx)
 		}
-	case "k":
+	case "k", "up":
 		if m.rowIdxs[m.colIdx] > 0 {
 			m.rowIdxs[m.colIdx]--
 			m.ensureScrolled(m.colIdx)
 		}
-	case "h":
+	case "h", "left":
 		if m.colIdx > 0 {
 			m.colIdx--
 		}
-	case "l":
+	case "l", "right":
 		if m.colIdx < len(m.columns)-1 {
 			m.colIdx++
 		}

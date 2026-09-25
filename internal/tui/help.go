@@ -37,9 +37,9 @@ func HelpSections() []HelpSection {
 		{
 			Title: "Navigation (Backlog)",
 			Keybindings: []HelpKeybinding{
-				{Key: "j / k", Description: "Move down / up within a sprint"},
-				{Key: "J / }", Description: "Jump to next sprint header"},
-				{Key: "K / {", Description: "Jump to previous sprint header"},
+				{Key: "j / k", Description: "Move down / up within a sprint (↓ / ↑)"},
+				{Key: "J / }", Description: "Jump to next sprint header (l / →)"},
+				{Key: "K / {", Description: "Jump to previous sprint header (h / ←)"},
 				{Key: "g / G", Description: "Jump to first / last ticket in the list"},
 				{Key: "z", Description: "Toggle collapse current sprint"},
 				{Key: "Z", Description: "Toggle collapse all sprints"},
@@ -59,7 +59,7 @@ func HelpSections() []HelpSection {
 		{
 			Title: "Navigation (Kanban)",
 			Keybindings: []HelpKeybinding{
-				{Key: "h / j / k / l", Description: "Move left / down / up / right between columns and issues"},
+				{Key: "h / j / k / l", Description: "Move left / down / up / right between columns and issues (arrow keys work too)"},
 				{Key: "Enter", Description: "Open ticket detail pane"},
 				{Key: "L", Description: "Pick a linked item to open in Jira"},
 				{Key: "Esc", Description: "Close detail pane / cancel action"},
