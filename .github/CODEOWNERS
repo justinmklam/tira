@@ -1,0 +1,7 @@
+# Dependency files are owned by the maintainer so Dependabot pull requests
+# request a review automatically. This replaces the retired `reviewers` option
+# in .github/dependabot.yml.
+/go.mod @justinmklam
+/go.sum @justinmklam
+/.github/workflows/ @justinmklam
+/.github/dependabot.yml @justinmklam

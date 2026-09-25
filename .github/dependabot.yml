@@ -1,20 +1,38 @@
 version: 2
 
+# Note: reviewer assignment is handled by .github/CODEOWNERS. The `reviewers`
+# option previously used here was retired by GitHub on 2025-05-20 in favour of
+# code owners, so it silently did nothing.
+#
+# Each ecosystem uses a catch-all group so routine bumps arrive as a single PR
+# per ecosystem (plus one grouped PR for security updates per ecosystem).
 updates:
   - package-ecosystem: gomod
     directory: /
     schedule:
       interval: weekly
-    reviewers:
-      - justinmklam
+    # Default limit is 5 per ecosystem, which throttles new PRs once a handful
+    # are open. Grouping means far fewer PRs, so raise the ceiling.
+    open-pull-requests-limit: 10
     groups:
-      charmbracelet:
+      go-dependencies:
         patterns:
-          - "github.com/charmbracelet/*"
+          - "*"
+      go-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
 
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
-    reviewers:
-      - justinmklam
+    open-pull-requests-limit: 10
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+      github-actions-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
