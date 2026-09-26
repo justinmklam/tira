@@ -84,10 +84,22 @@ Quick reference for AI agents and automation:
 		}
 
 		var err error
-		cfg, err = config.Load(profile)
-		if err != nil {
-			debug.LogError("config.Load", err)
-			return err
+		if devModeEnabled() {
+			cfg, err = config.LoadDev(profile)
+			if err != nil {
+				debug.LogError("config.LoadDev", err)
+				return err
+			}
+			if err := initDevClient(); err != nil {
+				debug.LogError("initDevClient", err)
+				return err
+			}
+		} else {
+			cfg, err = config.Load(profile)
+			if err != nil {
+				debug.LogError("config.Load", err)
+				return err
+			}
 		}
 
 		if cfg.Theme != "" {
@@ -106,6 +118,11 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&debugMode, "debug", false, "enable debug logging")
 	rootCmd.PersistentFlags().StringVar(&debugFile, "debug-file", "", "enable debug logging to a specific path (implies --debug; default path: $XDG_STATE_HOME/tira/debug.log)")
 	rootCmd.PersistentFlags().StringVar(&profile, "profile", "default", "config profile to use")
+	rootCmd.PersistentFlags().BoolVar(&devMode, "dev", false, "run against a built-in fixture instead of Jira (no config file, credentials, or network)")
+	rootCmd.PersistentFlags().StringVar(&devFixtures, "dev-fixtures", "", "dev mode: path to a YAML fixture file (default: the embedded demo fixture)")
+	rootCmd.PersistentFlags().StringVar(&devState, "dev-state", "", `dev mode: JSON file that persists mutations across invocations.
+Once it exists and is non-empty it *is* the fixture, so --dev-fixtures is
+ignored; unknown keys are rejected; deleting the file resets to the fixtures.`)
 }
 
 func Execute() {

@@ -70,6 +70,26 @@ For clipboard support, install `xclip` (e.g. `sudo apt install xclip`) for Linux
 
 ### Usage
 
+#### Try it without Jira
+
+Dev mode runs the whole CLI against a built-in fixture — no config file, credentials, or network
+required:
+
+```sh
+# Explore the demo board in the real TUI
+go run ./cmd/tira --dev board
+
+# Read an issue from the demo fixture (pipes as Markdown like the real thing)
+go run ./cmd/tira --dev get DEMO-1
+
+# Render one frame and exit — useful for agents and CI
+go run ./cmd/tira --dev board --snapshot --snapshot-size 120x40
+```
+
+The fixture declares project `DEMO` and board `1`; see
+[docs/configuration.md](docs/configuration.md#dev-mode-mocked-jira) for the fixture format,
+`--dev-fixtures`/`--dev-state`, and the `TIRA_DEV_*` environment variables.
+
 #### Board TUI
 
 Launch the interactive board TUI:
@@ -172,23 +192,23 @@ make build        # Compile the binary
 make run          # Run the tui using your default profile
 ```
 
-For development, a second `dev` profile can be added to your `~/.config/tira.yaml`:
+For development, run against the built-in dev fixture rather than a Jira profile — no config file,
+credentials, or network needed:
 
-```yaml
-profiles:
-  ...
-  dev:
-    jira_url: https://dev-domain.atlassian.net
-    email: dev@example.com
-    token: dev_token_here
-    project: DEVPROJ
-    board_id: 43
+```sh
+go run ./cmd/tira --dev board                 # the demo board in the real TUI
+go run ./cmd/tira --dev get DEMO-1            # Markdown, pipe-safe
+go run ./cmd/tira --dev board --snapshot      # one rendered frame, then exit
 ```
+
+See [docs/configuration.md](docs/configuration.md#dev-mode-mocked-jira) for custom fixtures,
+`--dev-state` persistence, and the `TIRA_DEV_*` environment variables.
 
 Other useful commands:
 
 ```sh
-make run-dev      # Run the tui using your dev profile, with debug enabled
+make run-dev      # Run the TUI against the built-in dev fixture
+go run ./cmd/tira --dev --dev-state /tmp/state.json create --no-edit < template.md
 make test         # Run all tests
 make test-race    # Run tests with race detector
 make fmt          # Format code in-place

@@ -2,7 +2,7 @@
 
 GOLANGCI_LINT_VERSION := $(strip $(shell cat .golangci-version))
 
-.PHONY: build install clean test fmt lint lint-install vet check update
+.PHONY: build install clean test fmt lint lint-install vet check update run run-dev
 
 # Build the binary
 build:
@@ -11,8 +11,9 @@ build:
 run:
 	./tira board
 
+# Run the TUI against the built-in dev fixture (no config file, credentials, or network).
 run-dev:
-	./tira --profile dev board --debug
+	TIRA_THEME=default go run ./cmd/tira --dev board --project DEMO
 
 # Install the binary to $GOPATH/bin (or ~/go/bin)
 install:

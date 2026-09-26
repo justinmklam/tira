@@ -32,6 +32,7 @@ internal/tui/          # TUI helpers (zero internal deps)
 internal/display/      # Issue → Markdown renderer
 internal/editor/       # Template rendering (pure logic)
 internal/validator/    # Field validation (pure logic)
+internal/mock/         # Fixture-backed api.Client for dev mode (tira --dev)
 internal/debug/        # File-based debug logging
 ```
 
@@ -332,7 +333,7 @@ Story points have no standard Jira field ID. The code tries multiple approaches:
 
 ### 9. Debug Log Location
 
-`debug.log` writes to the **current working directory**, not a temp or config directory. This can clutter project directories.
+`debug.log` writes to `$XDG_STATE_HOME/tira/debug.log`, falling back to `~/.local/state/tira/debug.log` when `$XDG_STATE_HOME` is unset (and to the current directory only if `$HOME` cannot be resolved). Use `--debug-file <path>` to override it.
 
 ### 10. Avoid O(n²) Patterns in Hot Paths
 
@@ -398,6 +399,31 @@ usable content width is `n-2`. Render picker modals through `tui.RenderPickerMod
 `innerW` to `Width` instead renders a body two columns too wide; every line wraps and leaves stray
 separator fragments inside the box. `RenderPickerModal` clamps every body line to `innerW`, which is
 regression-tested by `TestRenderPickerOverlayKeepsFrameIntact`, so do not hand-roll this frame.
+
+### 14. Dev Mode Is Backed by `internal/mock`, Not by HTTP
+
+`tira --dev` swaps `api.Client` for `internal/mock.Client`, which serves an embedded (or
+`--dev-fixtures`) YAML fixture from memory. It is a **test double, not a Jira emulator**: no HTTP
+request is ever made, so `internal/api`'s JSON/ADF/paging code is not exercised in dev mode and
+keeps its own unit tests as coverage. Dev mode is never enabled by config file contents — only by
+`--dev` or `TIRA_DEV_MODE` — so an accidental config value cannot silently mock a real board.
+
+Consequences to keep in mind:
+
+- **Any new `api.Client` method must also be implemented in `internal/mock.Client`.** This is
+  compile-enforced by `var _ api.Client = (*Client)(nil)` in `internal/mock/client.go`.
+- **Dev-mode fixtures live in `internal/mock/fixtures/`** (`demo.yaml` is embedded via `go:embed`).
+  The loader rejects unknown keys and dangling references by name, so a typo fails loudly. Schema
+  changes must update `validate()` and `fixtures/demo.yaml` in the same change.
+- **`--dev-state <path>` makes a JSON file the fixture** (so `--dev-fixtures` is then ignored).
+  Mutations are written atomically after each successful call; deleting the file resets to the
+  fixtures. `.gitignore` covers `.tira-dev-state*` and `dev-state.json`.
+- **Snapshot mode** (`board --snapshot --snapshot-size WxH`) renders one frame via
+  `app.RenderBoardSnapshot` without a `tea.Program`. It clips lines to the width, and renders only
+  what the initial board fetch returns: the **backlog group**, any remaining sprints, the issue
+  description/comments, and epic children all arrive via async `tea.Cmd`s and are therefore absent.
+  Board-list issues also use the sparse agile projection, so reporter, status-change date,
+  subtasks, and links are empty as well. `TestRenderBoardSnapshotProgressiveFetch` pins this.
 
 ## Documentation
 

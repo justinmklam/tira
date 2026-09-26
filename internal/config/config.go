@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -21,6 +22,24 @@ type Config struct {
 }
 
 func Load(profileName string, searchPaths ...string) (*Config, error) {
+	return load(profileName, true, searchPaths...)
+}
+
+// LoadDev behaves like Load but tolerates a missing config file and does not
+// require jira_url, email, or token. It still applies TIRA_* environment
+// overrides and still fails on a malformed config file.
+func LoadDev(profileName string, searchPaths ...string) (*Config, error) {
+	return load(profileName, false, searchPaths...)
+}
+
+// isConfigNotFound reports whether viper failed because no config file exists in
+// any of the search paths (rather than because a file could not be parsed).
+func isConfigNotFound(err error) bool {
+	var notFound viper.ConfigFileNotFoundError
+	return errors.As(err, &notFound)
+}
+
+func load(profileName string, requireCredentials bool, searchPaths ...string) (*Config, error) {
 	v := viper.New()
 	v.SetConfigName("config")
 	v.SetConfigType("yaml")
@@ -37,13 +56,23 @@ func Load(profileName string, searchPaths ...string) (*Config, error) {
 		v.AddConfigPath(".") // Also look in current directory for convenience
 	}
 
+	cfg := &Config{}
+
 	if err := v.ReadInConfig(); err != nil {
-		return nil, fmt.Errorf("failed to read config file: %w", err)
+		if requireCredentials || !isConfigNotFound(err) {
+			return nil, fmt.Errorf("failed to read config file: %w", err)
+		}
+		applyEnv(cfg)
+		return cfg, nil
 	}
 
 	profiles := v.GetStringMap("profiles")
 	if len(profiles) == 0 {
-		return nil, fmt.Errorf("no profiles found in config file")
+		if requireCredentials {
+			return nil, fmt.Errorf("no profiles found in config file")
+		}
+		applyEnv(cfg)
+		return cfg, nil
 	}
 
 	if profileName == "" {
@@ -52,15 +81,31 @@ func Load(profileName string, searchPaths ...string) (*Config, error) {
 
 	profileKey := fmt.Sprintf("profiles.%s", profileName)
 	if !v.IsSet(profileKey) {
-		return nil, fmt.Errorf("profile %q not found in config", profileName)
+		if requireCredentials {
+			return nil, fmt.Errorf("profile %q not found in config", profileName)
+		}
+		applyEnv(cfg)
+		return cfg, nil
 	}
 
-	var cfg Config
-	if err := v.UnmarshalKey(profileKey, &cfg); err != nil {
+	var loaded Config
+	if err := v.UnmarshalKey(profileKey, &loaded); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal profile %q: %w", profileName, err)
 	}
+	*cfg = loaded
 
-	// Override with TIRA_* env vars if set (take precedence over config file)
+	applyEnv(cfg)
+
+	if requireCredentials && (cfg.JiraURL == "" || cfg.Email == "" || cfg.Token == "") {
+		return nil, fmt.Errorf("profile %q is missing required fields: jira_url, email, token", profileName)
+	}
+
+	return cfg, nil
+}
+
+// applyEnv overrides cfg with TIRA_* environment variables (which take
+// precedence over the config file) and applies the token fallbacks.
+func applyEnv(cfg *Config) {
 	if v := os.Getenv("TIRA_JIRA_URL"); v != "" {
 		cfg.JiraURL = v
 	}
@@ -93,10 +138,4 @@ func Load(profileName string, searchPaths ...string) (*Config, error) {
 			cfg.Token = v
 		}
 	}
-
-	if cfg.JiraURL == "" || cfg.Email == "" || cfg.Token == "" {
-		return nil, fmt.Errorf("profile %q is missing required fields: jira_url, email, token", profileName)
-	}
-
-	return &cfg, nil
 }

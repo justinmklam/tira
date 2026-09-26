@@ -113,7 +113,11 @@ The following global flags are available on all commands (defined in `cmd/tira/r
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--profile <name>` | `"default"` | Selects which config profile to use |
-| `--debug` | `false` | Enables file-based debug logging to `./debug.log` |
+| `--debug` | `false` | Enables file-based debug logging to `$XDG_STATE_HOME/tira/debug.log` (falls back to `~/.local/state/tira/debug.log`) |
+| `--debug-file <path>` | `""` | Enable debug logging to a specific path (implies `--debug`) |
+| `--dev` | `false` | Run against a built-in fixture instead of Jira (no config file, credentials, or network) |
+| `--dev-fixtures <path>` | `""` | Dev mode: YAML fixture file to load (default: the embedded demo fixture) |
+| `--dev-state <path>` | `""` | Dev mode: JSON file that persists mutations across invocations |
 
 ## The `cfg` Global
 
@@ -139,14 +143,113 @@ Use different profiles for different Jira instances or accounts:
 # Use default profile
 ./tira board
 
-# Use dev profile
-./tira --profile dev board
+# Use a named profile (see Dev Mode above to run without Jira at all)
+./tira --profile staging board
 
-# Use staging profile
-./tira --profile staging get STG-101
+# Use another profile
+./tira --profile stg-readonly get STG-101
 ```
 
 Note that environment variable values apply across all profiles — they are not profile-specific. To use different env var values per profile, switch profiles with the `--profile` flag.
+
+## Dev Mode (mocked Jira)
+
+`--dev` swaps the real `api.Client` for an in-process fixture-backed fake
+(`internal/mock`), so every command runs with no config file, no credentials, and no network:
+
+```bash
+tira --dev board                     # the real TUI, fed by the demo fixture
+tira --dev get DEMO-1                # Markdown, pipe-safe
+tira --dev board --snapshot          # one rendered frame, then exit
+```
+
+It is a **test double, not a Jira emulator**: `internal/api`'s JSON/ADF/paging code is never
+exercised in dev mode, and no request is ever made to a Jira instance. Dev mode is never enabled
+by config file contents — only by the flag or the environment — so a stray config value cannot
+silently mock a real board. Every invocation prints `dev mode: fixture …` on stderr.
+
+### Environment variables
+
+| Variable | Equivalent flag |
+|----------|-----------------|
+| `TIRA_DEV_MODE` | `--dev` (truthy values: `1`, `true`, `yes`) |
+| `TIRA_DEV_FIXTURES` | `--dev-fixtures` |
+| `TIRA_DEV_STATE` | `--dev-state` |
+
+Flags win over the environment variables. In dev mode the config file is optional
+(`config.LoadDev`), so a missing or credential-free config is not an error — but a *malformed*
+config file still is.
+
+### Defaults from the fixture
+
+When the config does not supply them, dev mode fills in `project` and `board_id` from the fixture
+(the embedded demo fixture declares `DEMO` and board `1`), plus a placeholder `jira_url` of
+`https://demo.atlassian.net` that is used only to build browser links. `classic_project` defaults
+to `true` unless `TIRA_CLASSIC_PROJECT` is set. Use `--project`/`--board-id` to override.
+
+### Fixture format
+
+A fixture is a single YAML file (the embedded default is `internal/mock/fixtures/demo.yaml`):
+
+```yaml
+project: DEMO
+users:
+  - display_name: Ada Lovelace
+    account_id: acct-ada
+board:
+  id: 1
+  columns:
+    - name: To Do
+      statuses: [To Do]        # status names or IDs
+sprints:
+  - id: 1
+    name: DEMO Sprint 1
+    state: active              # active | future | closed; missing = future
+    issues: [DEMO-3]
+backlog: [DEMO-7]
+issues:
+  - key: DEMO-3
+    summary: Redesign checkout form
+    type: Story
+    status: In Progress
+    epic: DEMO-1               # resolved to EpicName/EpicStatus
+    parent: DEMO-1             # optional
+    subtasks: [DEMO-10]
+    links:
+      - relationship: blocks
+        key: DEMO-4            # both directions must be declared explicitly
+transitions:
+  default:
+    - id: "11"
+      name: To Do
+```
+
+Unknown keys are rejected with the offending key named, as are dangling references
+(`epic`, `parent`, `links[].key`, `subtasks[]`, `backlog[]`, `sprints[].issues[]`), duplicate issue
+keys, and keys that do not start with `<project>-`. `priorities` and `issue_types` are optional;
+when omitted the client derives them from the fixture contents.
+
+### State file (`--dev-state`)
+
+By default each invocation starts from the fixture and mutations are discarded. Point
+`--dev-state` at a JSON file and mutations are persisted, so multi-command agent flows behave like
+a real board:
+
+```bash
+tira --dev --dev-state /tmp/state.json create --no-edit < template.md
+tira --dev --dev-state /tmp/state.json get DEMO-12
+```
+
+Three invariants matter:
+
+1. **The state file *is* the fixture.** Once it exists and is non-empty it is loaded instead of
+   `--dev-fixtures`, and the startup notice says so. Deleting the file resets to the fixtures.
+2. **Unknown keys are rejected** on load, exactly as for a fixture.
+3. The file is written atomically (temp file + rename) after every successful mutation, and is
+   ignored by git (`.gitignore` covers `.tira-dev-state*` and `dev-state.json`).
+
+A write failure is reported (`persisting dev state: …`) but does not roll back the in-memory
+change for that invocation.
 
 ## See Also
 

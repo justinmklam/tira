@@ -1,0 +1,208 @@
+# Default fixture for `tira --dev`. It is embedded in the binary and is enough
+# to exercise every command: get, create, update, and board.
+#
+# Schema notes:
+#   - Every issue key must start with `project` followed by a dash.
+#   - `epic`, `parent`, `links[].key`, `subtasks[]`, `backlog[]`, and
+#     `sprints[].issues[]` must reference keys declared under `issues`.
+#   - `board.columns[].statuses` may list status IDs or status names.
+#   - `priorities` and `issue_types` are omitted on purpose so the client
+#     derives them from the fixture contents.
+
+project: DEMO
+
+users:
+  - display_name: Ada Lovelace
+    account_id: acct-ada
+  - display_name: Grace Hopper
+    account_id: acct-grace
+  - display_name: Dev User
+    account_id: acct-dev
+
+board:
+  id: 1
+  columns:
+    - name: To Do
+      statuses: [To Do]
+    - name: In Progress
+      statuses: [In Progress]
+    - name: Done
+      statuses: [Done]
+
+transitions:
+  default:
+    - id: "11"
+      name: To Do
+    - id: "21"
+      name: In Progress
+    - id: "31"
+      name: Done
+
+sprints:
+  - id: 1
+    name: DEMO Sprint 1
+    state: active
+    start_date: "2026-03-01"
+    end_date: "2026-03-14"
+    issues: [DEMO-3, DEMO-4, DEMO-5]
+  - id: 2
+    name: DEMO Sprint 2
+    state: future
+    start_date: "2026-03-15"
+    end_date: "2026-03-28"
+    issues: [DEMO-6]
+
+backlog: [DEMO-7, DEMO-8, DEMO-9]
+
+issues:
+  - key: DEMO-1
+    summary: Checkout revamp
+    type: Epic
+    status: To Do
+    priority: High
+    assignee: Grace Hopper
+    reporter: Ada Lovelace
+    labels: [checkout]
+
+  - key: DEMO-2
+    summary: Platform hardening
+    type: Epic
+    status: In Progress
+    priority: Medium
+    assignee: Ada Lovelace
+    reporter: Grace Hopper
+
+  - key: DEMO-3
+    summary: Redesign checkout form
+    type: Story
+    status: In Progress
+    priority: High
+    assignee: Ada Lovelace
+    reporter: Grace Hopper
+    story_points: 5
+    labels: [checkout, frontend]
+    epic: DEMO-1
+    status_changed: "2026-03-05"
+    description: |
+      Replace the single-page checkout with a three-step flow:
+
+      1. Contact details
+      2. Shipping address
+      3. Payment
+
+      The cart summary stays visible on every step.
+    acceptance_criteria: |
+      - Each step validates before advancing.
+      - The browser back button moves one step back, not out of checkout.
+      - Keyboard-only users can complete the whole flow.
+
+  - key: DEMO-4
+    summary: Migrate payment gateway
+    type: Task
+    status: Done
+    priority: High
+    assignee: Grace Hopper
+    reporter: Grace Hopper
+    story_points: 8
+    labels: [payments]
+    epic: DEMO-1
+    status_changed: "2026-03-10"
+    description: Cut over to the new gateway behind a feature flag.
+
+  - key: DEMO-5
+    summary: Coupon code is case-sensitive
+    type: Bug
+    status: To Do
+    priority: Highest
+    assignee: Ada Lovelace
+    reporter: Grace Hopper
+    story_points: 2
+    labels: [checkout, bug]
+    epic: DEMO-1
+    status_changed: "2026-03-07"
+    description: |
+      Entering `save10` at checkout is rejected, but `SAVE10` works.
+
+      Coupon codes should be matched case-insensitively; the current
+      implementation compares the raw string.
+    acceptance_criteria: |
+      - `save10`, `Save10`, and `SAVE10` all apply the same discount.
+      - Existing coupons with mixed-case codes keep working.
+    comments:
+      - author: Grace Hopper
+        created: "2026-03-07"
+        body: |
+          Reproduced on the staging environment with coupon `save10`.
+      - author: Ada Lovelace
+        created: "2026-03-08"
+        body: |
+          Root cause is the `strings.Compare` call in `applyCoupon`. Fix incoming.
+
+  - key: DEMO-6
+    summary: Add saved payment methods
+    type: Story
+    status: To Do
+    priority: Medium
+    assignee: Grace Hopper
+    reporter: Ada Lovelace
+    story_points: 3
+    labels: [checkout, payments]
+    epic: DEMO-1
+
+  - key: DEMO-7
+    summary: Write migration runbook
+    type: Task
+    status: To Do
+    priority: Medium
+    assignee: Ada Lovelace
+    reporter: Ada Lovelace
+    story_points: 3
+    labels: [docs]
+    epic: DEMO-2
+    description: Document the rollback path for the gateway migration.
+    links:
+      - relationship: blocks
+        key: DEMO-3
+    subtasks: [DEMO-10, DEMO-11]
+
+  - key: DEMO-8
+    summary: Flaky integration test
+    type: Bug
+    status: Done
+    priority: Low
+    assignee: Grace Hopper
+    reporter: Grace Hopper
+    story_points: 1
+    labels: [ci]
+    epic: DEMO-2
+    status_changed: "2026-03-03"
+    description: The payment integration test fails roughly one run in twenty.
+
+  - key: DEMO-9
+    summary: Document API deprecations
+    type: Story
+    status: To Do
+    priority: Low
+    assignee: Grace Hopper
+    reporter: Grace Hopper
+    story_points: 2
+    labels: [docs, api]
+    epic: DEMO-2
+
+  - key: DEMO-10
+    summary: Draft rollback steps
+    type: Subtask
+    status: To Do
+    priority: Medium
+    assignee: Ada Lovelace
+    reporter: Ada Lovelace
+    parent: DEMO-7
+
+  - key: DEMO-11
+    summary: Review runbook with on-call
+    type: Subtask
+    status: In Progress
+    priority: Medium
+    assignee: Grace Hopper
+    reporter: Ada Lovelace
+    parent: DEMO-7

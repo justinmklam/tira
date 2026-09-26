@@ -31,7 +31,8 @@ tira/
 │   │   ├── kanban_view.go     # kanbanModel: view helpers
 │   │   ├── edit_form.go       # editModel: in-TUI issue form
 │   │   ├── edit_cmds.go       # editFormState: tea.Cmd funcs, pickers
-│   │   └── comment_form.go    # commentInputModel: in-TUI comment textarea
+│   │   ├── comment_form.go    # commentInputModel: in-TUI comment textarea
+│   │   └── snapshot.go        # RenderBoardSnapshot: one frame, no tea.Program
 │   ├── api/
 │   │   ├── client.go          # Client interface + jiraClient implementation
 │   │   └── adf.go             # Atlassian Document Format → Markdown converter
@@ -54,6 +55,11 @@ tira/
 │   ├── validator/
 │   │   ├── validate.go        # Validate: IssueFields + ValidValues → []ValidationError
 │   │   └── annotate.go        # AnnotateTemplate: inject error comments into template
+│   ├── mock/
+│   │   ├── fixture.go         # Fixture schema, Load, validate (embedded default)
+│   │   ├── fixtures/          # YAML fixture files (demo.yaml is embedded)
+│   │   ├── client.go          # Client: in-memory api.Client used by --dev
+│   │   └── state.go           # Atomic JSON state file for --dev-state
 │   └── debug/
 │       └── logger.go          # File-based debug logger + HTTP transport wrapper
 │
@@ -92,6 +98,7 @@ graph TD
     display["internal/display"]
     editor["internal/editor"]
     validator["internal/validator"]
+    mock["internal/mock"]
     debug["internal/debug"]
 
     cmd --> app
@@ -115,6 +122,9 @@ graph TD
     editor --> models
     validator --> models
 
+    mock --> api
+    mock --> models
+
     tui -.->|"NO deps on other internal pkgs"| tui
 ```
 
@@ -124,6 +134,11 @@ graph TD
 - **`internal/editor` and `internal/validator` are pure string/struct logic** — no I/O, no TUI
 - **`internal/api` does not import `tui`, `display`, `editor`, or `validator`**
 - **All TUI model code lives in `internal/app/`** — `cmd/tira/` is a thin CLI layer (Cobra commands + config)
+- **`internal/mock` is the second `api.Client` implementation** — used only by `--dev`/`--dev-state`. It is a
+  test double, not a Jira emulator: it never makes an HTTP request, so `internal/api`'s JSON/ADF/paging
+  paths are unaffected and remain covered by `internal/api`'s own tests. `internal/mock` does not import
+  `internal/app`; `internal/app`'s snapshot test imports `internal/mock` (test-only), which is fine because
+  the dependency is one-way
 
 ---
 

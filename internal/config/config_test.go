@@ -64,6 +64,90 @@ profiles:
 	})
 }
 
+// blankLoaderEnv blanks every environment variable Load and LoadDev consult, so
+// assertions do not depend on the caller's shell.
+func blankLoaderEnv(t *testing.T, names ...string) {
+	t.Helper()
+	all := []string{
+		"TIRA_JIRA_URL", "TIRA_EMAIL", "TIRA_TOKEN", "TIRA_PROJECT", "TIRA_BOARD_ID",
+		"TIRA_CLASSIC_PROJECT", "TIRA_THEME", "JIRA_TOKEN", "JIRA_API_TOKEN",
+	}
+	for _, env := range append(all, names...) {
+		t.Setenv(env, "")
+	}
+}
+
+func TestLoadDev(t *testing.T) {
+	blankLoaderEnv(t)
+
+	t.Run("missing config file is tolerated", func(t *testing.T) {
+		t.Setenv("TIRA_PROJECT", "ENVPROJ")
+		t.Setenv("TIRA_BOARD_ID", "7")
+
+		cfg, err := LoadDev("default", t.TempDir())
+		assert.NoError(t, err)
+		assert.NotNil(t, cfg)
+		assert.Empty(t, cfg.JiraURL)
+		assert.Empty(t, cfg.Email)
+		assert.Empty(t, cfg.Token)
+		assert.Equal(t, "ENVPROJ", cfg.Project, "env overrides still apply")
+		assert.Equal(t, 7, cfg.BoardID)
+	})
+
+	t.Run("config file with an unusable profile is tolerated", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		path := filepath.Join(tmpDir, "config.yaml")
+		// The profile exists but has no credentials.
+		assert.NoError(t, os.WriteFile(path, []byte("profiles:\n  default:\n    project: INCOMPLETE\n"), 0o600))
+
+		cfg, err := LoadDev("default", tmpDir)
+		assert.NoError(t, err)
+		assert.Equal(t, "INCOMPLETE", cfg.Project)
+		assert.Empty(t, cfg.Token)
+	})
+
+	t.Run("no profiles is tolerated", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		path := filepath.Join(tmpDir, "config.yaml")
+		assert.NoError(t, os.WriteFile(path, []byte("nothing: here\n"), 0o600))
+
+		cfg, err := LoadDev("default", tmpDir)
+		assert.NoError(t, err)
+		assert.Empty(t, cfg.Project)
+	})
+
+	t.Run("missing named profile is tolerated", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		path := filepath.Join(tmpDir, "config.yaml")
+		assert.NoError(t, os.WriteFile(path, []byte("profiles:\n  other:\n    project: OTHER\n"), 0o600))
+
+		cfg, err := LoadDev("default", tmpDir)
+		assert.NoError(t, err)
+		assert.Empty(t, cfg.Project)
+	})
+
+	t.Run("malformed config file still errors", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		path := filepath.Join(tmpDir, "config.yaml")
+		assert.NoError(t, os.WriteFile(path, []byte("profiles: [1, 2\n"), 0o600))
+
+		cfg, err := LoadDev("default", tmpDir)
+		assert.Error(t, err)
+		assert.Nil(t, cfg)
+	})
+
+	t.Run("Load still requires credentials", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		path := filepath.Join(tmpDir, "config.yaml")
+		assert.NoError(t, os.WriteFile(path, []byte("profiles:\n  default:\n    project: INCOMPLETE\n"), 0o600))
+
+		cfg, err := Load("default", tmpDir)
+		assert.Error(t, err)
+		assert.Nil(t, cfg)
+		assert.Contains(t, err.Error(), "missing required fields")
+	})
+}
+
 func TestLoad_EnvVarOverride(t *testing.T) {
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.yaml")

@@ -7,7 +7,7 @@ tira provides the following commands:
 | `get <key\|url> [--edit]` | Fetch and display a single issue (accepts an issue key or a full browse URL); `--edit` is a **deprecated** alias for `update <key> --edit`-style interactive editing |
 | `update <key\|url> [--show] [--no-edit] [--file <path>]` | Update an existing issue; non-interactively (agents) via `--show`/`--no-edit`/`--file`, or interactively via `$EDITOR` |
 | `create [--project <key>] [--type <type>] [--parent <key>]` | Create a new issue via `$EDITOR` |
-| `board [--view backlog\|kanban\|epics] [--board-id <id>]` | Launch the unified TUI (backlog + kanban + epics views) |
+| `board [--view backlog\|kanban\|epics] [--board-id <id>] [--snapshot] [--snapshot-size WxH]` | Launch the unified TUI (backlog + kanban + epics views), or render one frame with `--snapshot` |
 | `backlog` | **Deprecated** — alias for `board --view backlog` |
 | `kanban` | **Deprecated** — alias for `board --view kanban` |
 | `version` | Print the tira version (also available as `tira --version`) |
@@ -15,6 +15,10 @@ tira provides the following commands:
 All commands use the `--profile` flag to select a config profile (default: `"default"`), and the
 `--debug`/`--debug-file <path>` flags to enable debug logging (see [Debug Logging](#debug-logging)
 below).
+
+The `--dev`, `--dev-fixtures <path>`, and `--dev-state <path>` flags run every command against a
+fixture instead of Jira — no config file, credentials, or network required. See
+[configuration.md](configuration.md#dev-mode-mocked-jira).
 
 > **Deprecation notice:** `get --edit`, `backlog`, `kanban`, and `update --template` are deprecated
 > aliases kept for backward compatibility. They still work today, print a warning on stderr, and
@@ -262,6 +266,23 @@ still fully functional):
 All three also accept `--board-id <id>` to override the `board_id` configured for the active
 profile without editing the config file.
 
+### Snapshot Mode
+
+`--snapshot` renders **one** board frame to stdout and exits instead of starting the TUI;
+`--snapshot-size WxH` sets the terminal size it renders at (default `120x40`, both dimensions at
+least 20). It works with or without `--dev`, but dev mode is the intended use — it lets agents and
+CI inspect the real layout without a terminal:
+
+```bash
+tira --dev board --snapshot --snapshot-size 120x40
+```
+
+The frame is clipped to `W` columns so nothing wraps. Only what the initial board fetch provides is
+rendered — the first batch of sprint groups. Everything loaded by asynchronous commands is absent:
+the **backlog group** and any remaining sprints, the issue **description and comments**, and the
+**epic children list**. Fields the board-list payload does not carry (reporter, status-change date,
+subtasks, links) are empty as well.
+
 ### Execution Flow
 
 All three commands call `runBoardCmd(startView)` which:
@@ -305,8 +326,11 @@ Manual refresh (`R`) fetches everything at once via `GetSprintGroups`.
 ./tira backlog
 ./tira kanban
 
-# Use specific profile
-./tira --profile dev board
+# Use a specific config profile (a real Jira profile; see Dev Mode for a mock)
+./tira --profile staging board
+
+# Run entirely against the built-in fixture instead of Jira
+./tira --dev board
 ```
 
 ### View Switching

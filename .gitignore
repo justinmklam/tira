@@ -1,3 +1,7 @@
 /tira
 *.log
 .gocache
+
+# Local dev-mode state files (see `tira --dev-state`)
+.tira-dev-state*
+dev-state.json

@@ -13,6 +13,7 @@ internal/
 ├── display/       # Issue → Markdown renderer
 ├── editor/        # Template rendering and editor integration
 ├── validator/     # Field validation and error annotation
+├── mock/          # Fixture-backed api.Client for dev mode (tira --dev)
 └── debug/         # File-based debug logging
 ```
 
@@ -316,6 +317,33 @@ The `containsCI` function exists in both `internal/tui/helpers.go` and `internal
 
 ---
 
+## Mock Package (`internal/mock`)
+
+Backs `tira --dev`. It is the second `api.Client` implementation and runs entirely in memory — no
+HTTP, no credentials, no config file.
+
+| File | Purpose |
+|------|---------|
+| `fixture.go` | `Fixture` schema, `Load` (embedded default or explicit path), `validate` |
+| `fixtures/demo.yaml` | Embedded demo fixture: project `DEMO`, board `1` |
+| `client.go` | `Client` implementing `api.Client`, plus `Options` and index building |
+| `state.go` | Atomic JSON state-file load/save for `--dev-state` |
+
+### Design notes
+
+- **`var _ api.Client = (*Client)(nil)`** — adding a method to `api.Client` is a compile error until
+  `mock.Client` implements it.
+- **One mutex guards all state**, because the TUI issues bulk mutations from goroutines. Reads
+  return copies, never pointers into fixture slices.
+- **Parity matters.** The fake reproduces the contracts the real client's callers rely on: every
+  issue carries `ProjectKey` (for `filterGroupsByProject`), `GetSprintGroups` appends exactly one
+  trailing `Backlog` group, `GetSprintList` returns only `active`/`future` sprints, `GetIssue`
+  returns comments newest-first, and `GetBacklog` returns `not implemented` like
+  `internal/api/client.go`. `internal/mock/client_test.go` asserts these.
+- **No reverse links.** `IssueFixture.Links` is returned verbatim; the real client synthesises the
+  reverse relationship, the fake does not, so fixtures must declare both directions.
+- **Unknown keys are rejected** by the fixture and state loaders, naming the offending key.
+
 ## Debug Package (`internal/debug`)
 
 **File:** `internal/debug/logger.go`
@@ -359,6 +387,10 @@ internal/editor
  └── internal/models
 
 internal/validator
+ └── internal/models
+
+internal/mock
+ ├── internal/api    (implements the Client interface)
  └── internal/models
 
 internal/debug            ← No internal dependencies

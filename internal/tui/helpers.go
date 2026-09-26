@@ -62,6 +62,20 @@ func FixedWidth(s string, n int) string {
 	}
 }
 
+// TruncateWidth returns s clipped to at most n terminal display cells. It is
+// ANSI-aware, so styling that straddles the cut is closed rather than broken,
+// and a string that already fits is returned unchanged (no padding). A
+// non-positive n yields the empty string.
+func TruncateWidth(s string, n int) string {
+	if n <= 0 {
+		return ""
+	}
+	if DisplayWidth(s) <= n {
+		return s
+	}
+	return ansi.Truncate(s, n, "")
+}
+
 // FitInput renders input within the given number of terminal cells, sizing its
 // scrolling viewport so a long value stays on a single line with the cursor in
 // view. The prompt and the cursor cell are counted against the budget. The input

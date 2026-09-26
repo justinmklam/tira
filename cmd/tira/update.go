@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/justinmklam/tira/internal/api"
 	"github.com/justinmklam/tira/internal/debug"
 	"github.com/justinmklam/tira/internal/editor"
 	"github.com/justinmklam/tira/internal/models"
@@ -83,9 +82,9 @@ For AI Agents:
 	RunE: func(cmd *cobra.Command, args []string) error {
 		key := extractIssueKey(args[0])
 
-		client, err := api.NewClient(cfg)
+		client, err := newAPIClient()
 		if err != nil {
-			debug.LogError("api.NewClient", err)
+			debug.LogError("newAPIClient", err)
 			return err
 		}
 

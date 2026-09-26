@@ -37,7 +37,15 @@ type Client interface {
 }
 ```
 
-The single concrete implementation is `jiraClient`. All TUI models receive a `Client` interface — never a concrete type — enabling mock substitution in tests.
+The single concrete production implementation is `jiraClient`. All TUI models receive a `Client` interface — never a concrete type — enabling mock substitution in tests.
+
+The second implementation is `mock.Client` in `internal/mock`, which backs dev mode
+(`tira --dev`). It serves an in-memory fixture, persists mutations to an optional JSON state file,
+and never touches the network. It is a test double rather than a Jira emulator: the JSON, ADF, and
+paging code below is **not** exercised in dev mode, and `internal/api` keeps its own tests as the
+coverage for those paths. Adding a method to `Client` forces a matching method on `mock.Client`
+(compile-enforced by `var _ api.Client = (*Client)(nil)`). See
+[configuration.md](configuration.md#dev-mode-mocked-jira).
 
 ---
 

@@ -46,9 +46,9 @@ Use --edit to open the issue in $EDITOR and write changes back to Jira
 	RunE: func(cmd *cobra.Command, args []string) error {
 		key := extractIssueKey(args[0])
 
-		client, err := api.NewClient(cfg)
+		client, err := newAPIClient()
 		if err != nil {
-			debug.LogError("api.NewClient", err)
+			debug.LogError("newAPIClient", err)
 			return err
 		}
 
