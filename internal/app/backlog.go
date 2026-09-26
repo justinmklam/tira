@@ -35,6 +35,7 @@ const (
 	blStoryPointInput  // floating story point input
 	blStatusPicker     // floating status picker
 	blEpicFilterPicker // floating epic filter picker
+	blSprintPicker     // floating sprint target picker
 	blSprintForm       // create or edit sprint (sprintFormEditID == 0 means create)
 	blKeySearch        // jump-to-issue-number search (f key)
 	blLinkPicker       // floating linked work items picker
@@ -154,6 +155,10 @@ type blModel struct {
 	// epic filter state
 	filterEpic       string // empty means no filter
 	epicFilterPicker tui.PickerModel
+
+	// sprint target picker state
+	sprintPicker     tui.PickerModel
+	sprintTargetKeys []string
 
 	// sprint create/edit form state
 	sprintFormName       textinput.Model
@@ -709,6 +714,8 @@ func (m blModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateStatusPicker(msg)
 	case blEpicFilterPicker:
 		return m.updateEpicFilterPicker(msg)
+	case blSprintPicker:
+		return m.updateSprintPicker(msg)
 	case blSprintForm:
 		return m.updateSprintForm(msg)
 	case blKeySearch:

@@ -1,11 +1,15 @@
 package app
 
 import (
+	"reflect"
+	"strconv"
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/justinmklam/tira/internal/api"
 	"github.com/justinmklam/tira/internal/models"
+	"github.com/justinmklam/tira/internal/tui"
 )
 
 func TestBlBuildRows_BasicStructure(t *testing.T) {
@@ -496,4 +500,252 @@ func blGroupHasIssue(group models.SprintGroup, key string) bool {
 		}
 	}
 	return false
+}
+
+// --- sprint target picker ('m') ---
+
+// blSprintPickerTestClient records move/rank calls so the picker tests can
+// assert that a confirmed target actually reached the API (or did not).
+type blSprintPickerTestClient struct {
+	api.Client
+	moves    [][]string
+	sprints  []int
+	ranks    int
+	rankArgs []string
+}
+
+func (c *blSprintPickerTestClient) MoveIssuesToSprint(sprintID int, keys []string) error {
+	c.sprints = append(c.sprints, sprintID)
+	c.moves = append(c.moves, append([]string(nil), keys...))
+	return nil
+}
+
+func (c *blSprintPickerTestClient) MoveIssuesToBacklog(keys []string) error {
+	c.sprints = append(c.sprints, 0)
+	c.moves = append(c.moves, append([]string(nil), keys...))
+	return nil
+}
+
+func (c *blSprintPickerTestClient) RankIssues(keys []string, rankAfterKey, rankBeforeKey string) error {
+	c.ranks++
+	c.rankArgs = append([]string(nil), keys...)
+	return nil
+}
+
+// blCollectMsgs runs a command and flattens every tea.BatchMsg it produces, so
+// a test can inspect the terminal messages a batched command would deliver.
+func blCollectMsgs(cmd tea.Cmd) []tea.Msg {
+	var out []tea.Msg
+	var walk func(c tea.Cmd)
+	walk = func(c tea.Cmd) {
+		if c == nil {
+			return
+		}
+		switch msg := c().(type) {
+		case tea.BatchMsg:
+			for _, sub := range msg {
+				walk(sub)
+			}
+		default:
+			out = append(out, msg)
+		}
+	}
+	walk(cmd)
+	return out
+}
+
+// blSprintPickerGroups returns two sprints plus a backlog group, with the
+// cursor at row 1 (PROJ-1 in group 0) by default in the tests below.
+func blSprintPickerGroups() []models.SprintGroup {
+	return []models.SprintGroup{
+		{
+			Sprint: models.Sprint{
+				ID: 10, Name: "Sprint 1", State: "active",
+				StartDate: "2026-03-01", EndDate: "2026-03-14",
+			},
+			Issues: []models.Issue{{Key: "PROJ-1", Summary: "First"}, {Key: "PROJ-2", Summary: "Second"}},
+		},
+		{
+			Sprint: models.Sprint{ID: 20, Name: "Sprint 2", State: "future"},
+			Issues: []models.Issue{{Key: "PROJ-3", Summary: "Third"}},
+		},
+		{
+			Sprint: models.Sprint{Name: "Backlog", State: "backlog"},
+			Issues: []models.Issue{{Key: "PROJ-4", Summary: "Fourth"}},
+		},
+	}
+}
+
+func TestBlSprintPickerOpensWithOneItemPerGroup(t *testing.T) {
+	m := blTestModel(blSprintPickerGroups(), 1) // cursor on PROJ-1
+
+	got, cmd := m.Update(keyPress("m"))
+	m = got.(blModel)
+
+	if m.state != blSprintPicker {
+		t.Fatalf("state = %v, want blSprintPicker", m.state)
+	}
+	if cmd == nil {
+		t.Fatal("opening the picker should focus its input")
+	}
+	if want := []string{"PROJ-1"}; !reflect.DeepEqual(m.sprintTargetKeys, want) {
+		t.Fatalf("sprintTargetKeys = %v, want %v", m.sprintTargetKeys, want)
+	}
+
+	wantLabels := []string{"Sprint 1", "Sprint 2", "Backlog"}
+	if len(m.sprintPicker.Items) != len(wantLabels) {
+		t.Fatalf("picker items = %d, want %d", len(m.sprintPicker.Items), len(wantLabels))
+	}
+	for i, want := range wantLabels {
+		item := m.sprintPicker.Items[i]
+		if item.Label != want {
+			t.Errorf("item %d label = %q, want %q", i, item.Label, want)
+		}
+		if item.Value != strconv.Itoa(i) {
+			t.Errorf("item %d value = %q, want %q", i, item.Value, strconv.Itoa(i))
+		}
+	}
+	if sub := m.sprintPicker.Items[2].SubLabel; sub != "backlog" {
+		t.Errorf("backlog sub-label = %q, want %q", sub, "backlog")
+	}
+	if sub := m.sprintPicker.Items[0].SubLabel; sub != "active · Mar 1 – Mar 14" {
+		t.Errorf("active sprint sub-label = %q, want dates appended", sub)
+	}
+}
+
+func TestBlSprintPickerNoOpOnSprintHeader(t *testing.T) {
+	m := blTestModel(blSprintPickerGroups(), 0) // sprint header, no selection
+
+	got, cmd := m.Update(keyPress("m"))
+	m = got.(blModel)
+
+	if m.state != blList {
+		t.Fatalf("state = %v, want blList", m.state)
+	}
+	if cmd != nil {
+		t.Error("pressing m with nothing selected should not return a command")
+	}
+	if len(m.sprintTargetKeys) != 0 {
+		t.Errorf("sprintTargetKeys = %v, want empty", m.sprintTargetKeys)
+	}
+}
+
+func TestBlSprintPickerConfirmMovesToTargetGroup(t *testing.T) {
+	client := &blSprintPickerTestClient{}
+	m := blTestModel(blSprintPickerGroups(), 1)
+	m.client = client
+
+	got, _ := m.Update(keyPress("m"))
+	m = got.(blModel)
+	// Highlight group 1 (Sprint 2, ID 20).
+	got, _ = m.Update(arrowKey(tea.KeyDown))
+	m = got.(blModel)
+
+	got, cmd := m.Update(keyPress("enter"))
+	m = got.(blModel)
+
+	if m.state != blList {
+		t.Fatalf("state = %v, want blList after confirming", m.state)
+	}
+	if len(m.sprintTargetKeys) != 0 {
+		t.Errorf("sprintTargetKeys = %v, want cleared", m.sprintTargetKeys)
+	}
+	if cmd == nil {
+		t.Fatal("confirming a target should return a move command")
+	}
+
+	var done *blMoveMultiDoneMsg
+	for _, msg := range blCollectMsgs(cmd) {
+		if d, ok := msg.(blMoveMultiDoneMsg); ok {
+			done = &d
+			break
+		}
+	}
+	if done == nil {
+		t.Fatal("move command did not yield a blMoveMultiDoneMsg")
+	}
+	if done.targetGroupIdx != 1 {
+		t.Errorf("targetGroupIdx = %d, want 1", done.targetGroupIdx)
+	}
+	if done.followCursor {
+		t.Error("followCursor = true, want false so the cursor keeps its row")
+	}
+	if done.err != nil {
+		t.Errorf("err = %v, want nil", done.err)
+	}
+	if !reflect.DeepEqual(done.movedKeys, []string{"PROJ-1"}) {
+		t.Errorf("movedKeys = %v, want [PROJ-1]", done.movedKeys)
+	}
+	if len(client.moves) != 1 || client.sprints[0] != 20 || !reflect.DeepEqual(client.moves[0], []string{"PROJ-1"}) {
+		t.Errorf("client moves = %v (sprints %v), want one move to sprint 20", client.moves, client.sprints)
+	}
+	if client.ranks != 1 {
+		t.Errorf("rank calls = %d, want 1 (rankAfterKey is non-empty)", client.ranks)
+	}
+}
+
+func TestBlSprintPickerConfirmSameGroupIsNoOp(t *testing.T) {
+	client := &blSprintPickerTestClient{}
+	m := blTestModel(blSprintPickerGroups(), 1)
+	m.client = client
+
+	got, _ := m.Update(keyPress("m"))
+	m = got.(blModel)
+	// Cursor stays on group 0, which already holds PROJ-1.
+	got, cmd := m.Update(keyPress("enter"))
+	m = got.(blModel)
+
+	if m.state != blList {
+		t.Fatalf("state = %v, want blList", m.state)
+	}
+	if cmd != nil {
+		t.Error("an all-placed target should return a nil command")
+	}
+	if len(client.moves) != 0 || client.ranks != 0 {
+		t.Errorf("client calls = %d moves / %d ranks, want none", len(client.moves), client.ranks)
+	}
+}
+
+func TestBlSprintPickerOverlayFitsTerminal(t *testing.T) {
+	m := blTestModel(blSprintPickerGroups(), 1)
+	got, _ := m.Update(keyPress("m"))
+	m = got.(blModel)
+
+	out := m.viewSprintPicker()
+	// RenderPickerModal normalizes runs of whitespace via SanitizeRow, so the
+	// double space in the title renders as a single one.
+	for _, want := range []string{"Move to Sprint (1 issue)", "Sprint 1", "Sprint 2", "Backlog"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("overlay missing %q:\n%s", want, out)
+		}
+	}
+	for _, line := range strings.Split(out, "\n") {
+		if w := tui.DisplayWidth(line); w > m.width {
+			t.Errorf("overlay line exceeds terminal width: %d > %d: %q", w, m.width, line)
+		}
+	}
+}
+
+func TestBlSprintPickerEscCancels(t *testing.T) {
+	client := &blSprintPickerTestClient{}
+	m := blTestModel(blSprintPickerGroups(), 1)
+	m.client = client
+
+	got, _ := m.Update(keyPress("m"))
+	m = got.(blModel)
+	got, cmd := m.Update(keyPress("esc"))
+	m = got.(blModel)
+
+	if m.state != blList {
+		t.Fatalf("state = %v, want blList after cancelling", m.state)
+	}
+	if len(m.sprintTargetKeys) != 0 {
+		t.Errorf("sprintTargetKeys = %v, want cleared", m.sprintTargetKeys)
+	}
+	if cmd != nil {
+		t.Error("cancelling should not return a command")
+	}
+	if len(client.moves) != 0 {
+		t.Errorf("client moves = %v, want none", client.moves)
+	}
 }

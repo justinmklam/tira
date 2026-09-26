@@ -42,6 +42,8 @@ func (m blModel) View() tea.View {
 		return tea.NewView(m.viewStatusPicker())
 	case blEpicFilterPicker:
 		return tea.NewView(m.viewEpicFilterPicker())
+	case blSprintPicker:
+		return tea.NewView(m.viewSprintPicker())
 	case blSprintForm:
 		return tea.NewView(m.viewSprintForm())
 	case blLinkPicker:
@@ -166,7 +168,7 @@ func (m blModel) viewList() string {
 	default:
 		hints := []string{
 			"e: edit", "c: comment", "o: open", "y: copy", "s: status", "S: story pts",
-			"x: cut", "p: paste", ">/<: adj sprint", "h/l: jump sprint", "B: backlog",
+			"x: cut", "p: paste", "m: move", ">/<: adj sprint", "h/l: jump sprint", "B: backlog",
 			"/: filter", "F: epic", "ctrl+n: new sprint", "E: edit sprint", "R: refresh",
 			"L: linked", "ctrl+d/u: scroll details",
 		}
@@ -381,6 +383,23 @@ func (m blModel) viewParentPicker() string {
 	return tui.RenderPickerModal(
 		title,
 		func(innerW, listH int) string { return m.parentPicker.View(innerW, listH) },
+		tui.PickerFooter,
+		m.width,
+		m.height,
+	)
+}
+
+func (m blModel) viewSprintPicker() string {
+	n := len(m.sprintTargetKeys)
+	noun := "issue"
+	if n != 1 {
+		noun = "issues"
+	}
+	title := fmt.Sprintf("Move to Sprint  (%d %s)", n, noun)
+
+	return tui.RenderPickerModal(
+		title,
+		func(innerW, listH int) string { return m.sprintPicker.View(innerW, listH) },
 		tui.PickerFooter,
 		m.width,
 		m.height,

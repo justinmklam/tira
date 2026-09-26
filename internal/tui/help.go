@@ -99,6 +99,7 @@ func HelpSections() []HelpSection {
 			Keybindings: []HelpKeybinding{
 				{Key: "C-j / C-k", Description: "Move ticket one position down / up within its sprint"},
 				{Key: "> / <", Description: "Move ticket to next / previous sprint directly"},
+				{Key: "m", Description: "Move ticket(s) to sprint — picker"},
 				{Key: "B", Description: "Move ticket to backlog (no sprint)"},
 				{Key: "x", Description: "Cut selected ticket(s) for move"},
 				{Key: "p", Description: "Paste cut ticket(s) to current sprint"},

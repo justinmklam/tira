@@ -2,7 +2,7 @@
 
 Modelled on yazi's philosophy: modal only where the modality is obvious from context, not as a first-class concept the user has to track.
 
-> **Note:** This document reflects the actual implemented keybindings. Last updated: 2026-09-24
+> **Note:** This document reflects the actual implemented keybindings. Last updated: 2026-09-25
 
 ---
 
@@ -83,6 +83,7 @@ labels; existing labels are replaced by the submitted list.
 |-----|--------|
 | `<C-j>` / `<C-k>` | Move ticket one position down / up within its sprint |
 | `>` / `<` | Move ticket to next / previous sprint directly |
+| `m` | Move selected ticket(s) to sprint — picker |
 | `B` | Move ticket to backlog (no sprint) |
 | `x` | Cut selected ticket(s) for move |
 | `p` | Paste cut ticket(s) to current sprint |
@@ -166,7 +167,7 @@ When the help overlay is open (`?`), use these keys to navigate:
 | Epic detail view | `<Enter>` on epic | `<Esc>` or `q` to close |
 | Linked items picker | `L` on a ticket or epic (list, board, or detail) | `<Enter>` to open in browser, `<Esc>` to cancel |
 | Label edit | `l` on an epic | `<Enter>` to save, `<Esc>` to cancel |
-| Pickers (`s`, `P`, `A`, `F`) | Key press | `<Enter>` to select, `<Esc>` to cancel |
+| Pickers (`s`, `m`, `P`, `A`, `F`) | Key press | `<Enter>` to select, `<Esc>` to cancel |
 
 ---
 
@@ -183,6 +184,15 @@ When the help overlay is open (`?`), use these keys to navigate:
 - The cursor stays at the same row index instead of following the moved ticket, so
   you can keep moving tickets down a list without being dragged along.
 - Other move keys (`p`, `B`) still follow the moved ticket.
+
+### Sprint Picker Move (`m`)
+- `m` opens a picker listing every sprint currently on the board plus the Backlog
+  group; pick a target with `j`/`k` (or type to filter) and press `<Enter>`.
+- Like `>` / `<`, the cursor stays at the same row index instead of following the
+  moved ticket, so you can move one ticket after another without being dragged along.
+- Only sprints already loaded on the board are offered: sprints hidden by a project
+  filter and closed sprints do not appear.
+- Selecting the group that already holds every target is a no-op and makes no API call.
 
 ### Visual Mode (`v`)
 1. Press `v` to start visual selection at current cursor position
@@ -230,7 +240,6 @@ The following keybindings are planned but not yet implemented:
 
 | Key | Planned Action |
 |-----|----------------|
-| `m` | Move selected ticket(s) to sprint — opens a sprint picker |
 | `r` | Rename — inline edit of summary only |
 | `t` | Change type — picker |
 | `p` (lowercase, for priority) | Change priority — picker (currently `p` is paste) |

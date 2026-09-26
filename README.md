@@ -133,6 +133,7 @@ tira board --board-id 42
 | `v` | Visual mode (multi-select) |
 | `x` / `p` | Cut / Paste selected issue(s) |
 | < / > | Move selected issue(s) to prev/next sprint |
+| `m` | Move selected issue(s) to a sprint (picker) |
 | `R` | Refresh from Jira |
 | `b` (Epics) | Filter the backlog by the selected epic |
 | `?` | Show help |

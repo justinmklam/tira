@@ -342,6 +342,16 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.moving = true
 		return m, tea.Batch(m.loadSpinner.Tick, blMoveMultiCmd(m.client, keys, 0, backlogIdx, "", true))
 
+	case "m":
+		keys := m.moveKeys()
+		if len(keys) == 0 {
+			return m, nil
+		}
+		m.sprintTargetKeys = keys
+		m.sprintPicker = blNewSprintTargetPicker(m.groups)
+		m.state = blSprintPicker
+		return m, m.sprintPicker.Init()
+
 	case "a":
 		if m.cursor < len(m.rows) {
 			row := m.rows[m.cursor]
@@ -867,6 +877,93 @@ func (m blModel) updateAssignPicker(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, blDoAssignCmd(m.client, keys, accountID)
 	}
 	return m, cmd
+}
+
+// blNewSprintTargetPicker builds an in-memory picker over the sprint groups
+// currently loaded on the board. One item per group, in group order; the value
+// is the group index, which is stable because groups are only ever appended.
+func blNewSprintTargetPicker(groups []models.SprintGroup) tui.PickerModel {
+	items := make([]tui.PickerItem, len(groups))
+	for i, g := range groups {
+		sub := g.Sprint.State
+		if g.Sprint.State == "backlog" {
+			sub = "backlog"
+		}
+		if g.Sprint.StartDate != "" && g.Sprint.EndDate != "" {
+			sub += " · " + formatSprintDate(g.Sprint.StartDate) + " – " + formatSprintDate(g.Sprint.EndDate)
+		}
+		items[i] = tui.PickerItem{
+			Label:    g.Sprint.Name,
+			SubLabel: sub,
+			Value:    strconv.Itoa(i),
+		}
+	}
+	return tui.NewLocalPickerModel(items)
+}
+
+// updateSprintPicker drives the floating sprint target picker opened with 'm'.
+// Confirming an entry issues the same move used by the adjacent-sprint keys,
+// with followCursor=false so the cursor keeps its row index.
+func (m blModel) updateSprintPicker(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// Let the app quit even from inside the picker.
+	if key, ok := msg.(tea.KeyPressMsg); ok && key.String() == "ctrl+c" {
+		m.quitting = true
+		return m, nil
+	}
+
+	updated, cmd := m.sprintPicker.Update(msg)
+	m.sprintPicker = updated
+
+	if m.sprintPicker.Aborted {
+		m.state = blList
+		m.sprintTargetKeys = nil
+		return m, nil
+	}
+	if !m.sprintPicker.Completed {
+		return m, cmd
+	}
+
+	item := m.sprintPicker.SelectedItem()
+	keys := m.sprintTargetKeys
+	m.state = blList
+	m.sprintTargetKeys = nil
+	if item == nil {
+		return m, nil
+	}
+
+	idx, err := strconv.Atoi(item.Value)
+	if err != nil || idx < 0 || idx >= len(m.groups) {
+		// Stale value (e.g. the picker outlived a refresh); never move blindly.
+		return m, nil
+	}
+	target := m.groups[idx]
+
+	movingSet := make(map[string]bool, len(keys))
+	for _, k := range keys {
+		movingSet[k] = true
+	}
+	// No-op guard: if every target already lives in this group, the move would
+	// only reorder the sprint, so skip the API call entirely.
+	targetSet := make(map[string]bool, len(target.Issues))
+	for _, issue := range target.Issues {
+		targetSet[issue.Key] = true
+	}
+	allPlaced := true
+	for k := range movingSet {
+		if !targetSet[k] {
+			allPlaced = false
+			break
+		}
+	}
+	if allPlaced {
+		return m, nil
+	}
+
+	m.moving = true
+	return m, tea.Batch(
+		m.loadSpinner.Tick,
+		blMoveMultiCmd(m.client, keys, target.Sprint.ID, idx, lastIssueKey(target.Issues, movingSet), false),
+	)
 }
 
 func blDoAssignCmd(client api.Client, keys []string, accountID string) tea.Cmd {
