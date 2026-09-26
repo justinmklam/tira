@@ -24,7 +24,7 @@ builds:
 
 archives:
   - id: tira
-    builds: [tira]
+    ids: [tira]
     name_template: "{{ .Binary }}_{{ .Os }}_{{ .Arch }}"
     format_overrides:
       - goos: windows
