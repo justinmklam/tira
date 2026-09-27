@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/justinmklam/tira/internal/api"
 	"github.com/justinmklam/tira/internal/mock"
 	"github.com/justinmklam/tira/internal/tui"
@@ -87,13 +88,20 @@ func TestRenderBoardSnapshotProgressiveFetch(t *testing.T) {
 // truncates every line to the terminal width and never clips the line count.
 func renderBoardContent(t *testing.T, client api.Client, project string, data BoardInitData, view BoardView, w, h int) string {
 	t.Helper()
+	return sizedBoardModel(t, client, project, data, view, w, h).View().Content
+}
+
+// sizedBoardModel builds the board and applies the viewport, returning the model
+// itself so tests can assert against the rendered geometry.
+func sizedBoardModel(t *testing.T, client api.Client, project string, data BoardInitData, view BoardView, w, h int) boardModel {
+	t.Helper()
 	m, _ := newBoardModel(client, 1, "https://demo.atlassian.net", project, true, data, view)
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: w, Height: h})
 	board, ok := updated.(boardModel)
 	if !ok {
 		t.Fatalf("board model did not survive the size update")
 	}
-	return board.View().Content
+	return board
 }
 
 // TestRenderBoardSnapshotThemeMatrix is the width/height regression gate across
@@ -124,13 +132,31 @@ func TestRenderBoardSnapshotThemeMatrix(t *testing.T) {
 					require.NoError(t, tui.SetTheme(theme))
 					t.Cleanup(func() { _ = tui.SetTheme("default") })
 
-					content := renderBoardContent(t, client, client.Project(), data, v.view, size.w, size.h)
+					board := sizedBoardModel(t, client, client.Project(), data, v.view, size.w, size.h)
+					content := board.View().Content
 					lines := strings.Split(content, "\n")
 
 					require.LessOrEqual(t, len(lines), size.h, "view renders more lines than the terminal height")
 					for _, line := range lines {
 						require.LessOrEqual(t, tui.DisplayWidth(line), size.w, "line exceeds the terminal width: %q", line)
 					}
+
+					// Index 0 is the top pad, index 1 the tab strip, and index 2 the
+					// topmost rule: the frame's top border for the split views and the
+					// columns' top border for kanban (R2 removed the TabDivider).
+					require.GreaterOrEqual(t, len(lines), 3)
+					rule := ansi.Strip(lines[2])
+					require.True(t, strings.HasPrefix(rule, "╭"), "index 2 is not the top frame border: %q", rule)
+					switch v.view {
+					case ViewBacklog, ViewEpics:
+						require.Equal(t, 1, strings.Count(rule, "Details"), "the detail pane title should appear once: %q", rule)
+						require.NotContains(t, rule, "Backlog")
+						require.NotContains(t, rule, "Epics")
+					case ViewKanban:
+						require.Equal(t, len(board.kanban.columns), strings.Count(ansi.Strip(content), "╭"),
+							"one frame per kanban column and none per card (R1)")
+					}
+
 					// The kanban view pads between the board and the footer, so the
 					// empty-line check applies to the split-pane views only.
 					if v.view != ViewKanban {

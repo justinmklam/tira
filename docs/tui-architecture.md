@@ -139,7 +139,9 @@ All board views share a five-tier style scale, defined once in `internal/tui`:
 | T4 meta | dim: counts, dates, hints, placeholders | `Muted` / `FooterHints`, `EmptyState` |
 
 Each board view opens with one blank row (vertical breathing room), then the tab
-strip, then a full-width dim `TabDivider` before the column header or board.
+strip. There is no longer a separate divider rule: the topmost frame supplies it —
+the untitled list frame's top border in the backlog and epics, and the kanban
+columns' own top border. `TabDivider` was removed (R2).
 
 **Only the cursor row/card carries a background fill** (`Surface`, via
 `SurfaceBg`). Chrome bands, sprint headers, and glamour headings are flat. Type
@@ -162,12 +164,43 @@ the result measures exactly that many display cells.
 | `ModalTitle(text, innerW)` | in-modal title, `innerW` cells |
 | `TabStrip(active, right, width)` | full-width row with the active tab bracketed and accented; when tabs and detail cannot both fit the detail is dropped, never a tab |
 | `TabStripStyled(active, right, width)` | as `TabStrip` for a pre-sanitised, pre-styled detail (the backlog's coloured transient badges) |
-| `TabDivider(width)` | full-width dim `─` rule rendered directly beneath the tab strip to separate the tabs from the header/board below |
 | `SectionHeader(text, fg, width)` | bold caller-coloured label; truncates with `…` rather than wrapping |
 | `SectionHeaderRegular(text, fg, width)` | as above without the bold weight (inactive kanban columns) |
 | `EmptyState(text, width)` | centred, dim, italic placeholder |
 | `Badge(text, fg, bg)` | one-line pill with one space of padding each side |
 | `FooterHints(hints, width)` | bold keys, muted descriptions; drops whole hints from the tail and appends `…` |
+
+### Frame primitives
+
+`Frame` and `SplitView` compose the two-pane split views. Unlike the chrome
+primitives they are blocks, not single lines.
+
+| Helper | Guarantee |
+|--------|-----------|
+| `Frame(title, body, outerW, h, bc, tc)` | exactly `outerW` columns × `h` rows (border included); `h <= 0` sizes to the body; a body line is clamped with `FixedWidth(line, outerW-2)` so an over-wide line truncates with `…` rather than wrapping; a padded row is never the empty string, which keeps the snapshot empty-line check honest; `outerW < 4` returns `""` |
+| `SplitView(listBody, detailBody, totalW, h)` | an untitled list frame and a `Details` frame joined by a one-column gutter; exactly `totalW` columns and `h` rows |
+
+`ListPaneWidth` returns the list pane's **content** width. `DetailPaneWidth`
+already subtracts both frames' borders (4) and the gutter (1), so the two framed
+blocks plus the gutter sum to `totalW`. The list pane is deliberately untitled
+(R3): the tab strip already names the view, so a title would repeat it on the
+adjacent row.
+
+Frame geometry, stated once so a height change is a one-line change:
+
+- `viewHeight()` is `height-6` (top pad, tab strip, the frame's two border rows,
+  column header, footer).
+- Pane outer height `paneH` is `viewHeight()+3`, so the top pad, tab strip, pane,
+  and footer sum to exactly `height`.
+- Each pane body is `paneH-2` rows: the column header plus `viewHeight()` issue
+  rows for the list, and the sidebar sliced to `viewHeight()+1` rows.
+- Kanban has no split frame, so `availableIssueLines()` is `height-7` (top pad,
+  tab strip, footer, and the per-column border-top, title, separator, and
+  border-bottom).
+
+The sidebar is now rendered at the narrower `DetailPaneWidth`, so it reflows
+taller and scrolls (`updateSidebar`/`WindowSizeMsg` pick the new width up from the
+function).
 
 ### Semantic colour helpers
 
@@ -514,6 +547,32 @@ When the user presses `e` or `c`, `kanbanModel` sets `m.result.editKey` or `m.re
 | 5 | Labels | textinput | Fixed width, comma-separated |
 | 6 | Description | textarea | Full width |
 | 7 | Acceptance Criteria | textarea | Full width |
+
+### Pane Style
+
+The form uses the same five-tier scale as the board:
+
+- Column 1 holds the field labels and section headings, column 16 the values, and
+  textarea text is indented to column 1. `fieldLabel(i)` always returns exactly
+  `emLabelW` (14) cells, so the value column stays aligned.
+- Focus is carried by the label's weight and hue: the focused field's whole label
+  is bold `ColorAccent`, every other label is muted. Type, Priority, and Assignee
+  labels additionally carry their semantic glyph and colour (`TypeGlyph`,
+  `PriorityGlyph`, `PersonColor`). Focus is never a row fill — a live
+  `textinput`/`textarea` resets its own styles mid-row, which would truncate a
+  `SurfaceBg` band.
+- The `Description` and `Acceptance Criteria` rows are `SectionHeader`s, accented
+  while their textarea has focus and muted otherwise.
+- The hint row is `FooterHints`; validation errors and the discard prompt are
+  `Badge` pills.
+- The two textareas deliberately have **no** `┃` prompt bar. `textarea.Prompt`
+  must be set to `""` **before** `SetWidth`, because the bubbles textarea
+  memoises `promptWidth` at `SetWidth` time. `setSize` then sizes the block as
+  `w-1` so it measures exactly `w` once `View` indents each line by one cell.
+
+`setSize`'s `overhead = 13` budgets the fixed rows; the form actually renders
+`12 + 2*taHeight` (the extra reserved row is deliberate slack). A change that adds
+or removes a row must re-derive it — `TestEditFormViewLayout` asserts the count.
 
 ### Navigation
 

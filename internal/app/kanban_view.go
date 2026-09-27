@@ -221,9 +221,10 @@ func (m kanbanModel) viewBoard() string {
 
 	board := lipgloss.JoinHorizontal(lipgloss.Top, renderedCols...)
 
-	// The top pad, tab strip, and divider always render, which is why
-	// availableIssueLines deducts all three unconditionally.
-	boardContent := boardTopPad + tui.TabStrip(1, m.sprintName, width) + "\n" + tui.TabDivider(width) + "\n" + board
+	// The top pad and tab strip always render, and the columns' own top border
+	// now provides the rule beneath the tabs, which is why availableIssueLines
+	// deducts them unconditionally.
+	boardContent := boardTopPad + tui.TabStrip(1, m.sprintName, width) + "\n" + board
 
 	var footerStr string
 	if m.state == stateLoading || m.linkPickerKey != "" {

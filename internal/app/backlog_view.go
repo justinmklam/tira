@@ -224,8 +224,14 @@ func (m blModel) viewList() string {
 	// Column header for list pane
 	colHeader := blColumnHeader(listPaneW)
 
-	// Visible rows for list pane
+	// Pane geometry is the single source of truth for the split view's height
+	// budget: the list body is the column header plus viewHeight() issue rows and
+	// the detail body is the sidebar sliced to viewHeight()+1 rows, so each is
+	// paneH-2 rows tall. The top pad, tab strip, pane (paneH = height-3), and
+	// footer sum to exactly height.
 	vh := m.viewHeight()
+	paneH := vh + 3
+
 	end := m.offset + vh
 	if end > len(m.rows) {
 		end = len(m.rows)
@@ -237,24 +243,20 @@ func (m blModel) viewList() string {
 	for len(lines) < vh {
 		lines = append(lines, "")
 	}
-	listContent := strings.Join(lines, "\n")
-
-	// Header line: column header on left, divider separating sidebar
-	div := lipgloss.NewStyle().Foreground(tui.ColorSubtle).Render("│")
-	headerLine := lipgloss.NewStyle().Width(listPaneW).Render(colHeader) + div
+	listBody := colHeader + "\n" + strings.Join(lines, "\n")
 
 	// Sidebar content with scroll
 	sidebarLines := strings.Split(m.sidebarContent, "\n")
 	totalSidebarLines := len(sidebarLines)
-	sidebarEnd := m.sidebarOffset + vh
+	sidebarEnd := m.sidebarOffset + vh + 1
 	if sidebarEnd > totalSidebarLines {
 		sidebarEnd = totalSidebarLines
 	}
 	visibleSidebarLines := sidebarLines[m.sidebarOffset:sidebarEnd]
-	for len(visibleSidebarLines) < vh {
+	for len(visibleSidebarLines) < vh+1 {
 		visibleSidebarLines = append(visibleSidebarLines, "")
 	}
-	sidebarContent := strings.Join(visibleSidebarLines, "\n")
+	detailBody := strings.Join(visibleSidebarLines, "\n")
 
 	// Footer spans both panes
 	var footer string
@@ -286,7 +288,7 @@ func (m blModel) viewList() string {
 		}
 	}
 
-	return boardTopPad + topBar + "\n" + tui.TabDivider(width) + "\n" + headerLine + "\n" + tui.SplitPanes(listContent, sidebarContent, listPaneW, vh) + "\n" + footer
+	return boardTopPad + topBar + "\n" + tui.SplitView(listBody, detailBody, width, paneH) + "\n" + footer
 }
 
 // blHints are the backlog's default footer hints, most-used first: they are

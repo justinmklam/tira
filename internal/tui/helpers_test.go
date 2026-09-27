@@ -162,9 +162,15 @@ func TestListPaneWidth(t *testing.T) {
 
 func TestDetailPaneWidth(t *testing.T) {
 	w := DetailPaneWidth(120)
-	expected := 120 - ListPaneWidth(120) - 1
+	expected := 120 - (ListPaneWidth(120) + 2) - 1 - 2
 	if w != expected {
 		t.Errorf("DetailPaneWidth(120) = %d, want %d", w, expected)
+	}
+	if w != 49 {
+		t.Errorf("DetailPaneWidth(120) = %d, want 49", w)
+	}
+	if got := DetailPaneWidth(80); got != 31 {
+		t.Errorf("DetailPaneWidth(80) = %d, want 31", got)
 	}
 	// Small width should return at least 20
 	w = DetailPaneWidth(40)
@@ -173,19 +179,102 @@ func TestDetailPaneWidth(t *testing.T) {
 	}
 }
 
-func TestSplitPanes(t *testing.T) {
-	left := "A\nB"
-	right := "X\nY\nZ"
-	result := SplitPanes(left, right, 10, 3)
-	lines := strings.Split(result, "\n")
-	if len(lines) != 3 {
-		t.Errorf("expected 3 lines, got %d", len(lines))
+// TestFrame pins the exact outerW × h contract, the FixedWidth clamp, and the
+// no-control-runes guarantee every framed pane relies on.
+func TestFrame(t *testing.T) {
+	body := strings.Join([]string{"one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"}, "\n")
+	cases := []struct {
+		name   string
+		title  string
+		body   string
+		outerW int
+		h      int
+	}{
+		{"untitled/short", "", "one", 12, 4},
+		{"untitled/exact", "", body, 40, 5},
+		{"untitled/tall", "", body, 40, 12},
+		{"titled/short", "Details", body, 40, 4},
+		{"titled/exact", "Details", body, 40, 12},
+		{"titled/overlong", "A very long pane title that cannot fit", "x", 20, 5},
 	}
-	// Each line should contain the vertical bar separator.
-	for i, line := range lines {
-		if !strings.Contains(line, "│") {
-			t.Errorf("line %d missing separator: %q", i, line)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			out := Frame(tc.title, tc.body, tc.outerW, tc.h, ColorSubtle, ColorForegroundBright)
+			lines := strings.Split(out, "\n")
+			if len(lines) != tc.h {
+				t.Fatalf("Frame rendered %d rows, want %d:\n%s", len(lines), tc.h, out)
+			}
+			for i, line := range lines {
+				if w := DisplayWidth(line); w != tc.outerW {
+					t.Errorf("row %d width = %d, want %d: %q", i, w, tc.outerW, line)
+				}
+				for _, r := range ansi.Strip(line) {
+					if unicode.IsControl(r) {
+						t.Errorf("row %d: control rune %U survived: %q", i, r, line)
+					}
+				}
+			}
+		})
+	}
+
+	t.Run("wide body does not add rows", func(t *testing.T) {
+		out := Frame("", strings.Repeat("x", 200), 20, 4, ColorSubtle, ColorForegroundBright)
+		if got := len(strings.Split(out, "\n")); got != 4 {
+			t.Fatalf("Frame rendered %d rows, want 4", got)
 		}
+		for _, line := range strings.Split(out, "\n") {
+			if w := DisplayWidth(line); w != 20 {
+				t.Errorf("row width = %d, want 20: %q", w, line)
+			}
+		}
+	})
+
+	t.Run("hostile body", func(t *testing.T) {
+		out := Frame("", "line one\n\x1b[31mline two", 30, 4, ColorSubtle, ColorForegroundBright)
+		for _, line := range strings.Split(out, "\n") {
+			for _, r := range ansi.Strip(line) {
+				if unicode.IsControl(r) {
+					t.Errorf("control rune %U survived: %q", r, line)
+				}
+			}
+		}
+	})
+
+	t.Run("narrow frame", func(t *testing.T) {
+		if got := Frame("t", "body", 3, 4, ColorSubtle, ColorForegroundBright); got != "" {
+			t.Errorf("Frame with outerW < 4 = %q, want empty", got)
+		}
+	})
+}
+
+// TestSplitView pins the two-pane geometry: exactly the terminal width, each
+// pane framed, and only the detail pane titled.
+func TestSplitView(t *testing.T) {
+	listBody := strings.Join([]string{"KEY  SUMMARY", "DEMO-1  One", "DEMO-2  Two"}, "\n")
+	detailBody := strings.Join([]string{"DEMO-1", "One", "", "• Status: Done"}, "\n")
+
+	for _, size := range []struct{ w, h int }{{120, 40}, {80, 24}} {
+		t.Run(fmt.Sprintf("%dx%d", size.w, size.h), func(t *testing.T) {
+			out := SplitView(listBody, detailBody, size.w, size.h)
+			lines := strings.Split(out, "\n")
+			if len(lines) != size.h {
+				t.Fatalf("SplitView rendered %d rows, want %d", len(lines), size.h)
+			}
+			for i, line := range lines {
+				if w := DisplayWidth(line); w != size.w {
+					t.Errorf("row %d width = %d, want %d: %q", i, w, size.w, line)
+				}
+			}
+
+			top := lines[0]
+			if got := strings.Count(top, "Details"); got != 1 {
+				t.Errorf("top border contains %q %d times, want 1: %q", "Details", got, top)
+			}
+			rest := strings.Replace(ansi.Strip(top), "Details", "", 1)
+			if idx := strings.IndexFunc(rest, unicode.IsLetter); idx >= 0 {
+				t.Errorf("top border carries a second title at %d: %q", idx, ansi.Strip(top))
+			}
+		})
 	}
 }
 
@@ -504,23 +593,5 @@ func TestBadgeKeepsItsFill(t *testing.T) {
 	fgOnly := lipgloss.NewStyle().Foreground(ColorOnChrome).Render(" Bug ")
 	if out == fgOnly {
 		t.Errorf("Badge should keep a background fill: %q", out)
-	}
-}
-
-// TestTabDivider pins the rule under the tab strip: exactly the requested width,
-// a visible rule character, and no background fill.
-func TestTabDivider(t *testing.T) {
-	out := TabDivider(60)
-	if got := DisplayWidth(out); got != 60 {
-		t.Errorf("width = %d, want 60", got)
-	}
-	if !strings.Contains(ansi.Strip(out), "─") {
-		t.Errorf("expected a rule character: %q", out)
-	}
-	if strings.Contains(out, "48;") {
-		t.Errorf("divider should carry no background fill: %q", out)
-	}
-	if TabDivider(0) != "" {
-		t.Errorf("TabDivider(0) = %q, want empty", TabDivider(0))
 	}
 }

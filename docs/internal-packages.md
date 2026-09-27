@@ -82,9 +82,10 @@ issue, err := tui.RunWithSpinner("Fetching issue...", func() (*models.Issue, err
 | `FitInput(input textinput.Model, cells int) string` | Render a text input within `cells` cells, reflowing its scrolling viewport so long values stay on one line |
 | `FormatStoryPoints(points float64) string` | Compact story-point formatting shared by Backlog and Epics |
 | `Clamp(v, lo, hi int) int` | Constrain `v` to `[lo, hi]` |
-| `SplitPanes(left, right string, leftWidth, height int) string` | Side-by-side layout with dim `│` separator |
-| `ListPaneWidth(totalWidth int) int` | 40% of total, min 30 |
-| `DetailPaneWidth(totalWidth int) int` | Remainder after list pane |
+| `Frame(title, body string, outerW, h int, bc, tc color.Color) string` | Rounded bordered box of exactly `outerW × h`; optional title in the top border; body lines clamped with `FixedWidth` |
+| `SplitView(listBody, detailBody string, totalW, h int) string` | Untitled list frame plus a titled `Details` frame, one-column gutter, exactly `totalW × h` |
+| `ListPaneWidth(totalWidth int) int` | 55% of total, min 30 (list pane *content* width) |
+| `DetailPaneWidth(totalWidth int) int` | Remainder after both frames' borders and the gutter, min 20 |
 | `OverlaySize(w, h int) (w, h int)` | 85% width (max 140, min 60); 95% height (min 15) |
 | `OverlayViewportSize(w, h int) (vpW, vpH int)` | Subtracts border + chrome from OverlaySize |
 | `HelpOverlaySize(w, h int) (w, h int)` | 70% width (max 100, min 60); 90% height (max 50, min 25) |

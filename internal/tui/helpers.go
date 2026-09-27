@@ -194,16 +194,6 @@ func TabStripStyled(active int, right string, width int) string {
 	return left + strings.Repeat(" ", mid)
 }
 
-// TabDivider renders the full-width dim rule that sits directly beneath the tab
-// strip, separating the view tabs from the column header or board below. It
-// measures exactly width cells and carries no background fill.
-func TabDivider(width int) string {
-	if width <= 0 {
-		return ""
-	}
-	return lipgloss.NewStyle().Foreground(ColorSubtle).Render(strings.Repeat("─", width))
-}
-
 // SectionHeader renders a bold, caller-coloured label padded to width. The
 // caller owns the colour so a column header can be status-tinted. An over-long
 // label is truncated with an ellipsis, never wrapped, and no background fill is
@@ -313,24 +303,71 @@ func Clamp(v, lo, hi int) int {
 	return v
 }
 
-// SplitPanes renders left and right string blocks side-by-side, separated by
-// a dim vertical bar, each block padded/trimmed to exactly height lines.
-func SplitPanes(left, right string, leftWidth, height int) string {
-	div := lipgloss.NewStyle().Foreground(ColorSubtle).Render("│")
-	leftLines := strings.Split(left, "\n")
-	rightLines := strings.Split(right, "\n")
-	rows := make([]string, height)
-	for i := 0; i < height; i++ {
-		var l, r string
-		if i < len(leftLines) {
-			l = leftLines[i]
-		}
-		if i < len(rightLines) {
-			r = rightLines[i]
-		}
-		rows[i] = lipgloss.NewStyle().Width(leftWidth).Render(l) + div + r
+// Frame renders body inside a rounded border of exactly outerW columns and h
+// rows (border included). A non-empty title is embedded in the top border after
+// "─ ". Body lines are clamped to outerW-2, so an over-wide line is truncated
+// with … rather than wrapped. bc colours the border, tc the bold title. h <= 0
+// sizes the frame to the body, and the frame emits exactly h rows: body lines
+// past h-2 are dropped and short bodies are padded with empty framed rows.
+func Frame(title, body string, outerW, h int, bc, tc color.Color) string {
+	if outerW < 4 {
+		return ""
 	}
+	innerW := outerW - 2
+	bodyLines := strings.Split(body, "\n")
+	if h <= 0 {
+		h = len(bodyLines) + 2
+	}
+	if h < 2 {
+		h = 2
+	}
+
+	b := lipgloss.RoundedBorder()
+	border := lipgloss.NewStyle().Foreground(bc)
+
+	// Top border: an optional title is embedded after "╭─ ". A title too wide for
+	// the frame is truncated to the cells available, so the row never wraps.
+	var top strings.Builder
+	top.WriteString(border.Render(b.TopLeft))
+	titleW := DisplayWidth(title)
+	if maxTitleW := outerW - 5; titleW > maxTitleW {
+		titleW = maxTitleW
+	}
+	if titleW > 0 {
+		titleStyle := lipgloss.NewStyle().Bold(true).Foreground(tc)
+		top.WriteString(border.Render(b.Top + " "))
+		top.WriteString(titleStyle.Render(FixedWidth(title, titleW)))
+		top.WriteString(border.Render(" "))
+		top.WriteString(border.Render(strings.Repeat(b.Top, outerW-5-titleW)))
+	} else {
+		top.WriteString(border.Render(strings.Repeat(b.Top, innerW)))
+	}
+	top.WriteString(border.Render(b.TopRight))
+
+	rows := make([]string, 0, h)
+	rows = append(rows, top.String())
+	for i := 0; i < h-2; i++ {
+		line := strings.Repeat(" ", innerW)
+		if i < len(bodyLines) {
+			line = FixedWidth(bodyLines[i], innerW)
+		}
+		rows = append(rows, border.Render(b.Left)+line+border.Render(b.Right))
+	}
+	rows = append(rows,
+		border.Render(b.BottomLeft)+border.Render(strings.Repeat(b.Bottom, innerW))+border.Render(b.BottomRight))
+
 	return strings.Join(rows, "\n")
+}
+
+// SplitView renders an untitled list pane and a rounded "Details" pane side by
+// side with a one-column gutter. h is each pane's outer height in rows, border
+// included. totalW is the full terminal width, and the result is exactly totalW
+// columns wide: ListPaneWidth returns the list pane's content width while
+// DetailPaneWidth already subtracts both frames and the gutter.
+func SplitView(listBody, detailBody string, totalW, h int) string {
+	list := Frame("", listBody, ListPaneWidth(totalW)+2, h, ColorSubtle, ColorForegroundBright)
+	detail := Frame("Details", detailBody, DetailPaneWidth(totalW)+2, h, ColorSubtle, ColorForegroundBright)
+	return lipgloss.JoinHorizontal(lipgloss.Top, list, " ", detail)
 }
 
 // ListPaneWidth returns the width of the list pane in a split layout.
@@ -343,10 +380,11 @@ func ListPaneWidth(totalWidth int) int {
 	return w
 }
 
-// DetailPaneWidth returns the width of the detail pane in a split layout.
-// The detail pane takes the remaining width (approximately 35%).
+// DetailPaneWidth returns the width of the detail pane's content in a split
+// layout. It subtracts the list pane's two border columns, the one-column
+// gutter, and the detail pane's own two border columns from totalWidth.
 func DetailPaneWidth(totalWidth int) int {
-	w := totalWidth - ListPaneWidth(totalWidth) - 1
+	w := totalWidth - (ListPaneWidth(totalWidth) + 2) - 1 - 2
 	if w < 20 {
 		w = 20
 	}

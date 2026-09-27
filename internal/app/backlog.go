@@ -358,10 +358,11 @@ func (m *blModel) insertIssue(issue models.Issue, sprintID int) {
 }
 
 func (m blModel) viewHeight() int {
-	if m.height < 6 {
+	if m.height < 7 {
 		return 1
 	}
-	return m.height - 5 // top pad + tab strip + divider + column header + footer
+	// Chrome: top pad + tab strip + the frame's two border rows + column header + footer.
+	return m.height - 6
 }
 
 // visualIssueKeys returns the set of issue keys spanned by the visual selection range.

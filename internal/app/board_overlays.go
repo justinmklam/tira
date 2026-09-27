@@ -85,22 +85,19 @@ func (m boardModel) viewEditForm(w, h int) string {
 	overlayW, _ := tui.OverlaySize(w, h)
 	innerW := overlayW - 2
 
-	var titleStr string
-	switch m.activeView {
-	case viewCreate:
+	title := "New Issue"
+	right := ""
+	if m.activeView == viewCreate {
 		if m.createSprintID == 0 {
-			titleStr = "New Issue  (backlog)"
-		} else {
-			titleStr = "New Issue"
+			right = "backlog"
 		}
-	default:
-		titleStr = m.editKey
+	} else {
+		title = "Edit " + m.editKey
 		if m.editIssue != nil {
-			titleStr = m.editIssue.Key + "  " + m.editIssue.Summary
+			right = m.editIssue.Summary
 		}
 	}
-	header := tui.BoldAccent.Padding(0, 1).Width(innerW).
-		Render(tui.FixedWidth(titleStr, innerW-2))
+	header := tui.TitleBar(title, right, innerW)
 
 	body := header + "\n" + m.editForm.View().Content
 	if m.editErr != "" {

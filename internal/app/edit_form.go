@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"image/color"
 	"strconv"
 	"strings"
 
@@ -77,6 +78,10 @@ func newEditModel(issue *models.Issue, valid *models.ValidValues, width, height 
 		ti.Prompt = ""
 		ti.SetWidth(emInputW)
 		ti.Placeholder = placeholders[i]
+		styles := ti.Styles()
+		styles.Focused.Placeholder = tui.MutedStyle.Italic(true)
+		styles.Blurred.Placeholder = tui.MutedStyle.Italic(true)
+		ti.SetStyles(styles)
 		m.inputs[i] = ti
 	}
 
@@ -92,12 +97,27 @@ func newEditModel(issue *models.Issue, valid *models.ValidValues, width, height 
 	m.inputs[efLabels].SetValue(strings.Join(issue.Labels, ", "))
 
 	m.descTA = textarea.New()
-	m.descTA.SetValue(issue.Description)
+	// Prompt must be cleared before setSize: the textarea memoises promptWidth
+	// at SetWidth time, so the default "┃ " would otherwise leave a two-cell
+	// inset behind on every line.
+	m.descTA.Prompt = ""
+	m.descTA.Placeholder = "Write a description…"
 	m.descTA.ShowLineNumbers = false
+	m.descTA.SetValue(issue.Description)
+	descStyles := m.descTA.Styles()
+	descStyles.Focused.Placeholder = tui.MutedStyle.Italic(true)
+	descStyles.Blurred.Placeholder = tui.MutedStyle.Italic(true)
+	m.descTA.SetStyles(descStyles)
 
 	m.acTA = textarea.New()
-	m.acTA.SetValue(issue.AcceptanceCriteria)
+	m.acTA.Prompt = ""
+	m.acTA.Placeholder = "Add acceptance criteria…"
 	m.acTA.ShowLineNumbers = false
+	m.acTA.SetValue(issue.AcceptanceCriteria)
+	acStyles := m.acTA.Styles()
+	acStyles.Focused.Placeholder = tui.MutedStyle.Italic(true)
+	acStyles.Blurred.Placeholder = tui.MutedStyle.Italic(true)
+	m.acTA.SetStyles(acStyles)
 
 	m.initialState = m.currentState()
 
@@ -111,16 +131,22 @@ func (m *editModel) setSize(w, h int) {
 	m.height = h
 
 	// Summary gets the full available width; other inputs use the fixed width.
+	// textinput.View reserves one cell for the cursor beyond SetWidth, so the
+	// summary's editable width is one short of its slot; otherwise the cursor
+	// would spill past the form's right edge.
 	summaryW := w - emLabelW - 2
 	if summaryW < 20 {
 		summaryW = 20
 	}
-	m.inputs[efSummary].SetWidth(summaryW)
+	m.inputs[efSummary].SetWidth(summaryW - 1)
 	for i := 1; i < efInputCount; i++ {
 		m.inputs[i].SetWidth(emInputW)
 	}
 
-	taW := max(w-4, 10)
+	// The textarea's SetWidth counts the prompt inside its total width. With the
+	// prompt cleared, w-1 leaves exactly w cells once View indents the block by
+	// one cell, matching the field rows and the section headings.
+	taW := max(w-1, 10)
 	m.descTA.SetWidth(taW)
 	m.acTA.SetWidth(taW)
 
@@ -291,33 +317,105 @@ func (m *editModel) setAssignee(displayName, accountID string) {
 	m.origAssigneeID = accountID
 }
 
+// fieldGlyph returns the semantic one-cell glyph and its colour for the fields
+// that carry one (type, priority, assignee). A field without a glyph returns the
+// empty string, so its label keeps the plain muted treatment.
+func (m *editModel) fieldGlyph(i int) (string, color.Color) {
+	switch i {
+	case efType:
+		v := m.inputs[efType].Value()
+		if c := tui.IssueTypeColor(v); c != nil {
+			return tui.TypeGlyph(v), c
+		}
+		return tui.TypeGlyph(v), tui.ColorMuted
+	case efPriority:
+		v := m.inputs[efPriority].Value()
+		g := tui.PriorityGlyph(v)
+		if g == "" {
+			return "", tui.ColorMuted
+		}
+		if c := tui.PriorityColor(v); c != nil {
+			return g, c
+		}
+		return g, tui.ColorMuted
+	case efAssignee:
+		v := m.inputs[efAssignee].Value()
+		if v == "" {
+			return "", tui.ColorMuted
+		}
+		if c := tui.PersonColor(v); c != nil {
+			return "•", c
+		}
+		return "•", tui.ColorMuted
+	}
+	return "", tui.ColorMuted
+}
+
+// fieldLabel renders one label cell. The focused field is bold accent and carries
+// no glyph; every other label is muted, prefixed by a semantic glyph where the
+// field has one. The result always measures exactly emLabelW cells, so the value
+// column stays aligned.
+func (m *editModel) fieldLabel(i int) string {
+	name := emFieldLabels[i]
+	if i == m.focused {
+		return lipgloss.NewStyle().Bold(true).Foreground(tui.ColorAccent).
+			Render(tui.FixedWidth(name, emLabelW))
+	}
+	glyph, glyphColor := m.fieldGlyph(i)
+	if glyph == "" {
+		return tui.MutedStyle.Render(tui.FixedWidth(name, emLabelW))
+	}
+	prefix := lipgloss.NewStyle().Foreground(glyphColor).Render(glyph) + " "
+	rest := emLabelW - tui.DisplayWidth(prefix)
+	if rest < 0 {
+		rest = 0
+	}
+	return prefix + tui.MutedStyle.Render(tui.FixedWidth(name, rest))
+}
+
 func (m *editModel) View() tea.View {
 	var lines []string
 
 	for i := 0; i < efInputCount; i++ {
-		label := tui.MutedStyle.Render(tui.FixedWidth(emFieldLabels[i], emLabelW))
-		lines = append(lines, " "+label+" "+m.inputs[i].View())
+		lines = append(lines, " "+m.fieldLabel(i)+" "+m.inputs[i].View())
 	}
 
+	descFg := tui.ColorMuted
+	if m.focused == efDescription {
+		descFg = tui.ColorAccent
+	}
 	lines = append(lines, "")
-	lines = append(lines, " "+tui.MutedStyle.Render("Description"))
-	lines = append(lines, strings.Split(m.descTA.View(), "\n")...)
+	lines = append(lines, tui.SectionHeader(" Description", descFg, m.width))
+	for _, line := range strings.Split(m.descTA.View(), "\n") {
+		lines = append(lines, " "+line)
+	}
 
+	acFg := tui.ColorMuted
+	if m.focused == efAccCriteria {
+		acFg = tui.ColorAccent
+	}
 	lines = append(lines, "")
-	lines = append(lines, " "+tui.MutedStyle.Render("Acceptance Criteria"))
-	lines = append(lines, strings.Split(m.acTA.View(), "\n")...)
+	lines = append(lines, tui.SectionHeader(" Acceptance Criteria", acFg, m.width))
+	for _, line := range strings.Split(m.acTA.View(), "\n") {
+		lines = append(lines, " "+line)
+	}
 
 	if m.validErr != "" {
 		lines = append(lines, "")
-		lines = append(lines, lipgloss.NewStyle().Foreground(tui.ColorError).Render("  "+m.validErr))
+		lines = append(lines, " "+tui.Badge("✗ "+m.validErr, tui.ColorOnChrome, tui.ColorError))
 	}
 
 	lines = append(lines, "")
 	if m.confirmAbort {
-		msg := lipgloss.NewStyle().Foreground(tui.ColorError).Bold(true).Render("  Discard unsaved changes? (y/n)")
-		lines = append(lines, msg)
+		lines = append(lines, " "+tui.Badge("! Discard unsaved changes? (y/n)", tui.ColorOnChrome, tui.ColorWarning))
 	} else {
-		lines = append(lines, tui.MutedStyle.Render("  enter: open picker / next  tab: next  shift+tab: back  ctrl+s: save  esc: cancel"))
+		lines = append(lines, " "+tui.FooterHints([]string{
+			"enter open picker / next",
+			"tab next",
+			"shift+tab back",
+			"ctrl+s save",
+			"esc cancel",
+		}, m.width))
 	}
 
 	return tea.NewView(strings.Join(lines, "\n") + "\n")

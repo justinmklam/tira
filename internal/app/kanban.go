@@ -145,9 +145,10 @@ func (m kanbanModel) availableIssueLines() int {
 		h = 40
 	}
 	// Fixed overhead per column: border-top(1) + col-title(1) + separator(1) + border-bottom(1) = 4.
-	// Global overhead: top pad(1) + tab strip(1) + tab divider(1) + footer(1) = 4. All
-	// of it always renders, so this is unconditional; keep it in step with viewBoard.
-	deduct := 8
+	// Global overhead: top pad(1) + tab strip(1) + footer(1) = 3. All of it always
+	// renders, so this is unconditional; keep it in step with viewBoard. The
+	// TabDivider row is gone: the columns' own top border is the topmost rule.
+	deduct := 7
 	avail := h - deduct
 	if avail < 2 {
 		avail = 2

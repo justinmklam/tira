@@ -120,16 +120,18 @@ func (m epicModel) viewList() string {
 	}
 
 	listWidth := tui.ListPaneWidth(width)
+	// Pane geometry mirrors the backlog: the list body is the column header plus
+	// viewHeight() rows, the detail body is the sidebar sliced to viewHeight()+1
+	// rows, and paneH (height-3) is each frame's outer height.
 	vh := m.viewHeight()
 	if vh < 1 {
 		vh = 1
 	}
+	paneH := vh + 3
 
 	header := tui.TabStripStyled(2, m.epicTopDetail(), width)
 
 	colHeader := epicColumnHeader(listWidth)
-	div := lipgloss.NewStyle().Foreground(tui.ColorSubtle).Render("│")
-	headerLine := lipgloss.NewStyle().Width(listWidth).Render(colHeader) + div
 
 	var rows []string
 	if len(m.items) == 0 {
@@ -143,14 +145,16 @@ func (m epicModel) viewList() string {
 	for len(rows) < vh {
 		rows = append(rows, "")
 	}
+	listBody := colHeader + "\n" + strings.Join(rows, "\n")
 
 	sidebarLines := strings.Split(m.sidebarContent, "\n")
 	sidebarStart := tui.Clamp(m.sidebarOffset, 0, max(len(sidebarLines)-1, 0))
-	sidebarEnd := min(sidebarStart+vh, len(sidebarLines))
+	sidebarEnd := min(sidebarStart+vh+1, len(sidebarLines))
 	sidebar := append([]string(nil), sidebarLines[sidebarStart:sidebarEnd]...)
-	for len(sidebar) < vh {
+	for len(sidebar) < vh+1 {
 		sidebar = append(sidebar, "")
 	}
+	detailBody := strings.Join(sidebar, "\n")
 
 	var footer string
 	switch m.state {
@@ -166,9 +170,7 @@ func (m epicModel) viewList() string {
 	}
 
 	return boardTopPad + header + "\n" +
-		tui.TabDivider(width) + "\n" +
-		headerLine + "\n" +
-		tui.SplitPanes(strings.Join(rows, "\n"), strings.Join(sidebar, "\n"), listWidth, vh) +
+		tui.SplitView(listBody, detailBody, width, paneH) +
 		"\n" + footer
 }
 

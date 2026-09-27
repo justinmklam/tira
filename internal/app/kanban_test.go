@@ -277,7 +277,7 @@ func TestKanbanViewFitsHeight(t *testing.T) {
 				m.width = width
 				m.height = height
 
-				if got, want := m.availableIssueLines(), height-8; got != want {
+				if got, want := m.availableIssueLines(), height-7; got != want {
 					t.Errorf("availableIssueLines() = %d, want %d", got, want)
 				}
 
@@ -288,6 +288,13 @@ func TestKanbanViewFitsHeight(t *testing.T) {
 				}
 				if got := strings.Count(view, "▶"); got != 1 {
 					t.Errorf("view has %d cursor markers, want exactly 1", got)
+				}
+
+				// R1: only the columns carry a frame. The columns share the row, so
+				// this counts one top-border glyph per column and none per card,
+				// which keeps the board flat and the card density intact.
+				if got := strings.Count(stripANSI(view), "╭"); got != len(m.columns) {
+					t.Errorf("board has %d top-border glyphs, want one per column (%d)", got, len(m.columns))
 				}
 
 				// A column title rule or cursor card wider than the column body

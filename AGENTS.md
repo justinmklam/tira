@@ -234,11 +234,30 @@ Gotchas:
 - Never assemble a coloured row from an unstyled segment — the lipgloss reset
   between segments truncates the fill. Render the separator with
   `fill.Render(" ")` or style the whole segment with the background.
-- Board chrome is counted unconditionally: `availableIssueLines` deducts 8
-  because the top pad, `TabStrip`, and `TabDivider` always render one line each,
-  plus the footer and the column borders. The backlog/epics `viewHeight()`
-  accounts for the same chrome (`height - 5`). `boardTopPad` in `board.go` is the
-  single blank row above the tab strip.
+- A frame is `content+2` wide and `body+2` tall. `tui.Frame` renders exactly
+  `outerW × h` with no background fill; every body line is clamped with
+  `FixedWidth(line, outerW-2)` because a wrapped body line silently adds a
+  physical row and breaks the height budget. `tui.SplitView` frames the list pane
+  at `ListPaneWidth(totalW)+2` — `ListPaneWidth` returns the list pane's
+  **content** width — and the detail pane at `DetailPaneWidth(totalW)+2`, which
+  already subtracts both borders and the gutter. The list pane is untitled by
+  design (R3); only the detail pane is titled `Details`.
+- `TabDivider` is vestigial: the topmost frame's top border provides the rule
+  under the tab strip. Do not reintroduce it under a frame.
+- A bubbles `textarea` defaults to a `┃ ` prompt that consumes two cells on every
+  line. The edit form sets `Prompt = ""` **before** `SetWidth` (the width is
+  memoised at `SetWidth` time), then indents each rendered line by one cell. A
+  `textinput`/`textarea` `View()` also reserves one cell for the cursor beyond
+  `SetWidth`.
+- The edit form's `overhead = 13` in `setSize` is the row budget; re-derive it in
+  the same change as any row-count edit, because `TestEditFormViewLayout` asserts
+  the count (the form renders `12 + 2*taHeight`).
+- Board chrome is counted unconditionally: the split views' `viewHeight()` is
+  `height - 6` (top pad, `TabStrip`, the frame's two border rows, column header,
+  footer), and kanban's `availableIssueLines` deducts 7 (top pad, `TabStrip`,
+  footer, and the per-column border-top, title, separator, border-bottom). The
+  `TabDivider` row is no longer part of the count. `boardTopPad` in `board.go` is
+  the single blank row above the tab strip.
 
 ### Spinner Usage
 
@@ -257,7 +276,7 @@ spinner.Spinner = spinner.Dot
 
 ### TUI Helpers
 
-Use `tui.FixedWidth`, `tui.Clamp`, `tui.SplitPanes` and other helpers from `internal/tui/helpers.go` instead of reimplementing:
+Use `tui.FixedWidth`, `tui.Clamp`, `tui.SplitView` and other helpers from `internal/tui/helpers.go` instead of reimplementing:
 
 ```go
 // Good
