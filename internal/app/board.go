@@ -16,6 +16,12 @@ import (
 	"github.com/justinmklam/tira/internal/tui"
 )
 
+// boardTopPad is the blank row rendered above the tab strip, giving the chrome
+// vertical breathing room. blModel/epicModel viewHeight and kanbanModel
+// availableIssueLines account for it, so the footer always stays on the last
+// line.
+const boardTopPad = "\n"
+
 // BoardView identifies which view is active in the board TUI.
 type BoardView int
 

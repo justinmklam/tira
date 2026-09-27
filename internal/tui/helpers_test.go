@@ -5,7 +5,9 @@ import (
 	"math"
 	"strings"
 	"testing"
+	"unicode"
 
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -384,5 +386,141 @@ func TestOverlayViewportSize_MinValues(t *testing.T) {
 				t.Errorf("OverlayViewportSize(%d, %d) height = %d, want >= %d", tt.totalWidth, tt.totalHeight, gotVpH, tt.minVpH)
 			}
 		})
+	}
+}
+
+// hostileInputs are the shapes a caller-supplied string can take: a newline, an
+// injected escape sequence, double-width characters, an over-long value, and the
+// empty string.
+var hostileInputs = []string{
+	"a\nb",
+	"a\x1b[31mb",
+	"日本語のテキスト",
+	strings.Repeat("x", 200),
+	"",
+}
+
+// TestPrimitivesRejectHostileInput runs every chrome primitive against the
+// hostile inputs. The only escapes allowed in the output are the ones our own
+// styling introduced, so a caller's ESC must never survive ansi.Strip, and a
+// band must still measure exactly its width.
+func TestPrimitivesRejectHostileInput(t *testing.T) {
+	const width = 40
+
+	check := func(name, out string, w int) {
+		t.Helper()
+		if strings.Contains(out, "\n") {
+			t.Errorf("%s: result contains a newline: %q", name, out)
+		}
+		if w > 0 && DisplayWidth(out) > w {
+			t.Errorf("%s: width %d exceeds %d: %q", name, DisplayWidth(out), w, out)
+		}
+		for _, r := range ansi.Strip(out) {
+			if unicode.IsControl(r) {
+				t.Errorf("%s: control rune %U survived sanitising: %q", name, r, out)
+			}
+		}
+	}
+
+	for _, in := range hostileInputs {
+		check("TitleBar", TitleBar(in, in, width), width)
+		check("ModalTitle", ModalTitle(in, width), width)
+		check("TabStrip", TabStrip(0, in, width), width)
+		check("SectionHeader", SectionHeader(in, ColorAccent, width), width)
+		check("EmptyState", EmptyState(in, width), width)
+		check("Badge", Badge(in, ColorOnChrome, ColorError), 0)
+		check("FooterHints", FooterHints([]string{in, in}, width), width)
+	}
+}
+
+// TestFooterHintsDropsWholeHints pins the "no partial tokens" rule: hints are
+// dropped from the tail as whole units and the drop is marked with an ellipsis.
+func TestFooterHintsDropsWholeHints(t *testing.T) {
+	hints := []string{"j/k move", "enter details", "e edit", "s status", "m move", "/ filter", "x cut", "? help"}
+
+	out := FooterHints(hints, 80)
+	if got := DisplayWidth(out); got > 80 {
+		t.Errorf("FooterHints width = %d, want <= 80", got)
+	}
+	if !strings.Contains(ansi.Strip(out), "…") {
+		t.Errorf("dropping hints should append an ellipsis: %q", ansi.Strip(out))
+	}
+	plain := ansi.Strip(out)
+	for _, fragment := range []string{"adj", "scroll d"} {
+		if strings.Contains(plain, fragment) {
+			t.Errorf("result contains a partial hint token %q: %q", fragment, plain)
+		}
+	}
+	if !strings.Contains(plain, "j/k move") {
+		t.Errorf("the first (highest priority) hint should survive: %q", plain)
+	}
+}
+
+// TestTabStripStyledKeepsColourAndFits checks the pre-styled variant used by the
+// backlog's transient badges: it preserves the caller's styling and still
+// measures exactly the strip width.
+func TestTabStripStyledKeepsColourAndFits(t *testing.T) {
+	right := lipgloss.NewStyle().Foreground(ColorError).Render("⚠ boom")
+	out := TabStripStyled(0, right, 60)
+	if got := DisplayWidth(out); got != 60 {
+		t.Errorf("width = %d, want 60", got)
+	}
+	if !strings.Contains(out, right) {
+		t.Error("pre-styled right detail was not preserved")
+	}
+	// A detail that cannot fit is dropped, never truncated into the tabs.
+	narrow := TabStripStyled(0, right, 12)
+	if got := DisplayWidth(narrow); got > 12 {
+		t.Errorf("narrow width = %d, want <= 12", got)
+	}
+	if strings.Contains(narrow, "boom") {
+		t.Errorf("over-wide detail should be dropped: %q", narrow)
+	}
+}
+
+// TestChromePrimitivesHaveNoBackground pins the flat chrome: bands carry no
+// background fill, so the only background in the board is the cursor row.
+func TestChromePrimitivesHaveNoBackground(t *testing.T) {
+	outs := map[string]string{
+		"TitleBar":             TitleBar("Backlog", "DEMO Sprint 1", 60),
+		"ModalTitle":           ModalTitle("Edit Issue", 60),
+		"TabStrip":             TabStrip(0, "DEMO Sprint 1", 60),
+		"TabStripStyled":       TabStripStyled(1, lipgloss.NewStyle().Foreground(ColorError).Render("⚠ boom"), 60),
+		"SectionHeader":        SectionHeader("KEY SUMMARY", ColorMuted, 60),
+		"SectionHeaderRegular": SectionHeaderRegular("TO DO (3)", ColorAccent, 60),
+		"EmptyState":           EmptyState("No issue selected", 60),
+		"FooterHints":          FooterHints([]string{"j/k move", "e edit"}, 60),
+	}
+	for name, out := range outs {
+		if strings.Contains(out, "48;") {
+			t.Errorf("%s: result carries a background fill: %q", name, out)
+		}
+	}
+}
+
+// TestBadgeKeepsItsFill confirms the type pills still render a background.
+func TestBadgeKeepsItsFill(t *testing.T) {
+	out := Badge(" Bug ", ColorOnChrome, ColorError)
+	fgOnly := lipgloss.NewStyle().Foreground(ColorOnChrome).Render(" Bug ")
+	if out == fgOnly {
+		t.Errorf("Badge should keep a background fill: %q", out)
+	}
+}
+
+// TestTabDivider pins the rule under the tab strip: exactly the requested width,
+// a visible rule character, and no background fill.
+func TestTabDivider(t *testing.T) {
+	out := TabDivider(60)
+	if got := DisplayWidth(out); got != 60 {
+		t.Errorf("width = %d, want 60", got)
+	}
+	if !strings.Contains(ansi.Strip(out), "─") {
+		t.Errorf("expected a rule character: %q", out)
+	}
+	if strings.Contains(out, "48;") {
+		t.Errorf("divider should carry no background fill: %q", out)
+	}
+	if TabDivider(0) != "" {
+		t.Errorf("TabDivider(0) = %q, want empty", TabDivider(0))
 	}
 }

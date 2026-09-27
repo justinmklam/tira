@@ -15,17 +15,108 @@ import (
 const (
 	blKeyW    = 10
 	blEpicW   = 12
-	blTypeW   = 8
+	blTypeW   = 10
 	blSpW     = 5
 	blAssignW = 14
 )
 
-func blSummaryWidth(totalWidth int) int {
-	w := totalWidth - 2 - blKeyW - 2 - blEpicW - 1 - blTypeW - 1 - blSpW - 1 - blAssignW - 2
-	if w < 8 {
-		w = 8
+// Fixed cell widths shared by the header and issue rows.
+const (
+	blLeadW = 3 // selection marker + status glyph + space
+	blGapW  = 2 // gap between the key and the summary
+	blPrioW = 1 // priority glyph
+)
+
+// blCols is the set of backlog columns visible at a given list-pane width.
+type blCols struct {
+	summaryW int
+	epic     bool
+	typ      bool
+	prio     bool
+	sp       bool
+	assignW  int // 14 = initials + name, 3 = initials only, 0 = hidden
+	compact  bool
+}
+
+// blLayoutFor is the single source of truth for backlog column geometry: both
+// blColumnHeader and renderIssueRow derive their cells from it, so a rendered
+// row always measures exactly paneW cells. Columns are bought in value order
+// (type, priority, story points, assignee, epic) and only while the summary
+// keeps its floor, which is why a narrow pane drops columns instead of
+// squeezing the summary.
+func blLayoutFor(paneW int) blCols {
+	// Compact mode keeps a glyph cluster: key, summary, type, initials, prio.
+	// Its fixed overhead is lead + key + gap + (type+sep) + (initials+sep) + (prio+sep).
+	const compactOverhead = blLeadW + blKeyW + blGapW + 2 + 4 + 2
+	if paneW < 52 {
+		summaryW := paneW - compactOverhead
+		if summaryW < 8 {
+			summaryW = 8
+		}
+		return blCols{summaryW: summaryW, compact: true}
 	}
-	return w
+
+	overhead := blLeadW + blKeyW + blGapW
+	layout := blCols{}
+	// try adds a column if the summary can still keep its floor. floor(EPIC) is
+	// higher because epic names are long and mostly duplicated elsewhere.
+	try := func(w, sep, floor int) bool {
+		if overhead+sep+w > paneW-floor {
+			return false
+		}
+		overhead += sep + w
+		return true
+	}
+
+	if try(blTypeW, 1, 24) {
+		layout.typ = true
+	}
+	if try(blPrioW, 1, 24) {
+		layout.prio = true
+	}
+	if try(blSpW, 1, 24) {
+		layout.sp = true
+	}
+	if try(blAssignW, 1, 24) {
+		layout.assignW = blAssignW
+	} else if try(3, 1, 24) {
+		layout.assignW = 3
+	}
+	if try(blEpicW, 2, 32) {
+		layout.epic = true
+	}
+
+	layout.summaryW = paneW - overhead
+	return layout
+}
+
+func blSummaryWidth(totalWidth int) int {
+	return blLayoutFor(totalWidth).summaryW
+}
+
+// blColsLabel returns a stable description of the visible columns, used by the
+// golden layout test.
+func blColsLabel(l blCols) string {
+	if l.compact {
+		return "KEY SUMMARY type initials prio"
+	}
+	var parts []string
+	if l.epic {
+		parts = append(parts, "EPIC")
+	}
+	if l.typ {
+		parts = append(parts, "TYPE")
+	}
+	if l.prio {
+		parts = append(parts, "P")
+	}
+	if l.sp {
+		parts = append(parts, "SP")
+	}
+	if l.assignW > 0 {
+		parts = append(parts, fmt.Sprintf("OWN(%d)", l.assignW))
+	}
+	return strings.Join(parts, " ")
 }
 
 func (m blModel) View() tea.View {
@@ -77,18 +168,41 @@ func (m blModel) viewDetail() string {
 	)
 }
 
-// blColumnHeader returns a dim header row aligned with issue row columns.
+// blColumnHeader returns a dim header row aligned with issue row columns. The
+// columns come from blLayoutFor, so the header can never drift from the rows.
 func blColumnHeader(width int) string {
-	summaryW := blSummaryWidth(width)
-	return tui.MutedStyle.Render(
-		"  " +
-			tui.FixedWidth("KEY", blKeyW) + "  " +
-			tui.FixedWidth("SUMMARY", summaryW) + "  " +
-			tui.FixedWidth("EPIC", blEpicW) + " " +
-			tui.FixedWidth("TYPE", blTypeW) + " " +
-			tui.FixedWidth("SP", blSpW) + " " +
-			tui.FixedWidth("ASSIGNEE", blAssignW),
-	)
+	l := blLayoutFor(width)
+	var b strings.Builder
+	b.WriteString(strings.Repeat(" ", blLeadW))
+	b.WriteString(tui.FixedWidth("KEY", blKeyW))
+	b.WriteString(strings.Repeat(" ", blGapW))
+	b.WriteString(tui.FixedWidth("SUMMARY", l.summaryW))
+	if l.compact {
+		b.WriteString(" " + tui.FixedWidth("T", 1))
+		b.WriteString(" " + tui.FixedWidth("O", 3))
+		b.WriteString(" " + tui.FixedWidth("P", blPrioW))
+	} else {
+		if l.epic {
+			b.WriteString("  " + tui.FixedWidth("EPIC", blEpicW))
+		}
+		if l.typ {
+			b.WriteString(" " + tui.FixedWidth("TYPE", blTypeW))
+		}
+		if l.prio {
+			b.WriteString(" " + tui.FixedWidth("P", blPrioW))
+		}
+		if l.sp {
+			b.WriteString(" " + tui.FixedWidth("SP", blSpW))
+		}
+		if l.assignW > 0 {
+			label := "ASSIGNEE"
+			if l.assignW == 3 {
+				label = "OWN"
+			}
+			b.WriteString(" " + tui.FixedWidth(label, l.assignW))
+		}
+	}
+	return tui.SectionHeader(b.String(), tui.ColorMuted, width)
 }
 
 func (m blModel) viewList() string {
@@ -104,20 +218,8 @@ func (m blModel) viewList() string {
 	// Calculate pane widths: 65% for list, 35% for sidebar
 	listPaneW := tui.ListPaneWidth(width)
 
-	// Top bar spans both panes
-	topBar := tui.BoldAccent.Padding(0, 1).Render("Backlog")
-	if m.yankMessage != "" {
-		topBar += " " + lipgloss.NewStyle().Bold(true).Foreground(tui.ColorSuccess).Render(m.yankMessage)
-	} else if m.visualMode {
-		topBar += " " + lipgloss.NewStyle().Bold(true).Foreground(tui.ColorSpecial).Render("VISUAL")
-	} else if m.filterEpic != "" {
-		topBar += " " + lipgloss.NewStyle().Foreground(tui.ColorSpecial).Render("epic: "+m.filterEpic)
-	} else if m.filter != "" {
-		topBar += " " + lipgloss.NewStyle().Foreground(tui.ColorWarning).Render("/ "+m.filter)
-	}
-	if len(m.cutKeys) > 0 {
-		topBar += " " + lipgloss.NewStyle().Foreground(tui.ColorCaution).Render(fmt.Sprintf("✂ %d cut", len(m.cutKeys)))
-	}
+	// Tab strip spans both panes; the transient badges stay coloured.
+	topBar := tui.TabStripStyled(0, m.topDetail(), width)
 
 	// Column header for list pane
 	colHeader := blColumnHeader(listPaneW)
@@ -166,31 +268,54 @@ func (m blModel) viewList() string {
 			" " + m.keySearchInput.View() +
 			"  " + tui.MutedStyle.Render("esc: cancel  enter: jump")
 	default:
-		hints := []string{
-			"e: edit", "c: comment", "o: open", "y: copy", "s: status", "S: story pts",
-			"x: cut", "p: paste", "m: move", ">/<: adj sprint", "h/l: jump sprint", "B: backlog",
-			"/: filter", "F: epic", "ctrl+n: new sprint", "E: edit sprint", "R: refresh",
-			"L: linked", "ctrl+d/u: scroll details",
-		}
-		left := "  " + strings.Join(hints, "   ")
+		hints := blHints
 		if n := len(m.allSelected()); n > 0 {
-			left = fmt.Sprintf("  %d selected   ", n) + strings.Join(hints, "   ")
+			hints = append([]string{fmt.Sprintf("%d selected", n)}, hints...)
 		}
 		switch {
 		case m.state == blLoading:
 			spinnerStr := m.loadSpinner.View() + tui.MutedStyle.Render(" Loading…")
 			leftWidth := listPaneW - lipgloss.Width(spinnerStr) - 2
-			footer = tui.MutedStyle.Render(tui.FixedWidth(left, leftWidth)) + "  " + spinnerStr
+			footer = tui.FooterHints(hints, leftWidth) + "  " + spinnerStr
 		case m.moving:
 			spinnerStr := m.loadSpinner.View() + tui.MutedStyle.Render(" Moving…")
 			leftWidth := listPaneW - lipgloss.Width(spinnerStr) - 2
-			footer = tui.MutedStyle.Render(tui.FixedWidth(left, leftWidth)) + "  " + spinnerStr
+			footer = tui.FooterHints(hints, leftWidth) + "  " + spinnerStr
 		default:
-			footer = tui.MutedStyle.Render(left)
+			footer = tui.FooterHints(hints, listPaneW)
 		}
 	}
 
-	return topBar + "\n" + headerLine + "\n" + tui.SplitPanes(listContent, sidebarContent, listPaneW, vh) + "\n" + footer
+	return boardTopPad + topBar + "\n" + tui.TabDivider(width) + "\n" + headerLine + "\n" + tui.SplitPanes(listContent, sidebarContent, listPaneW, vh) + "\n" + footer
+}
+
+// blHints are the backlog's default footer hints, most-used first: they are
+// dropped from the tail when the footer is too narrow. "?" opens the full help
+// overlay, which is why this list is short.
+var blHints = []string{
+	"j/k move", "enter details", "e edit", "s status", "m move", "/ filter", "x cut", "? help",
+}
+
+// topDetail renders the tab strip's right-hand detail: the transient state
+// badges, most important first.
+func (m blModel) topDetail() string {
+	var b strings.Builder
+	if m.yankMessage != "" {
+		b.WriteString(lipgloss.NewStyle().Bold(true).Foreground(tui.ColorSuccess).Render(tui.SanitizeRow(m.yankMessage)))
+	} else if m.visualMode {
+		b.WriteString(lipgloss.NewStyle().Bold(true).Foreground(tui.ColorSpecial).Render("VISUAL"))
+	} else if m.filterEpic != "" {
+		b.WriteString(lipgloss.NewStyle().Foreground(tui.ColorSpecial).Render("epic: " + tui.SanitizeRow(m.filterEpic)))
+	} else if m.filter != "" {
+		b.WriteString(lipgloss.NewStyle().Foreground(tui.ColorWarning).Render("/ " + tui.SanitizeRow(m.filter)))
+	}
+	if len(m.cutKeys) > 0 {
+		if b.Len() > 0 {
+			b.WriteString("   ")
+		}
+		b.WriteString(lipgloss.NewStyle().Foreground(tui.ColorCaution).Render(fmt.Sprintf("✂ %d cut", len(m.cutKeys))))
+	}
+	return b.String()
 }
 
 func (m blModel) renderRow(idx, width int) string {
@@ -220,7 +345,7 @@ func (m blModel) renderSprintRow(row blRow, isSelected bool, activeGroupIdx, wid
 		icon = "▶"
 	}
 
-	stateColor := tui.ColorSubtle
+	stateColor := tui.ColorMuted
 	switch group.Sprint.State {
 	case "active":
 		stateColor = tui.ColorSuccess
@@ -231,8 +356,12 @@ func (m blModel) renderSprintRow(row blRow, isSelected bool, activeGroupIdx, wid
 	if row.groupIdx == activeGroupIdx {
 		accentColor = tui.ColorWarning
 	}
-	accentStyle := lipgloss.NewStyle().Foreground(accentColor).Bold(true)
-	accent := accentStyle.Render("▌")
+
+	// The sprint header carries no background fill: only the cursor row does.
+	// Every segment still goes through the same style so the row is one unit.
+	fill := lipgloss.NewStyle()
+
+	accent := fill.Bold(true).Foreground(accentColor).Render("▌")
 
 	// Build date range badge: "Mar 1 – Mar 14" or fall back to state label.
 	var dateBadge string
@@ -241,40 +370,46 @@ func (m blModel) renderSprintRow(row blRow, isSelected bool, activeGroupIdx, wid
 	} else {
 		dateBadge = group.Sprint.State
 	}
-	stateBadge := lipgloss.NewStyle().Foreground(stateColor).Render(dateBadge)
-
-	nameStyle := lipgloss.NewStyle().Bold(true).Foreground(tui.ColorForeground)
-	namePart := nameStyle.Render(icon + " " + group.Sprint.Name)
 
 	countStr := fmt.Sprintf("%d issues", len(group.Issues))
-	count := tui.MutedStyle.Render(countStr)
+	count := fill.Foreground(tui.ColorMuted).Render(countStr)
 
-	left := accent + " " + namePart + "  " + stateBadge
+	// A long sprint name must not wrap inside the list pane: the accent and
+	// space take two cells, the state badge is dropped first, then the name is
+	// shortened so the rule below always has at least one cell.
+	maxLeft := width - tui.DisplayWidth(countStr) - 3
+	if maxLeft < 3 {
+		maxLeft = 3
+	}
+	nameText := icon + " " + tui.SanitizeRow(group.Sprint.Name)
+	nameAvail := maxLeft - 2
+	statePart := ""
+	if stateWidth := tui.DisplayWidth(dateBadge); nameAvail >= stateWidth+6 {
+		nameAvail -= stateWidth + 2
+		statePart = fill.Foreground(stateColor).Render(dateBadge)
+	}
+	if nameAvail < 1 {
+		nameAvail = 1
+	}
+	namePart := fill.Bold(true).Foreground(tui.ColorForeground).Render(tui.TruncateWidth(nameText, nameAvail))
+
+	left := accent + fill.Render(" ") + namePart
+	if statePart != "" {
+		left += fill.Render("  ") + statePart
+	}
 	leftLen := lipgloss.Width(left)
-	rightLen := len(countStr)
+	rightLen := tui.DisplayWidth(countStr)
 	fillLen := width - leftLen - rightLen - 2
 	if fillLen < 1 {
 		fillLen = 1
 	}
-	fill := lipgloss.NewStyle().Foreground(accentColor).Render(strings.Repeat("─", fillLen))
-	line := left + " " + fill + " " + count
-
-	if isSelected {
-		highlight := lipgloss.NewStyle().
-			Background(tui.ColorSurface).
-			Foreground(tui.ColorForegroundBright).
-			Bold(true)
-		return highlight.Width(width).Render(line)
-	}
-	return line
+	rule := fill.Foreground(accentColor).Render(strings.Repeat("─", fillLen))
+	return left + fill.Render(" ") + rule + fill.Render(" ") + count
 }
 
 func (m blModel) renderIssueRow(row blRow, isSelected bool, width int) string {
 	issue := m.groups[row.groupIdx].Issues[row.issueIdx]
-	summaryW := blSummaryWidth(width)
-
-	key := tui.FixedWidth(issue.Key, blKeyW)
-	summary := tui.FixedWidth(issue.Summary, summaryW)
+	l := blLayoutFor(width)
 
 	epicText := issue.EpicName
 	if epicText == "" {
@@ -283,77 +418,123 @@ func (m blModel) renderIssueRow(row blRow, isSelected bool, width int) string {
 	if epicText == "" {
 		epicText = "—"
 	}
-	epic := tui.FixedWidth(epicText, blEpicW)
 
-	issueType := tui.FixedWidth(issue.IssueType, blTypeW)
-
-	sp := tui.FixedWidth(tui.FormatStoryPoints(issue.StoryPoints), blSpW)
-
-	assignee := issue.Assignee
-	if assignee == "" {
-		assignee = "—"
+	// Every segment carries its own fill so a selected row never loses the
+	// ColorSurface background to an intervening lipgloss reset.
+	fill := lipgloss.NewStyle()
+	if isSelected {
+		fill = tui.SurfaceBg
 	}
-	assignee = tui.FixedWidth(assignee, blAssignW)
 
-	epicColor := tui.EpicColor(issue.EpicKey)
-	typeColor := tui.IssueTypeColor(issue.IssueType)
-
+	// Gutter 1: selection marker. Gutter 2: status glyph. Gutter 3: space.
 	isChecked := m.allSelected()[issue.Key]
 	isCut := m.cutKeys[issue.Key]
-
-	if isSelected {
-		bg := tui.SurfaceBg
-		var cursorStr string
-		switch {
-		case isCut:
-			cursorStr = bg.Bold(true).Foreground(tui.ColorCaution).Render("✂ ")
-		case isChecked:
-			cursorStr = bg.Foreground(tui.ColorWarning).Render("● ")
-		default:
-			cursorStr = bg.Render("  ")
-		}
-		keyColor := tui.ColorHighlight
-		if isChecked {
-			keyColor = tui.ColorWarning
-		} else if isCut {
-			keyColor = tui.ColorCaution
-		}
-		keyPart := bg.Bold(true).Foreground(keyColor).Render(key)
-		summaryPart := bg.Foreground(tui.ColorHighlight).Render("  " + summary + "  ")
-		epicStyle := bg.Foreground(tui.ColorMuted)
-		if epicColor != nil {
-			epicStyle = bg.Foreground(epicColor)
-		}
-		epicPart := epicStyle.Render(epic + " ")
-		typePart := bg.Bold(true).Foreground(typeColor).Render(issueType + " ")
-		spPart := bg.Foreground(tui.ColorForeground).Render(sp + " ")
-		assigneePart := bg.Foreground(tui.ColorForeground).Render(assignee)
-		return cursorStr + keyPart + summaryPart + epicPart + typePart + spPart + assigneePart
-	}
-
-	var cursorStr string
-	var keyPart string
+	marker := " "
+	markerStyle := fill
 	switch {
 	case isCut:
-		cursorStr = lipgloss.NewStyle().Foreground(tui.ColorCaution).Render("✂ ")
-		keyPart = lipgloss.NewStyle().Bold(true).Foreground(tui.ColorCaution).Render(key)
+		marker, markerStyle = "✂", fill.Foreground(tui.ColorCaution)
 	case isChecked:
-		cursorStr = lipgloss.NewStyle().Foreground(tui.ColorWarning).Render("● ")
-		keyPart = lipgloss.NewStyle().Bold(true).Foreground(tui.ColorWarning).Render(key)
-	default:
-		cursorStr = "  "
-		keyPart = lipgloss.NewStyle().Bold(true).Foreground(tui.ColorAccent).Render(key)
+		marker, markerStyle = "✓", fill.Foreground(tui.ColorWarning)
 	}
-	summaryPart := lipgloss.NewStyle().Foreground(tui.ColorForegroundBright).Render("  " + summary + "  ")
-	epicStyle := lipgloss.NewStyle().Foreground(tui.ColorMuted)
-	if epicColor != nil {
-		epicStyle = lipgloss.NewStyle().Foreground(epicColor)
+	statusGlyph := tui.StatusGlyph(issue.Status)
+	if statusGlyph == "" {
+		statusGlyph = " "
 	}
-	epicPart := epicStyle.Render(epic + " ")
-	typePart := lipgloss.NewStyle().Bold(true).Foreground(typeColor).Render(issueType + " ")
-	spPart := lipgloss.NewStyle().Foreground(tui.ColorMuted).Render(sp + " ")
-	assigneePart := tui.MutedStyle.Render(assignee)
-	return cursorStr + keyPart + summaryPart + epicPart + typePart + spPart + assigneePart
+	statusColor := tui.StatusColor(issue.Status)
+	if statusColor == nil {
+		statusColor = tui.ColorMuted
+	}
+
+	key := fill.Bold(true).Foreground(tui.ColorAccent).
+		Render(tui.FixedWidth(tui.SanitizeRow(issue.Key), blKeyW))
+	summary := fill.Foreground(tui.ColorForegroundBright).
+		Render(tui.FixedWidth(tui.SanitizeRow(issue.Summary), l.summaryW))
+
+	epicColor := tui.EpicColor(issue.EpicKey)
+	if epicColor == nil {
+		epicColor = tui.ColorMuted
+	}
+	epic := fill.Foreground(epicColor).
+		Render(tui.FixedWidth(tui.SanitizeRow(epicText), blEpicW))
+
+	// The badge keeps its own background even on a selected row, so the
+	// separators around it must be rendered with the row fill explicitly.
+	typeBadge := tui.Badge(
+		tui.FixedWidth(tui.SanitizeRow(issue.IssueType), blTypeW-2),
+		tui.ColorOnChrome,
+		tui.IssueTypeColor(issue.IssueType),
+	)
+
+	priorityGlyph := tui.PriorityGlyph(issue.Priority)
+	priorityStyle := fill.Foreground(tui.ColorMuted)
+	if pc := tui.PriorityColor(issue.Priority); pc != nil {
+		priorityStyle = fill.Foreground(pc)
+	} else {
+		priorityGlyph = " "
+	}
+
+	sp := fill.Foreground(tui.ColorMuted).
+		Render(tui.FixedWidth(tui.FormatStoryPoints(issue.StoryPoints), blSpW))
+
+	var b strings.Builder
+	b.WriteString(markerStyle.Render(marker))
+	b.WriteString(fill.Foreground(statusColor).Render(statusGlyph))
+	b.WriteString(fill.Render(" "))
+	b.WriteString(key)
+	b.WriteString(fill.Render("  "))
+	b.WriteString(summary)
+
+	if l.compact {
+		// Compact cluster: type glyph, initials, priority glyph.
+		b.WriteString(fill.Render(" "))
+		b.WriteString(fill.Foreground(tui.IssueTypeColor(issue.IssueType)).Render(tui.TypeGlyph(issue.IssueType)))
+		b.WriteString(fill.Render(" "))
+		b.WriteString(m.renderAssigneeCell(fill, issue.Assignee, 3))
+		b.WriteString(fill.Render(" "))
+		b.WriteString(priorityStyle.Render(priorityGlyph))
+		return b.String()
+	}
+
+	if l.epic {
+		b.WriteString(fill.Render("  "))
+		b.WriteString(epic)
+	}
+	if l.typ {
+		b.WriteString(fill.Render(" "))
+		b.WriteString(typeBadge)
+	}
+	if l.prio {
+		b.WriteString(fill.Render(" "))
+		b.WriteString(priorityStyle.Render(priorityGlyph))
+	}
+	if l.sp {
+		b.WriteString(fill.Render(" "))
+		b.WriteString(sp)
+	}
+	if l.assignW > 0 {
+		b.WriteString(fill.Render(" "))
+		b.WriteString(m.renderAssigneeCell(fill, issue.Assignee, l.assignW))
+	}
+	return b.String()
+}
+
+// renderAssigneeCell renders the assignee column at exactly width cells: a
+// coloured initials cluster plus the name when there is room for one, or the
+// initials alone. An unassigned issue shows an em dash.
+func (m blModel) renderAssigneeCell(fill lipgloss.Style, assignee string, width int) string {
+	if assignee == "" {
+		return fill.Foreground(tui.ColorMuted).Render(tui.FixedWidth("—", width))
+	}
+	if width < 14 {
+		return fill.Bold(true).Foreground(tui.PersonColor(assignee)).
+			Render(tui.FixedWidth(tui.Initials(assignee), width))
+	}
+	initials := fill.Bold(true).Foreground(tui.PersonColor(assignee)).
+		Render(tui.FixedWidth(tui.Initials(assignee), 2))
+	name := fill.Foreground(tui.ColorForeground).
+		Render(" " + tui.FixedWidth(tui.SanitizeRow(assignee), width-3))
+	return initials + name
 }
 
 func (m blModel) viewAssignPicker() string {

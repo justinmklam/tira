@@ -190,6 +190,56 @@ style := lipgloss.NewStyle().Foreground(tui.ColorAccent)
 style := lipgloss.NewStyle().Foreground("12")
 ```
 
+### Style Scale and Colour Roles
+
+The board TUI uses a five-tier style scale — T0 chrome row, T1 title, T2 section
+header, T3 body, T4 meta — reachable through helpers in `internal/tui`
+(`TabStrip`, `TabStripStyled`, `TitleBar`, `SectionHeader`, `SectionHeaderRegular`,
+`EmptyState`, `Badge`, `FooterHints`). A view chooses *which* tier to use, never
+how to draw it. Semantic colours come from `StatusColor`/`StatusGlyph`,
+`PriorityColor`/`PriorityGlyph`, `TypeGlyph`, `PersonColor`, `Initials`, and
+`IssueTypeColor`. See [docs/tui-architecture.md](docs/tui-architecture.md#visual-hierarchy-and-semantic-colour).
+
+**Only the cursor row/card carries a background fill** (`SurfaceBg`); chrome rows,
+sprint headers, and glamour headings are flat. Type badges keep their own
+`IssueTypeColor` fill. `SetTheme` clears glamour's `Heading`/`H1`–`H6`
+backgrounds for every theme.
+
+Adding a colour role is a **three-part** change — miss one and the role silently
+renders the previous theme's colour:
+
+1. add the field to the `Theme` struct (`internal/tui/theme.go`);
+2. set it in **all three** theme maps (`default`, `tokyonight`, `catppuccin`);
+3. assign it in `SetTheme`, adding the matching `Color*` var in
+   `internal/tui/styles.go` and any derived style.
+
+`TestAllThemesDefineAllRoles`, `TestSetThemeAssignsEveryRole`, and
+`TestThemeContrast` enforce the three parts. Contrast is checked by role class:
+text ≥ 4.5:1, dim/redundant text and borders ≥ 3.0:1, band/selection separation
+≥ 1.15:1, and ink on a badge fill ≥ 4.5:1.
+
+Gotchas:
+
+- `blLayoutFor` is the single source of truth for backlog columns;
+  `blColumnHeader` and `renderIssueRow` must both derive from it, and a rendered
+  row must measure exactly `listPaneW`.
+- `lipgloss.Style.Width(n)` sets the **total** block width, border and padding
+  included, so a bordered column needs `Width(colWidth)` and a `colWidth-2` body.
+  Handing it a content width silently wraps the line and doubles its height;
+  `lipgloss.Width()` measures display cells and does not truncate.
+- Width gates must assert on un-truncated content: `RenderBoardSnapshot` clips
+  lines to the width and does not clip the line count, so
+  `TestBlRowFitsPane`/`TestRenderBoardSnapshotThemeMatrix` run against
+  `renderBoardContent` instead.
+- Never assemble a coloured row from an unstyled segment — the lipgloss reset
+  between segments truncates the fill. Render the separator with
+  `fill.Render(" ")` or style the whole segment with the background.
+- Board chrome is counted unconditionally: `availableIssueLines` deducts 8
+  because the top pad, `TabStrip`, and `TabDivider` always render one line each,
+  plus the footer and the column borders. The backlog/epics `viewHeight()`
+  accounts for the same chrome (`height - 5`). `boardTopPad` in `board.go` is the
+  single blank row above the tab strip.
+
 ### Spinner Usage
 
 Use `tui.RunWithSpinner[T]` for any blocking operation that needs a loading indicator — do not create one-off spinner models:

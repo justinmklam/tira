@@ -28,14 +28,44 @@ func epicSummaryWidth(totalWidth int) int {
 }
 
 func epicColumnHeader(width int) string {
-	return tui.MutedStyle.Render(
-		"  " +
-			tui.FixedWidth("KEY", epicKeyWidth) + "  " +
-			tui.FixedWidth("SUMMARY", epicSummaryWidth(width)) + "  " +
-			tui.FixedWidth("FIRST APPEARS", epicLocationWidth) + "  " +
-			tui.FixedWidth("SP", epicStoryPointsW) + "  " +
+	return tui.SectionHeader(
+		"  "+
+			tui.FixedWidth("KEY", epicKeyWidth)+"  "+
+			tui.FixedWidth("SUMMARY", epicSummaryWidth(width))+"  "+
+			tui.FixedWidth("FIRST APPEARS", epicLocationWidth)+"  "+
+			tui.FixedWidth("SP", epicStoryPointsW)+"  "+
 			tui.FixedWidth("CHILDREN", epicCountWidth),
+		tui.ColorMuted,
+		width,
 	)
+}
+
+// epicHints are the epics footer hints, most-used first: they are dropped from
+// the tail when the footer is too narrow.
+var epicHints = []string{
+	"j/k move", "enter details", "L linked", "/ filter", "l labels", "b backlog", "o open Jira", "R refresh", "ctrl+d/u scroll", "q quit",
+}
+
+// epicTopDetail renders the tab strip's right-hand detail: the load state and
+// filter, most important first.
+func (m epicModel) epicTopDetail() string {
+	var b strings.Builder
+	if m.loadError != "" {
+		b.WriteString(lipgloss.NewStyle().Foreground(tui.ColorError).Render("⚠ " + tui.SanitizeRow(m.loadError)))
+	}
+	if m.filter != "" {
+		if b.Len() > 0 {
+			b.WriteString("   ")
+		}
+		b.WriteString(lipgloss.NewStyle().Foreground(tui.ColorWarning).Render("/ " + tui.SanitizeRow(m.filter)))
+	}
+	if m.loading {
+		if b.Len() > 0 {
+			b.WriteString("   ")
+		}
+		b.WriteString(tui.MutedStyle.Render("(loading more…)"))
+	}
+	return b.String()
 }
 
 func (m epicModel) View() tea.View {
@@ -95,16 +125,7 @@ func (m epicModel) viewList() string {
 		vh = 1
 	}
 
-	header := tui.BoldAccent.Padding(0, 1).Render("Epics")
-	if m.filter != "" {
-		header += " " + lipgloss.NewStyle().Foreground(tui.ColorWarning).Render("/ "+m.filter)
-	}
-	if m.loading {
-		header += " " + tui.MutedStyle.Render("(loading more…)")
-	}
-	if m.loadError != "" {
-		header += " " + lipgloss.NewStyle().Foreground(tui.ColorError).Render("⚠ "+m.loadError)
-	}
+	header := tui.TabStripStyled(2, m.epicTopDetail(), width)
 
 	colHeader := epicColumnHeader(listWidth)
 	div := lipgloss.NewStyle().Foreground(tui.ColorSubtle).Render("│")
@@ -112,7 +133,7 @@ func (m epicModel) viewList() string {
 
 	var rows []string
 	if len(m.items) == 0 {
-		rows = append(rows, tui.MutedStyle.Render("  No represented epics"))
+		rows = append(rows, tui.EmptyState("No represented epics", listWidth))
 	} else {
 		end := min(m.offset+vh, len(m.items))
 		for i := m.offset; i < end; i++ {
@@ -131,7 +152,6 @@ func (m epicModel) viewList() string {
 		sidebar = append(sidebar, "")
 	}
 
-	baseFooter := "  j/k ↑/↓: move   enter: details   L: linked items   /: filter   l: edit labels   b: filter backlog   o: open Jira   R: refresh   ctrl+d/u: scroll   q: quit"
 	var footer string
 	switch m.state {
 	case epicFilter:
@@ -139,16 +159,17 @@ func (m epicModel) viewList() string {
 			" " + m.filterInput.View() +
 			"  " + tui.MutedStyle.Render("esc: clear  enter: apply")
 	case epicLoading:
-		footer = "  " + m.loadSpinner.View() + tui.MutedStyle.Render(" Loading epic…") +
-			"   " + baseFooter
+		loadingStr := m.loadSpinner.View() + tui.MutedStyle.Render(" Loading epic…")
+		footer = loadingStr + "  " + tui.FooterHints(epicHints, width-lipgloss.Width(loadingStr)-2)
 	default:
-		footer = baseFooter
+		footer = tui.FooterHints(epicHints, width)
 	}
 
-	return header + "\n" +
+	return boardTopPad + header + "\n" +
+		tui.TabDivider(width) + "\n" +
 		headerLine + "\n" +
 		tui.SplitPanes(strings.Join(rows, "\n"), strings.Join(sidebar, "\n"), listWidth, vh) +
-		"\n" + tui.MutedStyle.Render(footer)
+		"\n" + footer
 }
 
 func (m epicModel) renderRow(idx, width int) string {
@@ -166,9 +187,9 @@ func (m epicModel) renderRow(idx, width int) string {
 		location = "Backlog"
 	}
 
-	key := tui.FixedWidth(item.Key, epicKeyWidth)
-	summary := tui.FixedWidth(name, summaryW)
-	firstLocation := tui.FixedWidth(location, epicLocationWidth)
+	key := tui.FixedWidth(tui.SanitizeRow(item.Key), epicKeyWidth)
+	summary := tui.FixedWidth(tui.SanitizeRow(name), summaryW)
+	firstLocation := tui.FixedWidth(tui.SanitizeRow(location), epicLocationWidth)
 	storyPoints := tui.FixedWidth(tui.FormatStoryPoints(item.StoryPoints), epicStoryPointsW)
 	children := tui.FixedWidth(fmt.Sprintf("%d", item.ChildCount), epicCountWidth)
 
@@ -178,22 +199,37 @@ func (m epicModel) renderRow(idx, width int) string {
 	}
 	locationColor := tui.SprintColor(item.FirstSprintIndex)
 
-	if idx == m.cursor {
-		bg := tui.SurfaceBg
-		return bg.Render("  ") +
-			bg.Bold(true).Foreground(epicColor).Render(key) +
-			bg.Foreground(tui.ColorHighlight).Render("  "+summary+"  ") +
-			bg.Foreground(locationColor).Render(firstLocation+"  ") +
-			bg.Foreground(tui.ColorForeground).Render(storyPoints+"  ") +
-			bg.Foreground(tui.ColorForeground).Render(children)
+	// The leading two-cell indent becomes a status lane: the glyph is
+	// width-neutral (F9), so epicRowOverhead is unchanged.
+	statusGlyph := tui.StatusGlyph(item.EpicStatus)
+	if statusGlyph == "" {
+		statusGlyph = " "
+	}
+	statusColor := tui.StatusColor(item.EpicStatus)
+	if statusColor == nil {
+		statusColor = tui.ColorMuted
 	}
 
-	return "  " +
-		lipgloss.NewStyle().Bold(true).Foreground(epicColor).Render(key) +
-		lipgloss.NewStyle().Foreground(tui.ColorForegroundBright).Render("  "+summary+"  ") +
-		lipgloss.NewStyle().Foreground(locationColor).Render(firstLocation+"  ") +
-		tui.MutedStyle.Render(storyPoints+"  ") +
-		tui.MutedStyle.Render(children)
+	if idx == m.cursor {
+		bg := tui.SurfaceBg
+		return tui.TruncateWidth(bg.Foreground(statusColor).Render(statusGlyph)+
+			bg.Render(" ")+
+			bg.Bold(true).Foreground(epicColor).Render(key)+
+			bg.Foreground(tui.ColorHighlight).Render("  "+summary+"  ")+
+			bg.Foreground(locationColor).Render(firstLocation+"  ")+
+			bg.Foreground(tui.ColorForeground).Render(storyPoints+"  ")+
+			bg.Foreground(tui.ColorForeground).Render(children), width)
+	}
+
+	// The epic columns do not shrink below their floors, so at a very narrow
+	// pane the trailing columns are clipped rather than wrapped; the header is
+	// clamped the same way by SectionHeader.
+	return tui.TruncateWidth(lipgloss.NewStyle().Foreground(statusColor).Render(statusGlyph)+" "+
+		lipgloss.NewStyle().Bold(true).Foreground(epicColor).Render(key)+
+		lipgloss.NewStyle().Foreground(tui.ColorForegroundBright).Render("  "+summary+"  ")+
+		lipgloss.NewStyle().Foreground(locationColor).Render(firstLocation+"  ")+
+		tui.MutedStyle.Render(storyPoints+"  ")+
+		tui.MutedStyle.Render(children), width)
 }
 
 func (m epicModel) viewLabelEditor() string {

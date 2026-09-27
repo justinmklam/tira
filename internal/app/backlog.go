@@ -358,10 +358,10 @@ func (m *blModel) insertIssue(issue models.Issue, sprintID int) {
 }
 
 func (m blModel) viewHeight() int {
-	if m.height < 5 {
+	if m.height < 6 {
 		return 1
 	}
-	return m.height - 3 // top bar + column header + footer
+	return m.height - 5 // top pad + tab strip + divider + column header + footer
 }
 
 // visualIssueKeys returns the set of issue keys spanned by the visual selection range.
@@ -881,7 +881,7 @@ func renderIssueDetailView(detailView viewport.Model, footer string, width, heig
 // It uses the same rendering as the detail overlay.
 func renderSidebarContent(issue *models.Issue, width int) string {
 	if issue == nil {
-		return tui.MutedStyle.Render("No issue selected")
+		return tui.EmptyState("No issue selected", width-4)
 	}
 	return renderIssueContent(issue, width-4)
 }

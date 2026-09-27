@@ -57,7 +57,7 @@ profiles:
 - `project` — Default project key (e.g., `MYPROJ`)
 - `board_id` — Default board ID for the `board`/`backlog`/`kanban` commands
 - `classic_project` — Set to `true` for company-managed (classic) projects; affects browser URL construction only
-- `theme` — Color theme for the TUI. Available themes: `default`, `tokyonight`, `catppuccin`. If omitted, uses terminal's default ANSI 256 colors
+- `theme` — Color theme for the TUI. Available themes: `default`, `tokyonight`, `catppuccin`. If omitted, uses terminal's default ANSI 256 colors. The theme drives every colour role in the board — chrome, status, issue type, priority, and assignee colours — not just the accent; see [Visual Hierarchy and Semantic Colour](tui-architecture.md#visual-hierarchy-and-semantic-colour).
 
 ## Environment Variables
 

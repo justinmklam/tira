@@ -126,6 +126,74 @@ Before starting `tea.NewProgram`, `runBoardTUI` calls `glamour.NewTermRenderer(g
 
 ---
 
+## Visual Hierarchy and Semantic Colour
+
+All board views share a five-tier style scale, defined once in `internal/tui`:
+
+| Tier | Treatment | Token / helper |
+|------|-----------|----------------|
+| T0 chrome | full-width padded row, no fill | `TabStrip`, `TitleBar` |
+| T1 title | bold, brightest foreground | `ForegroundBright` |
+| T2 section | bold caller-coloured label | `SectionHeader` |
+| T3 body | normal foreground; the backlog summary is brightest | `Foreground` / `ForegroundBright` |
+| T4 meta | dim: counts, dates, hints, placeholders | `Muted` / `FooterHints`, `EmptyState` |
+
+Each board view opens with one blank row (vertical breathing room), then the tab
+strip, then a full-width dim `TabDivider` before the column header or board.
+
+**Only the cursor row/card carries a background fill** (`Surface`, via
+`SurfaceBg`). Chrome bands, sprint headers, and glamour headings are flat. Type
+badges are the one exception: they keep their own `IssueTypeColor` fill, with
+`OnChrome` as the ink. That ink is the theme's assumed terminal background,
+which is what keeps a filled pill legible in every theme.
+
+`SetTheme` clears the background from glamour's `Heading` and `H1`–`H6` (all
+three theme configs fill `H1`; glamour's `H1`–`H6` win over `Heading`), so the
+detail pane stays flat too.
+
+### Chrome primitives
+
+Every primitive returns a single line with no newline. Where a width is listed,
+the result measures exactly that many display cells.
+
+| Helper | Guarantee |
+|--------|-----------|
+| `TitleBar(text, right, width)` | full-width row; the right detail is muted and dropped when it cannot fit |
+| `ModalTitle(text, innerW)` | in-modal title, `innerW` cells |
+| `TabStrip(active, right, width)` | full-width row with the active tab bracketed and accented; when tabs and detail cannot both fit the detail is dropped, never a tab |
+| `TabStripStyled(active, right, width)` | as `TabStrip` for a pre-sanitised, pre-styled detail (the backlog's coloured transient badges) |
+| `TabDivider(width)` | full-width dim `─` rule rendered directly beneath the tab strip to separate the tabs from the header/board below |
+| `SectionHeader(text, fg, width)` | bold caller-coloured label; truncates with `…` rather than wrapping |
+| `SectionHeaderRegular(text, fg, width)` | as above without the bold weight (inactive kanban columns) |
+| `EmptyState(text, width)` | centred, dim, italic placeholder |
+| `Badge(text, fg, bg)` | one-line pill with one space of padding each side |
+| `FooterHints(hints, width)` | bold keys, muted descriptions; drops whole hints from the tail and appends `…` |
+
+### Semantic colour helpers
+
+`StatusColor`/`StatusGlyph`, `PriorityColor`/`PriorityGlyph`, `TypeGlyph`,
+`PersonColor`, and `Initials` classify a Jira status, priority, or type name.
+Status and priority names are lower-cased, apostrophes stripped, and matched on
+whole words against `statusKeywords`/`priorityKeywords`, so a misclassification is
+fixed by adding a word rather than editing control flow. An unclassified status
+falls back to the muted colour with the neutral `·` glyph, which is uninformative
+rather than misleading.
+
+### Glyph language
+
+Each axis is distinguishable without colour:
+
+| Axis | Glyphs |
+|------|--------|
+| Status | `○` todo · `◐` in progress · `●` done · `⊘` blocked · `·` unclassified |
+| Selection | blank · `✓` multi-selected · `✂` cut |
+| Priority | `⇈` urgent · `↑` high · `·` medium · `↓` low · blank unclassified |
+| Type (compact mode) | `B` bug · `S` story · `T` task · `E` epic · `·` other |
+
+Every glyph is one display cell.
+
+---
+
 ## Backlog View (blModel)
 
 **Files:** `internal/app/backlog.go`, `internal/app/backlog_view.go`
@@ -200,12 +268,26 @@ On `blMoveMultiDoneMsg`, the model performs a **local optimistic update** — re
 
 ### Column Layout
 
-Fixed column widths:
-```
-KEY(10)  SUMMARY(dynamic)  EPIC(16)  TYPE(8)  SP(5)  ASSIGNEE(14)
-```
+Backlog geometry comes from `blLayoutFor(listPaneW)`, the single source of truth
+for both `blColumnHeader` and `renderIssueRow`. Columns are bought in value order
+(type, priority, story points, assignee, then epic) and only while the summary
+keeps its floor, so a narrow pane drops whole columns instead of squeezing the
+summary:
 
-The summary column takes all remaining space. All columns are rendered with `tui.FixedWidth` (pads or truncates to exact display-cell count with `…` for overflow, so CJK and emoji cannot overflow a column).
+| listPaneW | summary | visible columns |
+|-----------|---------|-----------------|
+| < 52 | 21 at 44 | compact: key, summary, type glyph, initials, priority |
+| 52 | 24 | TYPE, P |
+| 60 | 26 | TYPE, P, SP |
+| 66 | 28 | TYPE, P, SP, OWN(3) |
+| 77 | 28 | TYPE, P, SP, OWN(14) |
+| 99 | 36 | EPIC, TYPE, P, SP, OWN(14) |
+| 110 | 47 | EPIC, TYPE, P, SP, OWN(14) |
+
+`TestBlLayoutGolden` pins the table and `TestBlRowFitsPane` asserts a rendered
+header and issue row measure exactly `listPaneW`. All columns are rendered with
+`tui.FixedWidth` (pads or truncates to an exact display-cell count with `…`, so
+CJK and emoji cannot overflow a column).
 
 ### Epic Coloring
 
@@ -390,6 +472,13 @@ stateDetail ──L──→ stateLinkPicker ──enter/esc──→ stateDetai
 - `j`/`k` — Move between issues within a column (`m.rowIdxs[m.colIdx]`)
 
 Each column maintains its own cursor position (`rowIdxs` slice), preserved across refreshes (clamped to new column size).
+
+**Geometry.** `lipgloss.Style.Width(n)` sets the *total* block width, border
+included, so a column is `Width(colWidth)` with a `colWidth-2` body and no style
+padding; content is inset by one cell manually. The cursor card is a
+`Surface` fill rendered at the full body width, so the highlight runs border to
+border. Sizing a bordered style with a content width instead of the full block
+width silently wraps the title rule and the card.
 
 ### Detail View
 

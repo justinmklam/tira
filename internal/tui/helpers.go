@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"image/color"
 	"strings"
 
 	"charm.land/bubbles/v2/textinput"
@@ -90,6 +91,204 @@ func FitInput(input textinput.Model, cells int) string {
 	// changes, so nudge the cursor to reflow for the width set above.
 	input.SetCursor(input.Position())
 	return input.View()
+}
+
+// BoardTabs are the view names shown in the board tab strip, in cycle order.
+var BoardTabs = []string{"Backlog", "Kanban", "Epics"}
+
+// flattenRow is SanitizeRow without whitespace collapsing, so an
+// already-sized value keeps its padding. Newlines and carriage returns become
+// spaces and control characters are dropped, which is what keeps a badge on one
+// line.
+func flattenRow(s string) string {
+	if s == "" {
+		return ""
+	}
+	return strings.Map(func(r rune) rune {
+		switch {
+		case r == '\n' || r == '\r' || r == '\t':
+			return ' '
+		case r < 0x20 || r == 0x7f:
+			return -1
+		}
+		return r
+	}, s)
+}
+
+// TitleBar renders a full-width row with bold, brightest text at the left and a
+// muted right-hand detail (pass "" for none). The result is exactly width cells;
+// the detail is dropped rather than truncated when it cannot fit. It carries no
+// background fill — only the cursor row does.
+func TitleBar(text, right string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	left := SanitizeRow(text)
+	right = SanitizeRow(right)
+	leftStyle := lipgloss.NewStyle().Bold(true).Foreground(ColorForegroundBright)
+
+	leftCells := width
+	includeRight := right != "" && DisplayWidth(left)+2+DisplayWidth(right) <= width
+	if includeRight {
+		leftCells = width - DisplayWidth(right) - 2
+	}
+
+	var b strings.Builder
+	b.WriteString(leftStyle.Render(FixedWidth(left, leftCells)))
+	if includeRight {
+		b.WriteString("  ")
+		b.WriteString(MutedStyle.Render(right))
+	}
+	return b.String()
+}
+
+// ModalTitle renders the in-modal title band, sized to the modal's inner width.
+func ModalTitle(text string, innerW int) string {
+	return TitleBar(text, "", innerW)
+}
+
+// TabStrip renders BoardTabs over the whole width with the active tab filled
+// and bracketed; right is a view-specific detail such as "DEMO Sprint 1". The
+// result is exactly width cells. When the tabs and the detail cannot both fit,
+// the detail is dropped entirely rather than truncating a tab.
+func TabStrip(active int, right string, width int) string {
+	if right == "" {
+		return TabStripStyled(active, "", width)
+	}
+	return TabStripStyled(active, MutedStyle.Render(SanitizeRow(right)), width)
+}
+
+// TabStripStyled is TabStrip for a right-hand detail that is already sanitised
+// and styled, such as a row of coloured transient badges. Callers must pass
+// text that has been through SanitizeRow; the width is measured after styling.
+func TabStripStyled(active int, right string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+
+	var lb strings.Builder
+	lb.WriteString(" ")
+	for i, name := range BoardTabs {
+		if i > 0 {
+			lb.WriteString("  ")
+		}
+		if i == active {
+			lb.WriteString(BoldAccent.Render("[" + name + "]"))
+		} else {
+			lb.WriteString(MutedStyle.Render(name))
+		}
+	}
+	left := lb.String()
+	lw := DisplayWidth(left)
+	if lw >= width {
+		return TruncateWidth(left, width)
+	}
+
+	mid := width - lw
+	if right != "" && mid >= 2+DisplayWidth(right) {
+		mid -= 2 + DisplayWidth(right)
+		return left +
+			strings.Repeat(" ", mid+2) +
+			right
+	}
+	return left + strings.Repeat(" ", mid)
+}
+
+// TabDivider renders the full-width dim rule that sits directly beneath the tab
+// strip, separating the view tabs from the column header or board below. It
+// measures exactly width cells and carries no background fill.
+func TabDivider(width int) string {
+	if width <= 0 {
+		return ""
+	}
+	return lipgloss.NewStyle().Foreground(ColorSubtle).Render(strings.Repeat("─", width))
+}
+
+// SectionHeader renders a bold, caller-coloured label padded to width. The
+// caller owns the colour so a column header can be status-tinted. An over-long
+// label is truncated with an ellipsis, never wrapped, and no background fill is
+// applied.
+func SectionHeader(text string, fg color.Color, width int) string {
+	return sectionHeader(text, fg, width, true)
+}
+
+// SectionHeaderRegular is SectionHeader without the bold weight. It is used
+// where weight, not hue, distinguishes the active element (a kanban column).
+func SectionHeaderRegular(text string, fg color.Color, width int) string {
+	return sectionHeader(text, fg, width, false)
+}
+
+func sectionHeader(text string, fg color.Color, width int, bold bool) string {
+	if width <= 0 {
+		return ""
+	}
+	// flattenRow rather than SanitizeRow: a column header is pre-aligned, and
+	// collapsing its runs of spaces would destroy the alignment.
+	label := FixedWidth(flattenRow(text), width)
+	return lipgloss.NewStyle().Bold(bold).Foreground(fg).Render(label)
+}
+
+// EmptyState renders centred, dim, italic placeholder text inside width cells.
+func EmptyState(text string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	text = SanitizeRow(text)
+	if DisplayWidth(text) > width {
+		text = FixedWidth(text, width)
+	}
+	pad := width - DisplayWidth(text)
+	left := pad / 2
+	right := pad - left
+	return MutedStyle.Italic(true).Render(strings.Repeat(" ", left) + text + strings.Repeat(" ", right))
+}
+
+// Badge renders text as a single-line pill with one space of padding on each
+// side, in the given foreground and background colours. It does not pad to a
+// column: callers pass an already-sized, sanitized string.
+func Badge(text string, fg, bg color.Color) string {
+	return lipgloss.NewStyle().Foreground(fg).Background(bg).Render(" " + flattenRow(text) + " ")
+}
+
+// FooterHints renders "key: description" hints with bolded keys and muted
+// descriptions. Whole hints are dropped from the tail (lowest priority last)
+// rather than truncating one mid-token, and an ellipsis marks the drop.
+func FooterHints(hints []string, width int) string {
+	if width <= 0 || len(hints) == 0 {
+		return ""
+	}
+	for n := len(hints); n >= 1; n-- {
+		s := renderHintList(hints[:n])
+		w := DisplayWidth(s)
+		if w > width {
+			continue
+		}
+		if n == len(hints) {
+			return s
+		}
+		if w+1 <= width {
+			return s + MutedStyle.Render("…")
+		}
+	}
+	return TruncateWidth(renderHintList(hints[:1]), width)
+}
+
+func renderHintList(hints []string) string {
+	keyStyle := lipgloss.NewStyle().Bold(true).Foreground(ColorForeground)
+	parts := make([]string, len(hints))
+	for i, h := range hints {
+		h = SanitizeRow(h)
+		key, desc := h, ""
+		if idx := strings.IndexByte(h, ' '); idx >= 0 {
+			key, desc = h[:idx], h[idx+1:]
+		}
+		if desc == "" {
+			parts[i] = keyStyle.Render(key)
+		} else {
+			parts[i] = keyStyle.Render(key) + " " + MutedStyle.Render(desc)
+		}
+	}
+	return strings.Join(parts, "   ")
 }
 
 // FormatStoryPoints returns a compact display value for story points.

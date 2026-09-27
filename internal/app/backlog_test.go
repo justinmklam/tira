@@ -1,6 +1,7 @@
 package app
 
 import (
+	"fmt"
 	"reflect"
 	"strconv"
 	"strings"
@@ -748,4 +749,174 @@ func TestBlSprintPickerEscCancels(t *testing.T) {
 	if len(client.moves) != 0 {
 		t.Errorf("client moves = %v, want none", client.moves)
 	}
+}
+
+// blGoldenLayout pins the backlog column geometry. If a change moves a column
+// or makes the table non-monotone, this is the review surface: update the table
+// deliberately rather than relaxing the assertion to a range.
+func TestBlLayoutGolden(t *testing.T) {
+	cases := []struct {
+		terminal  int
+		listPaneW int
+		summaryW  int
+		cols      string
+	}{
+		{80, 44, 21, "KEY SUMMARY type initials prio"},
+		{95, 52, 24, "TYPE P"},
+		{100, 55, 27, "TYPE P"},
+		{110, 60, 26, "TYPE P SP"},
+		{120, 66, 28, "TYPE P SP OWN(3)"},
+		{140, 77, 28, "TYPE P SP OWN(14)"},
+		{150, 82, 33, "TYPE P SP OWN(14)"},
+		{160, 88, 39, "TYPE P SP OWN(14)"},
+		{180, 99, 36, "EPIC TYPE P SP OWN(14)"},
+		{200, 110, 47, "EPIC TYPE P SP OWN(14)"},
+	}
+
+	for _, tc := range cases {
+		t.Run(strconv.Itoa(tc.terminal), func(t *testing.T) {
+			if got := tui.ListPaneWidth(tc.terminal); got != tc.listPaneW {
+				t.Fatalf("tui.ListPaneWidth(%d) = %d, want %d", tc.terminal, got, tc.listPaneW)
+			}
+			l := blLayoutFor(tc.listPaneW)
+			if l.summaryW != tc.summaryW {
+				t.Errorf("blLayoutFor(%d).summaryW = %d, want %d", tc.listPaneW, l.summaryW, tc.summaryW)
+			}
+			if got := blColsLabel(l); got != tc.cols {
+				t.Errorf("blLayoutFor(%d) columns = %q, want %q", tc.listPaneW, got, tc.cols)
+			}
+			if got := blSummaryWidth(tc.listPaneW); got != tc.summaryW {
+				t.Errorf("blSummaryWidth(%d) = %d, want %d", tc.listPaneW, got, tc.summaryW)
+			}
+		})
+	}
+}
+
+// TestBlRowFitsPane asserts equality, not <=: it catches both overflow and a
+// mis-edited subtraction chain in blLayoutFor.
+func TestBlRowFitsPane(t *testing.T) {
+	issue := models.Issue{
+		Key:         "PROJ-123",
+		Summary:     strings.Repeat("a long summary that must be truncated ", 6),
+		IssueType:   "Sub-task",
+		Priority:    "Highest",
+		Assignee:    "Ada Lovelace",
+		EpicKey:     "PROJ-1",
+		EpicName:    "Checkout revamp",
+		StoryPoints: 5,
+		ParentKey:   "PROJ-7",
+		Status:      "In Progress",
+	}
+
+	for _, paneW := range []int{44, 52, 55, 60, 66, 77, 82, 88, 99, 110} {
+		t.Run(strconv.Itoa(paneW), func(t *testing.T) {
+			m := blModel{
+				groups:   []models.SprintGroup{{Issues: []models.Issue{issue}}},
+				rows:     []blRow{{kind: blRowIssue, groupIdx: 0, issueIdx: 0}},
+				selected: map[string]bool{},
+				cutKeys:  map[string]bool{},
+			}
+
+			header := blColumnHeader(paneW)
+			if got := tui.DisplayWidth(header); got != paneW {
+				t.Errorf("blColumnHeader(%d) width = %d, want %d", paneW, got, paneW)
+			}
+
+			for _, selected := range []bool{false, true} {
+				row := m.renderIssueRow(m.rows[0], selected, paneW)
+				if got := tui.DisplayWidth(row); got != paneW {
+					t.Errorf("renderIssueRow(selected=%v, %d) width = %d, want %d", selected, paneW, got, paneW)
+				}
+			}
+		})
+	}
+}
+
+// TestBlStatusLaneIsDistinctForFixtureStatuses checks that the three fixture
+// statuses map to three distinct colours and three distinct glyphs, so the
+// status lane is scannable with and without colour.
+func TestBlStatusLaneIsDistinctForFixtureStatuses(t *testing.T) {
+	colors := map[string]bool{}
+	glyphs := map[string]bool{}
+	for _, name := range []string{"To Do", "In Progress", "Done"} {
+		c := tui.StatusColor(name)
+		if c == nil {
+			t.Fatalf("StatusColor(%q) is nil", name)
+		}
+		key := fmt.Sprint(c)
+		if colors[key] {
+			t.Errorf("status %q shares a colour with an earlier status", name)
+		}
+		colors[key] = true
+		g := tui.StatusGlyph(name)
+		if glyphs[g] {
+			t.Errorf("status %q shares a glyph with an earlier status", name)
+		}
+		glyphs[g] = true
+	}
+}
+
+// TestBlIssueRowSurvivesHostileSummary ensures a summary from Jira cannot break
+// out of its fixed cell: a newline or a stray escape must still render on one
+// line that measures exactly the pane width.
+func TestBlIssueRowSurvivesHostileSummary(t *testing.T) {
+	const paneW = 66
+	for _, summary := range []string{"first\nsecond", "evil\x1b[31msummary", "日本語のテキストをとても長くしたもの"} {
+		issue := models.Issue{Key: "PROJ-1", Summary: summary, IssueType: "Bug", Status: "To Do"}
+		m := blModel{
+			groups:   []models.SprintGroup{{Issues: []models.Issue{issue}}},
+			rows:     []blRow{{kind: blRowIssue, groupIdx: 0, issueIdx: 0}},
+			selected: map[string]bool{},
+			cutKeys:  map[string]bool{},
+		}
+		row := m.renderIssueRow(m.rows[0], false, paneW)
+		if strings.Contains(row, "\n") {
+			t.Errorf("summary %q produced a multi-line row: %q", summary, row)
+		}
+		if got := tui.DisplayWidth(row); got != paneW {
+			t.Errorf("summary %q: row width = %d, want %d", summary, got, paneW)
+		}
+	}
+}
+
+// TestBlFooterFitsPane proves the footer shares one truncation rule with the
+// rest of the row layout at every supported width.
+func TestBlFooterFitsPane(t *testing.T) {
+	for _, terminal := range []int{120, 100, 80} {
+		t.Run(strconv.Itoa(terminal), func(t *testing.T) {
+			m := blTestModel(blSprintJumpGroups(), 0)
+			m.width = terminal
+			m.height = 40
+
+			view := m.viewList()
+			lines := strings.Split(view, "\n")
+			footer := lines[len(lines)-1]
+			listPaneW := tui.ListPaneWidth(terminal)
+			if got := tui.DisplayWidth(footer); got > listPaneW {
+				t.Errorf("footer width = %d, want <= %d: %q", got, listPaneW, footer)
+			}
+		})
+	}
+
+	t.Run("no partial hint token at 80", func(t *testing.T) {
+		m := blTestModel(blSprintJumpGroups(), 0)
+		m.width = 80
+		m.height = 40
+		view := m.viewList()
+		lines := strings.Split(view, "\n")
+		plain := strings.TrimSuffix(stripANSI(lines[len(lines)-1]), "…")
+
+		// Hints are dropped as whole units, so what remains must be the plain
+		// join of some prefix of blHints — never a fragment of one.
+		matched := false
+		for k := 1; k <= len(blHints); k++ {
+			if plain == strings.Join(blHints[:k], "   ") {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			t.Errorf("footer is not a whole-hint prefix of blHints: %q", plain)
+		}
+	})
 }
