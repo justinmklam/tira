@@ -22,7 +22,7 @@ const (
 
 // Fixed cell widths shared by the header and issue rows.
 const (
-	blLeadW = 3 // selection marker + status glyph + space
+	blLeadW = 4 // selection marker + space + status glyph + space
 	blGapW  = 2 // gap between the key and the summary
 	blPrioW = 1 // priority glyph
 )
@@ -428,7 +428,8 @@ func (m blModel) renderIssueRow(row blRow, isSelected bool, width int) string {
 		fill = tui.SurfaceBg
 	}
 
-	// Gutter 1: selection marker. Gutter 2: status glyph. Gutter 3: space.
+	// Gutter 1: selection marker. Gutter 2: space. Gutter 3: status glyph.
+	// Gutter 4: space.
 	isChecked := m.allSelected()[issue.Key]
 	isCut := m.cutKeys[issue.Key]
 	marker := " "
@@ -481,6 +482,7 @@ func (m blModel) renderIssueRow(row blRow, isSelected bool, width int) string {
 
 	var b strings.Builder
 	b.WriteString(markerStyle.Render(marker))
+	b.WriteString(fill.Render(" "))
 	b.WriteString(fill.Foreground(statusColor).Render(statusGlyph))
 	b.WriteString(fill.Render(" "))
 	b.WriteString(key)

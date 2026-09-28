@@ -761,16 +761,16 @@ func TestBlLayoutGolden(t *testing.T) {
 		summaryW  int
 		cols      string
 	}{
-		{80, 44, 21, "KEY SUMMARY type initials prio"},
-		{95, 52, 24, "TYPE P"},
-		{100, 55, 27, "TYPE P"},
-		{110, 60, 26, "TYPE P SP"},
-		{120, 66, 28, "TYPE P SP OWN(3)"},
-		{140, 77, 28, "TYPE P SP OWN(14)"},
-		{150, 82, 33, "TYPE P SP OWN(14)"},
-		{160, 88, 39, "TYPE P SP OWN(14)"},
-		{180, 99, 36, "EPIC TYPE P SP OWN(14)"},
-		{200, 110, 47, "EPIC TYPE P SP OWN(14)"},
+		{80, 44, 20, "KEY SUMMARY type initials prio"},
+		{95, 52, 25, "TYPE"},
+		{100, 55, 26, "TYPE P"},
+		{110, 60, 25, "TYPE P SP"},
+		{120, 66, 27, "TYPE P SP OWN(3)"},
+		{140, 77, 27, "TYPE P SP OWN(14)"},
+		{150, 82, 32, "TYPE P SP OWN(14)"},
+		{160, 88, 38, "TYPE P SP OWN(14)"},
+		{180, 99, 35, "EPIC TYPE P SP OWN(14)"},
+		{200, 110, 46, "EPIC TYPE P SP OWN(14)"},
 	}
 
 	for _, tc := range cases {
