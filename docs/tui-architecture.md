@@ -539,40 +539,45 @@ When the user presses `e` or `c`, `kanbanModel` sets `m.result.editKey` or `m.re
 
 | # | Field | Widget | Notes |
 |---|-------|--------|-------|
-| 0 | Summary | textinput | Full overlay width |
+| 0 | Summary | textinput | Lives in the `Summary` section frame |
 | 1 | Type | textinput | Fixed width, suggestions from validValues.IssueTypes |
 | 2 | Priority | textinput | Fixed width, suggestions from validValues.Priorities |
 | 3 | Assignee | textinput | Fixed width, opens PickerModel on Enter |
 | 4 | Story Points | textinput | Fixed width |
 | 5 | Labels | textinput | Fixed width, comma-separated |
-| 6 | Description | textarea | Full width |
-| 7 | Acceptance Criteria | textarea | Full width |
+| 6 | Description | textarea | Full width; lives in the `Description` section frame |
+| 7 | Acceptance Criteria | textarea | Full width; lives in the `Acceptance Criteria` section frame |
 
 ### Pane Style
 
 The form uses the same five-tier scale as the board:
 
-- Column 1 holds the field labels and section headings, column 16 the values, and
-  textarea text is indented to column 1. `fieldLabel(i)` always returns exactly
+- The body is four nested `tui.Frame` sections — `Summary`, `Details`,
+  `Description`, `Acceptance Criteria` — each with a subtle border and a bright
+  bold title in its top border, indented one cell inside the modal's own frame.
+  `setSize` derives `secW = w-2` (a section's outer width) and `secInner = secW-2`
+  (its content width) once, and both it and `View` size every slot off those two
+  values.
+- Field labels are static: every label renders the same muted text whatever the
+  focus or the field's value, and focus is shown only by the input's own cursor.
+  There is no per-field glyph or hue. Inside `Details` the label column holds the
+  field labels and column 16 the values; `fieldLabel(i)` always returns exactly
   `emLabelW` (14) cells, so the value column stays aligned.
-- Focus is carried by the label's weight and hue: the focused field's whole label
-  is bold `ColorAccent`, every other label is muted. Type, Priority, and Assignee
-  labels additionally carry their semantic glyph and colour (`TypeGlyph`,
-  `PriorityGlyph`, `PersonColor`). Focus is never a row fill — a live
-  `textinput`/`textarea` resets its own styles mid-row, which would truncate a
-  `SurfaceBg` band.
-- The `Description` and `Acceptance Criteria` rows are `SectionHeader`s, accented
-  while their textarea has focus and muted otherwise.
+- The `Description` and `Acceptance Criteria` sections each wrap a textarea in
+  their own frame.
 - The hint row is `FooterHints`; validation errors and the discard prompt are
   `Badge` pills.
 - The two textareas deliberately have **no** `┃` prompt bar. `textarea.Prompt`
   must be set to `""` **before** `SetWidth`, because the bubbles textarea
   memoises `promptWidth` at `SetWidth` time. `setSize` then sizes the block as
-  `w-1` so it measures exactly `w` once `View` indents each line by one cell.
+  `secInner-1` so it measures exactly `secInner` once `View` indents each line by
+  one cell.
 
-`setSize`'s `overhead = 13` budgets the fixed rows; the form actually renders
-`12 + 2*taHeight` (the extra reserved row is deliberate slack). A change that adds
-or removes a row must re-derive it — `TestEditFormViewLayout` asserts the count.
+`setSize`'s `overhead = 16` is the exact fixed row cost — two border rows per
+section frame (4 sections), one `Summary` value row, five `Details` rows, and the
+blank plus hint row after the last section. The form renders `16 + 2*taHeight`
+rows, with no reserved slack. A change that adds or removes a row must re-derive
+it — `TestEditFormViewLayout` asserts the count.
 
 ### Navigation
 

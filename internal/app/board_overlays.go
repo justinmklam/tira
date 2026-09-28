@@ -1,6 +1,8 @@
 package app
 
 import (
+	"strings"
+
 	"charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/justinmklam/tira/internal/tui"
@@ -78,6 +80,9 @@ func (m boardModel) View() tea.View {
 	return v
 }
 
+// viewEditForm renders the create/edit modal with its title in the frame's top
+// border. innerW is that frame's outer width, so the form body it wraps keeps
+// the overlayW-4 width board.go sizes it with.
 func (m boardModel) viewEditForm(w, h int) string {
 	if m.editForm == nil {
 		return ""
@@ -86,30 +91,20 @@ func (m boardModel) viewEditForm(w, h int) string {
 	innerW := overlayW - 2
 
 	title := "New Issue"
-	right := ""
-	if m.activeView == viewCreate {
-		if m.createSprintID == 0 {
-			right = "backlog"
-		}
-	} else {
+	if m.activeView != viewCreate {
 		title = "Edit " + m.editKey
-		if m.editIssue != nil {
-			right = m.editIssue.Summary
-		}
 	}
-	header := tui.TitleBar(title, right, innerW)
 
-	body := header + "\n" + m.editForm.View().Content
+	// The form's View carries a trailing newline, which would render an extra
+	// blank row inside the modal; drop it before wrapping the body in the frame.
+	body := strings.TrimSuffix(m.editForm.View().Content, "\n")
 	if m.editErr != "" {
-		body += "\n" + lipgloss.NewStyle().Foreground(tui.ColorError).Render("  "+m.editErr)
+		body += "\n\n" + lipgloss.NewStyle().Foreground(tui.ColorError).Render("  "+m.editErr)
 	}
 
-	modal := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(tui.ColorAccent).
-		Width(innerW).
-		Render(body)
-
+	// Frame truncates an over-wide title but does not strip control characters, so
+	// the dynamic title is sanitised here rather than inside Frame.
+	modal := tui.Frame(tui.SanitizeRow(title), body, innerW, 0, tui.ColorAccent, tui.ColorForegroundBright)
 	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, modal)
 }
 
@@ -157,6 +152,9 @@ func (m boardModel) viewHelpOverlay(w, h int) string {
 	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, modal)
 }
 
+// viewCommentForm renders the comment modal with its title in the frame's top
+// border. The issue summary has no other home on the blank alt-screen, so it
+// stays as the single muted row directly under that border.
 func (m boardModel) viewCommentForm(w, h int) string {
 	if m.commentForm == nil {
 		return ""
@@ -164,20 +162,13 @@ func (m boardModel) viewCommentForm(w, h int) string {
 	overlayW, _ := tui.OverlaySize(w, h)
 	innerW := overlayW - 2
 
-	titleStr := "Add Comment → " + m.commentKey + "  " + m.commentSummary
-	header := tui.BoldAccent.Padding(0, 1).Width(innerW).
-		Render(tui.FixedWidth(titleStr, innerW-2))
-
-	body := header + "\n" + m.commentForm.View().Content
+	title := tui.SanitizeRow("Add Comment · " + m.commentKey)
+	body := " " + tui.MutedStyle.Render(tui.FixedWidth(tui.SanitizeRow(m.commentSummary), innerW-3))
+	body += "\n" + strings.TrimSuffix(m.commentForm.View().Content, "\n")
 	if m.commentErr != "" {
 		body += "\n" + lipgloss.NewStyle().Foreground(tui.ColorError).Render("  "+m.commentErr)
 	}
 
-	modal := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(tui.ColorAccent).
-		Width(innerW).
-		Render(body)
-
+	modal := tui.Frame(title, body, innerW, 0, tui.ColorAccent, tui.ColorForegroundBright)
 	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, modal)
 }

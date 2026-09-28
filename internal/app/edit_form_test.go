@@ -28,14 +28,14 @@ func editFormLines(m *editModel) []string {
 }
 
 func TestEditFormViewLayout(t *testing.T) {
-	for _, size := range []struct{ w, h int }{{100, 30}, {60, 20}} {
+	for _, size := range []struct{ w, h int }{{100, 30}, {60, 20}, {56, 34}} {
 		t.Run(fmt.Sprintf("%dx%d", size.w, size.h), func(t *testing.T) {
 			m := newTestEditModel(t, size.w, size.h)
 			lines := editFormLines(m)
-			// Fixed rows are the 6 inputs, 2 section headings, 2 blank separators,
-			// the blank before the footer, and the footer itself = 12. setSize's
-			// overhead constant deliberately reserves one more.
-			if got, want := len(lines), 12+2*m.taHeight; got != want {
+			// Fixed rows are the four section frames' borders (4x2), the blank row
+			// and hint row after the last section = 16. setSize's overhead constant
+			// is the exact fixed cost, not slack.
+			if got, want := len(lines), 16+2*m.taHeight; got != want {
 				t.Errorf("form rendered %d rows, want %d", got, want)
 			}
 			for i, line := range lines {
@@ -57,55 +57,84 @@ func TestEditFormHasNoTextareaPromptBars(t *testing.T) {
 	}
 }
 
-func TestEditFormOnlyFocusedLabelIsAccented(t *testing.T) {
-	m := newTestEditModel(t, 100, 30)
-	lines := editFormLines(m)
-	focused := ansiBefore(lines[efSummary], "Summary")
-	unfocused := ansiBefore(lines[efStoryPoints], "Story Points")
-	if focused == "" || unfocused == "" {
-		t.Fatalf("missing label styling: focused=%q unfocused=%q", focused, unfocused)
+func TestEditFormLabelsAreStatic(t *testing.T) {
+	populated := map[int]string{
+		efType:     "Bug",
+		efPriority: "High",
+		efAssignee: "Ada Lovelace",
 	}
-	if focused == unfocused {
-		t.Errorf("focused and unfocused labels render the same: %q", focused)
+
+	for _, values := range []bool{false, true} {
+		m := newTestEditModel(t, 100, 30)
+		if values {
+			for i, v := range populated {
+				m.inputs[i].SetValue(v)
+			}
+		}
+		for i := 0; i < efInputCount; i++ {
+			m.focused = i
+			focused := m.fieldLabel(i)
+			m.focused = (i + 1) % efInputCount
+			unfocused := m.fieldLabel(i)
+			if focused != unfocused {
+				t.Errorf("populated=%v: fieldLabel(%d) depends on focus: %q vs %q",
+					values, i, focused, unfocused)
+			}
+			if got := tui.DisplayWidth(focused); got != emLabelW {
+				t.Errorf("populated=%v: fieldLabel(%d) width = %d, want %d: %q",
+					values, i, got, emLabelW, ansi.Strip(focused))
+			}
+		}
 	}
 }
 
-// formHeadingColour returns the ANSI style that introduces the named section
-// heading in the current render.
-func formHeadingColour(t *testing.T, m *editModel, name string) string {
+// formSectionBorderLine returns the frame-border row carrying the named section
+// title in the current render.
+func formSectionBorderLine(t *testing.T, m *editModel, title string) string {
 	t.Helper()
 	for _, line := range editFormLines(m) {
-		if strings.TrimSpace(ansi.Strip(line)) == name {
-			return ansiBefore(line, name)
+		plain := ansi.Strip(line)
+		if strings.Contains(plain, "╭─ "+title+" ") && strings.Contains(plain, "─╮") {
+			return line
 		}
 	}
-	t.Fatalf("heading %q not found", name)
+	t.Fatalf("section %q has no frame-border row", title)
 	return ""
 }
 
-func TestEditFormSectionHeadingTracksFocus(t *testing.T) {
+func TestEditFormSectionTitlesAreStatic(t *testing.T) {
+	titles := []string{"Summary", "Details", "Description", "Acceptance Criteria"}
+
 	m := newTestEditModel(t, 100, 30)
-
-	m.focused = efDescription
-	m.focusFocused()
-	descFocused := formHeadingColour(t, m, "Description")
-	acUnfocused := formHeadingColour(t, m, "Acceptance Criteria")
-	if descFocused == acUnfocused {
-		t.Errorf("focused Description and unfocused Acceptance Criteria share a colour: %q", descFocused)
+	plain := ansi.Strip(m.View().Content)
+	for _, title := range titles {
+		if got := strings.Count(plain, title); got != 1 {
+			t.Errorf("section title %q appears %d times in the form, want 1", title, got)
+		}
 	}
 
-	m.focused = efAccCriteria
-	m.focusFocused()
-	descBlurred := formHeadingColour(t, m, "Description")
-	acFocused := formHeadingColour(t, m, "Acceptance Criteria")
-	if descBlurred == descFocused {
-		t.Errorf("Description heading colour did not change when it lost focus: %q", descBlurred)
+	before := make(map[string]string, len(titles))
+	for _, title := range titles {
+		before[title] = formSectionBorderLine(t, m, title)
 	}
-	if acFocused == acUnfocused {
-		t.Errorf("Acceptance Criteria heading colour did not change when it gained focus: %q", acFocused)
+
+	for _, focus := range []int{efDescription, efAccCriteria} {
+		m.focused = focus
+		m.focusFocused()
+		for _, title := range titles {
+			if got := formSectionBorderLine(t, m, title); got != before[title] {
+				t.Errorf("focus %d changed the %q border: %q -> %q", focus, title, before[title], got)
+			}
+		}
 	}
-	if descBlurred == acFocused {
-		t.Errorf("focused and unfocused headings share a colour: %q", descBlurred)
+}
+
+func TestEditFormFitsHeightBudget(t *testing.T) {
+	for _, size := range []struct{ w, h int }{{120, 40}, {100, 30}, {80, 30}} {
+		m := newTestEditModel(t, size.w, size.h)
+		if got := len(editFormLines(m)); got > size.h {
+			t.Errorf("%dx%d: form rendered %d rows, budget %d", size.w, size.h, got, size.h)
+		}
 	}
 }
 
@@ -139,39 +168,51 @@ func TestEditFormLabelsMeasureLabelWidth(t *testing.T) {
 	}
 }
 
-func TestEditFormHeaderIsSanitised(t *testing.T) {
+func TestEditFormBorderTitle(t *testing.T) {
 	m := boardModel{
 		activeView: viewEdit,
-		editKey:    "DEMO-1",
+		editKey:    "DEMO-1\n\x1b[31mx",
 		editIssue:  &models.Issue{Key: "DEMO-1", Summary: "evil\nsummary \x1b[31mred"},
-		editForm:   newEditModel(&models.Issue{}, &models.ValidValues{}, 50, 20),
+		editForm:   newEditModel(&models.Issue{}, &models.ValidValues{}, 56, 36),
 	}
 	out := m.viewEditForm(120, 40)
+	lines := strings.Split(out, "\n")
 
-	if got := len(strings.Split(out, "\n")); got != 40 {
-		t.Fatalf("modal rendered %d lines, want 40 — a newline escaped the header", got)
+	if len(lines) != 40 {
+		t.Fatalf("modal rendered %d lines, want 40 — a newline escaped the title", len(lines))
 	}
 
-	var header string
-	for _, line := range strings.Split(out, "\n") {
-		if strings.Contains(ansi.Strip(line), "Edit DEMO-1") {
-			header = line
+	topIdx := -1
+	for i, line := range lines {
+		if strings.Contains(ansi.Strip(line), "╭─ Edit DEMO-1") {
+			topIdx = i
+			break
 		}
 	}
-	if header == "" {
-		t.Fatal("sanitised header not found")
+	if topIdx < 0 {
+		t.Fatal("modal top border with the issue key not found")
 	}
-	plain := ansi.Strip(header)
-	for _, r := range plain {
+
+	top := ansi.Strip(lines[topIdx])
+	if !strings.Contains(top, "x") {
+		t.Errorf("top border lost the title suffix: %q", top)
+	}
+	for _, r := range top {
 		if unicode.IsControl(r) {
-			t.Errorf("control rune %U survived in header: %q", r, plain)
+			t.Errorf("control rune %U survived in the top border: %q", r, top)
 		}
 	}
-	if !strings.Contains(plain, "evil summary") {
-		t.Errorf("header lost the sanitised summary: %q", plain)
+
+	// The title is drawn in the modal's own frame, so the only surviving header
+	// row is the first body row: the Summary section's border.
+	if second := ansi.Strip(lines[topIdx+1]); !strings.Contains(second, "╭─ Summary") {
+		t.Errorf("line after the top border is not the Summary frame border: %q", second)
 	}
-	if strings.Contains(plain, "\n") {
-		t.Errorf("header still contains a newline: %q", plain)
+
+	// The top border measures exactly the modal width.
+	overlayW, _ := tui.OverlaySize(120, 40)
+	if got, want := tui.DisplayWidth(strings.TrimSpace(lines[topIdx])), overlayW-2; got != want {
+		t.Errorf("top border width = %d, want %d", got, want)
 	}
 }
 

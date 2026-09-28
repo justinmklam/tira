@@ -249,9 +249,13 @@ Gotchas:
   memoised at `SetWidth` time), then indents each rendered line by one cell. A
   `textinput`/`textarea` `View()` also reserves one cell for the cursor beyond
   `SetWidth`.
-- The edit form's `overhead = 13` in `setSize` is the row budget; re-derive it in
-  the same change as any row-count edit, because `TestEditFormViewLayout` asserts
-  the count (the form renders `12 + 2*taHeight`).
+- The edit form's `overhead = 16` in `setSize` is the exact fixed row budget (four
+  section frames' borders, the Summary row, the five Details rows, and the blank
+  plus hint row); re-derive it in the same change as any row-count edit, because
+  `TestEditFormViewLayout` asserts the count (the form renders `16 + 2*taHeight`).
+  The create/edit and comment modals draw their title with `tui.Frame` — the
+  caller sanitises a dynamic title first, since `Frame` truncates but does not
+  strip control characters — rather than `tui.TitleBar`.
 - Board chrome is counted unconditionally: the split views' `viewHeight()` is
   `height - 6` (top pad, `TabStrip`, the frame's two border rows, column header,
   footer), and kanban's `availableIssueLines` deducts 7 (top pad, `TabStrip`,

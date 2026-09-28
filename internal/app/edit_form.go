@@ -2,14 +2,12 @@ package app
 
 import (
 	"fmt"
-	"image/color"
 	"strconv"
 	"strings"
 
 	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 	"github.com/justinmklam/tira/internal/models"
 	"github.com/justinmklam/tira/internal/tui"
 )
@@ -54,6 +52,8 @@ type editModel struct {
 
 	width     int
 	height    int
+	secW      int // outer width of each nested section frame
+	secInner  int // content width of each nested section frame (secW-2)
 	taHeight  int
 	completed bool
 	aborted   bool
@@ -130,29 +130,34 @@ func (m *editModel) setSize(w, h int) {
 	m.width = w
 	m.height = h
 
-	// Summary gets the full available width; other inputs use the fixed width.
-	// textinput.View reserves one cell for the cursor beyond SetWidth, so the
-	// summary's editable width is one short of its slot; otherwise the cursor
-	// would spill past the form's right edge.
-	summaryW := w - emLabelW - 2
-	if summaryW < 20 {
-		summaryW = 20
-	}
-	m.inputs[efSummary].SetWidth(summaryW - 1)
+	// The form body sits inside the modal's frame, indented by one cell on each
+	// side. secW is the nested section frame's outer width and secInner its
+	// content width; both setSize and View derive from these two values so the
+	// layout arithmetic lives in one place.
+	m.secW = max(w-2, 20)
+	m.secInner = m.secW - 2
+
+	// Summary gets the section's full content width. textinput.View reserves one
+	// cell for the cursor beyond SetWidth, so it is sized one short of its slot;
+	// otherwise the cursor would spill past the section frame's right border.
+	m.inputs[efSummary].SetWidth(m.secInner - 2)
 	for i := 1; i < efInputCount; i++ {
 		m.inputs[i].SetWidth(emInputW)
 	}
 
 	// The textarea's SetWidth counts the prompt inside its total width. With the
-	// prompt cleared, w-1 leaves exactly w cells once View indents the block by
-	// one cell, matching the field rows and the section headings.
-	taW := max(w-1, 10)
+	// prompt cleared, secInner-1 leaves exactly secInner cells once View indents
+	// the block by one cell, matching the field rows and the section titles.
+	taW := max(m.secInner-1, 10)
 	m.descTA.SetWidth(taW)
 	m.acTA.SetWidth(taW)
 
-	// Compute textarea height from available space.
-	// Fixed rows: 6 inputs + 2 section labels + 2 blank separators + 1 hint + 1 blank before hint ≈ 13
-	const overhead = 13
+	// Compute textarea height from available space. The form renders
+	// 16 + 2*taHeight rows: two border rows per section frame (4 sections), one
+	// Summary value row, five Details value rows, and one blank plus one hint
+	// row after the last section. 16 is the exact fixed cost, not slack;
+	// TestEditFormViewLayout asserts the formula.
+	const overhead = 16
 	taH := (h - overhead) / 2
 	if taH < 4 {
 		taH = 4
@@ -317,88 +322,46 @@ func (m *editModel) setAssignee(displayName, accountID string) {
 	m.origAssigneeID = accountID
 }
 
-// fieldGlyph returns the semantic one-cell glyph and its colour for the fields
-// that carry one (type, priority, assignee). A field without a glyph returns the
-// empty string, so its label keeps the plain muted treatment.
-func (m *editModel) fieldGlyph(i int) (string, color.Color) {
-	switch i {
-	case efType:
-		v := m.inputs[efType].Value()
-		if c := tui.IssueTypeColor(v); c != nil {
-			return tui.TypeGlyph(v), c
-		}
-		return tui.TypeGlyph(v), tui.ColorMuted
-	case efPriority:
-		v := m.inputs[efPriority].Value()
-		g := tui.PriorityGlyph(v)
-		if g == "" {
-			return "", tui.ColorMuted
-		}
-		if c := tui.PriorityColor(v); c != nil {
-			return g, c
-		}
-		return g, tui.ColorMuted
-	case efAssignee:
-		v := m.inputs[efAssignee].Value()
-		if v == "" {
-			return "", tui.ColorMuted
-		}
-		if c := tui.PersonColor(v); c != nil {
-			return "•", c
-		}
-		return "•", tui.ColorMuted
-	}
-	return "", tui.ColorMuted
-}
-
-// fieldLabel renders one label cell. The focused field is bold accent and carries
-// no glyph; every other label is muted, prefixed by a semantic glyph where the
-// field has one. The result always measures exactly emLabelW cells, so the value
+// fieldLabel renders one label cell as plain muted text. Focus is shown only by
+// the input's own cursor, so the label is independent of m.focused and of the
+// field's value. The result always measures exactly emLabelW cells, so the value
 // column stays aligned.
 func (m *editModel) fieldLabel(i int) string {
-	name := emFieldLabels[i]
-	if i == m.focused {
-		return lipgloss.NewStyle().Bold(true).Foreground(tui.ColorAccent).
-			Render(tui.FixedWidth(name, emLabelW))
+	return tui.MutedStyle.Render(tui.FixedWidth(emFieldLabels[i], emLabelW))
+}
+
+// section renders one nested section frame with its title in the top border and
+// indents every row by one cell so the section sits inside the modal's frame.
+func (m *editModel) section(title, body string) []string {
+	rows := strings.Split(tui.Frame(title, body, m.secW, 0, tui.ColorSubtle, tui.ColorForegroundBright), "\n")
+	for i, row := range rows {
+		rows[i] = " " + row
 	}
-	glyph, glyphColor := m.fieldGlyph(i)
-	if glyph == "" {
-		return tui.MutedStyle.Render(tui.FixedWidth(name, emLabelW))
+	return rows
+}
+
+// indent prepends one cell to every line of a rendered block.
+func indent(block string) string {
+	lines := strings.Split(block, "\n")
+	for i, line := range lines {
+		lines[i] = " " + line
 	}
-	prefix := lipgloss.NewStyle().Foreground(glyphColor).Render(glyph) + " "
-	rest := emLabelW - tui.DisplayWidth(prefix)
-	if rest < 0 {
-		rest = 0
-	}
-	return prefix + tui.MutedStyle.Render(tui.FixedWidth(name, rest))
+	return strings.Join(lines, "\n")
 }
 
 func (m *editModel) View() tea.View {
 	var lines []string
 
-	for i := 0; i < efInputCount; i++ {
-		lines = append(lines, " "+m.fieldLabel(i)+" "+m.inputs[i].View())
-	}
+	lines = append(lines, m.section("Summary", " "+m.inputs[efSummary].View())...)
 
-	descFg := tui.ColorMuted
-	if m.focused == efDescription {
-		descFg = tui.ColorAccent
+	details := make([]string, 0, efLabels-efType+1)
+	for i := efType; i <= efLabels; i++ {
+		details = append(details, " "+m.fieldLabel(i)+" "+m.inputs[i].View())
 	}
-	lines = append(lines, "")
-	lines = append(lines, tui.SectionHeader(" Description", descFg, m.width))
-	for _, line := range strings.Split(m.descTA.View(), "\n") {
-		lines = append(lines, " "+line)
-	}
+	lines = append(lines, m.section("Details", strings.Join(details, "\n"))...)
 
-	acFg := tui.ColorMuted
-	if m.focused == efAccCriteria {
-		acFg = tui.ColorAccent
-	}
-	lines = append(lines, "")
-	lines = append(lines, tui.SectionHeader(" Acceptance Criteria", acFg, m.width))
-	for _, line := range strings.Split(m.acTA.View(), "\n") {
-		lines = append(lines, " "+line)
-	}
+	lines = append(lines, m.section("Description", indent(m.descTA.View()))...)
+	lines = append(lines, m.section("Acceptance Criteria", indent(m.acTA.View()))...)
 
 	if m.validErr != "" {
 		lines = append(lines, "")
