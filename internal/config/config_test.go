@@ -20,6 +20,7 @@ profiles:
     token: default-token
     project: PROJ1
     board_id: 1
+    default_view: kanban
   dev:
     jira_url: https://dev.atlassian.net
     email: dev@example.com
@@ -38,6 +39,7 @@ profiles:
 		assert.Equal(t, "default-token", cfg.Token)
 		assert.Equal(t, "PROJ1", cfg.Project)
 		assert.Equal(t, 1, cfg.BoardID)
+		assert.Equal(t, "kanban", cfg.DefaultView)
 	})
 
 	t.Run("load dev profile", func(t *testing.T) {
@@ -48,6 +50,7 @@ profiles:
 		assert.Equal(t, "dev-token", cfg.Token)
 		assert.Equal(t, "PROJ2", cfg.Project)
 		assert.Equal(t, 2, cfg.BoardID)
+		assert.Empty(t, cfg.DefaultView, "profiles without default_view leave it unset")
 	})
 
 	t.Run("load missing profile", func(t *testing.T) {
@@ -70,7 +73,7 @@ func blankLoaderEnv(t *testing.T, names ...string) {
 	t.Helper()
 	all := []string{
 		"TIRA_JIRA_URL", "TIRA_EMAIL", "TIRA_TOKEN", "TIRA_PROJECT", "TIRA_BOARD_ID",
-		"TIRA_CLASSIC_PROJECT", "TIRA_THEME", "JIRA_TOKEN", "JIRA_API_TOKEN",
+		"TIRA_CLASSIC_PROJECT", "TIRA_THEME", "TIRA_DEFAULT_VIEW", "JIRA_TOKEN", "JIRA_API_TOKEN",
 	}
 	for _, env := range append(all, names...) {
 		t.Setenv(env, "")
@@ -154,7 +157,7 @@ func TestLoad_EnvVarOverride(t *testing.T) {
 
 	// Helper to write a config with a given token value
 	writeConfig := func(tokenVal string) {
-		content := "profiles:\n  default:\n    jira_url: https://from-config.atlassian.net\n    email: config@example.com\n    token: " + tokenVal + "\n    project: CFGPROJ\n    board_id: 99\n    classic_project: false\n    theme: default\n"
+		content := "profiles:\n  default:\n    jira_url: https://from-config.atlassian.net\n    email: config@example.com\n    token: " + tokenVal + "\n    project: CFGPROJ\n    board_id: 99\n    classic_project: false\n    theme: default\n    default_view: backlog\n"
 		err := os.WriteFile(configPath, []byte(content), 0644)
 		assert.NoError(t, err)
 	}
@@ -167,7 +170,7 @@ func TestLoad_EnvVarOverride(t *testing.T) {
 			had  bool
 		}
 		var states []envState
-		for _, env := range []string{"TIRA_JIRA_URL", "TIRA_EMAIL", "TIRA_TOKEN", "TIRA_PROJECT", "TIRA_BOARD_ID", "TIRA_CLASSIC_PROJECT", "TIRA_THEME", "JIRA_TOKEN", "JIRA_API_TOKEN"} {
+		for _, env := range []string{"TIRA_JIRA_URL", "TIRA_EMAIL", "TIRA_TOKEN", "TIRA_PROJECT", "TIRA_BOARD_ID", "TIRA_CLASSIC_PROJECT", "TIRA_THEME", "TIRA_DEFAULT_VIEW", "JIRA_TOKEN", "JIRA_API_TOKEN"} {
 			old, had := os.LookupEnv(env)
 			states = append(states, envState{env, old, had})
 			os.Unsetenv(env) //nolint:errcheck
@@ -195,6 +198,7 @@ func TestLoad_EnvVarOverride(t *testing.T) {
 		assert.Equal(t, "cfg-token", cfg.Token)
 		assert.Equal(t, "CFGPROJ", cfg.Project)
 		assert.Equal(t, 99, cfg.BoardID)
+		assert.Equal(t, "backlog", cfg.DefaultView)
 	})
 
 	t.Run("TIRA_* env vars override config values", func(t *testing.T) {
@@ -206,6 +210,7 @@ func TestLoad_EnvVarOverride(t *testing.T) {
 		t.Setenv("TIRA_TOKEN", "env-token")
 		t.Setenv("TIRA_PROJECT", "ENVPROJ")
 		t.Setenv("TIRA_BOARD_ID", "42")
+		t.Setenv("TIRA_DEFAULT_VIEW", "epics")
 
 		cfg, err := Load("default", tmpDir)
 		assert.NoError(t, err)
@@ -214,6 +219,7 @@ func TestLoad_EnvVarOverride(t *testing.T) {
 		assert.Equal(t, "env-token", cfg.Token)
 		assert.Equal(t, "ENVPROJ", cfg.Project)
 		assert.Equal(t, 42, cfg.BoardID)
+		assert.Equal(t, "epics", cfg.DefaultView)
 	})
 
 	t.Run("TIRA_TOKEN takes precedence over config file", func(t *testing.T) {

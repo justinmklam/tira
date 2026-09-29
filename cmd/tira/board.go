@@ -25,19 +25,20 @@ var boardCmd = &cobra.Command{
 	Short: "Interactive board with backlog, kanban, and epics views",
 	Long: `Interactive board with backlog, kanban, and epics views (Tab to cycle).
 
-Starts on the backlog view by default; use --view to start elsewhere:
+The starting view is the profile's default_view (falling back to backlog when
+unset); an explicit --view always wins over it:
 
-  tira board                  # starts on backlog
+  tira board                  # config default_view, else backlog
   tira board --view kanban    # starts on kanban
   tira board --view epics     # starts on epics
-  tira board --view backlog   # explicit, same as default
+  tira board --view backlog   # explicit, same as the fallback
 
 With --snapshot, one frame is rendered to stdout and the process exits instead
 of starting the TUI. It is intended for dev mode (--dev), so agents and CI can
 inspect the layout; regions filled in by async commands (the sidebar detail,
 epic children, and lazy-loaded sprints) are empty in a snapshot.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		view, err := parseBoardView(boardView)
+		view, err := resolveStartView(cmd.Flags().Changed("view"), boardView, cfg.DefaultView)
 		if err != nil {
 			return err
 		}
@@ -76,7 +77,7 @@ func init() {
 		cmd.Flags().StringVar(&boardProject, "project", "", "override the default project from config")
 		cmd.Flags().IntVar(&boardID, "board-id", 0, "override the default board ID from config")
 	}
-	boardCmd.Flags().StringVar(&boardView, "view", "backlog", `starting view: "backlog", "kanban", or "epics"`)
+	boardCmd.Flags().StringVar(&boardView, "view", "", `starting view: "backlog", "kanban", or "epics" (defaults to the profile's default_view, else backlog)`)
 	boardCmd.Flags().BoolVar(&boardSnapshot, "snapshot", false, "render one board frame to stdout and exit instead of starting the TUI (intended for --dev, so agents and CI can inspect the layout)")
 	boardCmd.Flags().StringVar(&boardSnapshotSize, "snapshot-size", "120x40", "terminal size used by --snapshot, as WxH (both dimensions must be at least 20)")
 }
@@ -102,6 +103,20 @@ func parseSnapshotSize(raw string) (int, int, error) {
 		return 0, 0, fmt.Errorf("invalid --snapshot-size %q: both dimensions must be at least %d", raw, minSnapshotDimension)
 	}
 	return width, height, nil
+}
+
+// resolveStartView picks the board's starting view. An explicit --view wins
+// over the profile's default_view, which in turn falls back to backlog — both
+// parseBoardView("") and an unset default_view mean backlog.
+func resolveStartView(viewFlagSet bool, viewFlag, configDefault string) (app.BoardView, error) {
+	if viewFlagSet {
+		return parseBoardView(viewFlag)
+	}
+	view, err := parseBoardView(configDefault)
+	if err != nil {
+		return 0, fmt.Errorf("invalid default_view in config: %w", err)
+	}
+	return view, nil
 }
 
 // parseBoardView validates and converts the --view flag value.
@@ -134,7 +149,7 @@ func runBoardCmd(startView app.BoardView) error {
 		id = boardID
 	}
 	if id == 0 {
-		return fmt.Errorf("board ID not configured: set default_board_id in ~/.config/tira/config.yaml or use --board-id")
+		return fmt.Errorf("board ID not configured: set board_id in ~/.config/tira/config.yaml or use --board-id")
 	}
 
 	// Override project from flag if provided

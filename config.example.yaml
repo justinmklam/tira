@@ -7,6 +7,7 @@ profiles:
     project: MYPROJ
     board_id: 42
     classic_project: true   # set to true for company-managed (classic) projects
+    default_view: backlog   # starting view for `tira board`: backlog, kanban, or epics
   dev:
     jira_url: https://dev-domain.atlassian.net
     email: dev-email@example.com

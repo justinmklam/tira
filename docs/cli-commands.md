@@ -259,12 +259,25 @@ AI agents can use this to generate properly formatted issue templates programmat
 The three commands launch the same unified TUI. `board` is the canonical command; `backlog` and
 `kanban` are **deprecated** aliases kept for backward compatibility (print a deprecation warning,
 still fully functional):
-- `board [--view backlog|kanban|epics]` — starts in the given view (`backlog` if `--view` omitted)
+- `board [--view backlog|kanban|epics]` — starts in the given view; when `--view` is omitted the profile's `default_view` applies, falling back to `backlog`
 - `backlog` — deprecated alias for `board --view backlog`
 - `kanban` — deprecated alias for `board --view kanban`
 
 All three also accept `--board-id <id>` to override the `board_id` configured for the active
 profile without editing the config file.
+
+An explicit `--view` beats the profile's `default_view` config key, which beats the built-in
+`backlog` fallback. The deprecated `backlog`/`kanban` aliases pin their own view and ignore
+`default_view`. An unrecognised `default_view` value is reported as `invalid default_view in
+config` at startup.
+
+```yaml
+# ~/.config/tira/config.yaml
+profiles:
+  default:
+    board_id: 42
+    default_view: kanban
+```
 
 ### Snapshot Mode
 
@@ -276,6 +289,10 @@ CI inspect the real layout without a terminal:
 ```bash
 tira --dev board --snapshot --snapshot-size 120x40
 ```
+
+Which view the snapshot renders follows the same precedence as an interactive launch
+(`--view` → config `default_view` → `backlog`), so pass `--view` explicitly when a
+snapshot's contents must be deterministic across profiles.
 
 The frame is clipped to `W` columns so nothing wraps. Only what the initial board fetch provides is
 rendered — the first batch of sprint groups. Everything loaded by asynchronous commands is absent:
@@ -310,10 +327,10 @@ Manual refresh (`R`) fetches everything at once via `GetSprintGroups`.
 
 **Example:**
 ```bash
-# Start in backlog view (default)
+# Start in the configured default_view, else backlog
 ./tira board
 
-# Start in kanban view
+# Start in kanban view (overrides default_view)
 ./tira board --view kanban
 
 # Start in epics view

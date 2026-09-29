@@ -19,6 +19,9 @@ type Config struct {
 	BoardID        int    `mapstructure:"board_id"`
 	ClassicProject bool   `mapstructure:"classic_project"`
 	Theme          string `mapstructure:"theme"`
+	// DefaultView is the board view `tira board` starts on when --view is not
+	// passed: "backlog" (also the fallback when empty), "kanban", or "epics".
+	DefaultView string `mapstructure:"default_view"`
 }
 
 func Load(profileName string, searchPaths ...string) (*Config, error) {
@@ -122,6 +125,9 @@ func applyEnv(cfg *Config) {
 		if id, err := strconv.Atoi(v); err == nil {
 			cfg.BoardID = id
 		}
+	}
+	if v := os.Getenv("TIRA_DEFAULT_VIEW"); v != "" {
+		cfg.DefaultView = v
 	}
 	if v := os.Getenv("TIRA_CLASSIC_PROJECT"); v != "" {
 		cfg.ClassicProject = strings.EqualFold(v, "true")

@@ -42,6 +42,49 @@ func TestParseBoardView(t *testing.T) {
 	}
 }
 
+// TestResolveStartView pins the precedence between an explicit --view, the
+// profile's default_view, and the backlog fallback.
+func TestResolveStartView(t *testing.T) {
+	tests := []struct {
+		name          string
+		viewFlagSet   bool
+		viewFlag      string
+		configDefault string
+		want          app.BoardView
+		wantErrMsg    string
+	}{
+		{name: "nothing set falls back to backlog", want: app.ViewBacklog},
+		{name: "config default is used when flag absent", configDefault: "kanban", want: app.ViewKanban},
+		{name: "config default epics", configDefault: "epics", want: app.ViewEpics},
+		{name: "flag wins over config default", viewFlagSet: true, viewFlag: "backlog", configDefault: "kanban", want: app.ViewBacklog},
+		{name: "flag wins even when it matches the fallback", viewFlagSet: true, viewFlag: "kanban", configDefault: "epics", want: app.ViewKanban},
+		{name: "invalid flag value errors", viewFlagSet: true, viewFlag: "bogus", wantErrMsg: "invalid --view"},
+		{name: "invalid config value errors", configDefault: "bogus", wantErrMsg: "invalid default_view in config"},
+		{name: "invalid config value is ignored when flag is set", viewFlagSet: true, viewFlag: "epics", configDefault: "bogus", want: app.ViewEpics},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := resolveStartView(tt.viewFlagSet, tt.viewFlag, tt.configDefault)
+			if tt.wantErrMsg != "" {
+				if err == nil {
+					t.Fatalf("resolveStartView() error = nil, want error containing %q", tt.wantErrMsg)
+				}
+				if !strings.Contains(err.Error(), tt.wantErrMsg) {
+					t.Errorf("resolveStartView() error = %q, want it to contain %q", err, tt.wantErrMsg)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("resolveStartView() unexpected error: %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("resolveStartView() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 // TestBacklogAndKanbanCommands_AreDeprecated locks in that `backlog`/`kanban`
 // are kept working as deprecated aliases for `board --view=...` (see
 // docs/command-restructure-proposal.md §5) rather than removed outright.
@@ -86,6 +129,9 @@ func TestBoardCommands_HaveConsistentFlags(t *testing.T) {
 		t.Error("boardCmd missing --snapshot-size flag")
 	} else if got := boardCmd.Flags().Lookup("snapshot-size").DefValue; got != "120x40" {
 		t.Errorf("--snapshot-size default = %q, want %q", got, "120x40")
+	}
+	if got := boardCmd.Flags().Lookup("view").DefValue; got != "" {
+		t.Errorf("--view default = %q, want %q (config default_view supplies the fallback)", got, "")
 	}
 	if backlogCmd.Flags().Lookup("view") != nil {
 		t.Error("backlogCmd should not have its own --view flag (view is implied)")

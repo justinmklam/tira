@@ -13,6 +13,7 @@ type Config struct {
     BoardID        int    `mapstructure:"board_id"`
     ClassicProject bool   `mapstructure:"classic_project"`
     Theme          string `mapstructure:"theme"`
+    DefaultView    string `mapstructure:"default_view"`
 }
 ```
 
@@ -38,6 +39,7 @@ profiles:
     board_id: 42
     classic_project: true   # for company-managed (classic) projects
     theme: catppuccin       # color theme (default, tokyonight, catppuccin)
+    default_view: backlog   # starting view for `tira board` (backlog, kanban, epics)
   dev:
     jira_url: https://dev-domain.atlassian.net
     email: dev-email@example.com
@@ -58,6 +60,7 @@ profiles:
 - `board_id` — Default board ID for the `board`/`backlog`/`kanban` commands
 - `classic_project` — Set to `true` for company-managed (classic) projects; affects browser URL construction only
 - `theme` — Color theme for the TUI. Available themes: `default`, `tokyonight`, `catppuccin`. If omitted, uses terminal's default ANSI 256 colors. The theme drives every colour role in the board — chrome, status, issue type, priority, and assignee colours — not just the accent; see [Visual Hierarchy and Semantic Colour](tui-architecture.md#visual-hierarchy-and-semantic-colour).
+- `default_view` — View `tira board` starts on when `--view` is omitted: `backlog`, `kanban`, or `epics`. Defaults to `backlog` when unset. An explicit `--view` always overrides it, and the deprecated `backlog`/`kanban` aliases ignore it (they pin their own view). An unrecognised value is a startup error rather than a silent fallback.
 
 ## Environment Variables
 
@@ -70,6 +73,7 @@ All configuration fields can be overridden via environment variables with the `T
 | `token` | `TIRA_TOKEN`, `JIRA_TOKEN`, `JIRA_API_TOKEN` |
 | `project` | `TIRA_PROJECT` |
 | `board_id` | `TIRA_BOARD_ID` |
+| `default_view` | `TIRA_DEFAULT_VIEW` |
 | `classic_project` | `TIRA_CLASSIC_PROJECT` |
 | `theme` | `TIRA_THEME` |
 

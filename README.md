@@ -98,10 +98,10 @@ The fixture declares project `DEMO` and board `1`; see
 Launch the interactive board TUI:
 
 ```sh
-# Start in backlog view
+# Start in the configured default_view, else backlog
 tira board
 
-# Start in kanban view
+# Start in kanban view (always overrides default_view)
 tira board --view kanban
 
 # Start in epics view
@@ -110,6 +110,9 @@ tira board --view epics
 # Override the configured board ID
 tira board --board-id 42
 ```
+
+Set `default_view: backlog|kanban|epics` in the profile to change which view `tira board`
+starts on.
 
 > `tira backlog` and `tira kanban` still work but are deprecated aliases for `tira board` /
 > `tira board --view backlog` and `tira board --view kanban`.
