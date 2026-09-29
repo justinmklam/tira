@@ -53,6 +53,18 @@ func TestGetIssueCarriesFixtureContext(t *testing.T) {
 	assert.NotContains(t, again.Labels, "mutated")
 }
 
+func TestGetIssueIncludesAttachments(t *testing.T) {
+	c := newTestClient(t)
+
+	issue, err := c.GetIssue("DEMO-3")
+	require.NoError(t, err)
+	require.Len(t, issue.Attachments, 1)
+	assert.Equal(t, "checkout-notes.txt", issue.Attachments[0].Filename)
+
+	content, err := c.DownloadAttachment(issue.Attachments[0])
+	require.NoError(t, err)
+	assert.Contains(t, string(content), "cart summary")
+}
 func TestGetIssueIncludesSubtasksAndLinks(t *testing.T) {
 	c := newTestClient(t)
 

@@ -2,6 +2,7 @@ package display
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -91,6 +92,9 @@ func RenderIssue(issue *models.Issue) string {
 		sb.WriteString("\n")
 	}
 
+	// Attachments
+	sb.WriteString(AttachmentsSection(issue.Attachments))
+
 	// Linked Work Items
 	sb.WriteString(LinkedItemsSection("Linked Work Items", issue.LinkedIssues))
 
@@ -107,6 +111,71 @@ func RenderIssue(issue *models.Issue) string {
 	}
 
 	return sb.String()
+}
+
+// AttachmentsSection renders attachment metadata and any downloaded content.
+// It returns an empty string when an issue has no attachments.
+func AttachmentsSection(attachments []models.Attachment) string {
+	if len(attachments) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("\n# Attachments\n\n")
+	if attachments[0].LocalPath != "" {
+		fmt.Fprintf(&sb, "- **Directory:** `%s`\n\n", filepath.Dir(attachments[0].LocalPath))
+	}
+	for _, attachment := range attachments {
+		filename := attachment.Filename
+		if filename == "" {
+			filename = "(unnamed attachment)"
+		}
+		fmt.Fprintf(&sb, "## %s\n\n", filename)
+		if attachment.ID != "" {
+			fmt.Fprintf(&sb, "- **Jira attachment ID:** `%s`\n", attachment.ID)
+		}
+		if attachment.MimeType != "" {
+			fmt.Fprintf(&sb, "- **Type:** `%s`\n", attachment.MimeType)
+		}
+		if attachment.Size > 0 {
+			fmt.Fprintf(&sb, "- **Size:** %s\n", formatAttachmentSize(attachment.Size))
+		}
+		if attachment.Author != "" {
+			fmt.Fprintf(&sb, "- **Author:** %s\n", attachment.Author)
+		}
+		if attachment.Created != "" {
+			fmt.Fprintf(&sb, "- **Created:** %s\n", attachment.Created)
+		}
+		if attachment.LocalPath != "" {
+			fmt.Fprintf(&sb, "- **Local file:** `%s`\n", attachment.LocalPath)
+		}
+		if attachment.ContentError != "" {
+			fmt.Fprintf(&sb, "- **Content unavailable:** %s\n", attachment.ContentError)
+		}
+		if attachment.TextContent != "" {
+			sb.WriteString("\n```text\n")
+			sb.WriteString(strings.TrimRight(attachment.TextContent, "\n"))
+			sb.WriteString("\n```\n")
+		} else if attachment.LocalPath != "" && strings.HasPrefix(attachment.MimeType, "image/") {
+			fmt.Fprintf(&sb, "\n![%s](%s)\n", filename, attachment.LocalPath)
+		}
+		sb.WriteString("\n")
+	}
+	return sb.String()
+}
+
+func formatAttachmentSize(size int64) string {
+	const unit = 1024
+	if size < unit {
+		return fmt.Sprintf("%d B", size)
+	}
+	value := float64(size)
+	for _, suffix := range []string{"KiB", "MiB", "GiB"} {
+		value /= unit
+		if value < unit || suffix == "GiB" {
+			return fmt.Sprintf("%.1f %s", value, suffix)
+		}
+	}
+	return fmt.Sprintf("%d B", size)
 }
 
 // LinkedItemsSection returns a Markdown heading and flat bullet list for

@@ -423,7 +423,15 @@ func renderNode(sb *strings.Builder, node map[string]any, listDepth int) {
 		sb.WriteString("\n")
 
 	case "mediaSingle", "media":
-		// skip attachments/images
+		// Keep embedded media visible to text-only consumers. The attachment
+		// metadata and downloaded file, when requested, are rendered separately.
+		mediaID := "unknown"
+		if id, ok := attrs["id"].(string); ok && id != "" {
+			mediaID = id
+		} else if fileID, ok := attrs["fileId"].(string); ok && fileID != "" {
+			mediaID = fileID
+		}
+		fmt.Fprintf(sb, "[Embedded media attachment %s]", mediaID)
 
 	case "table":
 		renderTable(sb, content)

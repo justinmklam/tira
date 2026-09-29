@@ -4,7 +4,7 @@ tira provides the following commands:
 
 | Command | Description |
 |---------|-------------|
-| `get <key\|url> [--edit]` | Fetch and display a single issue (accepts an issue key or a full browse URL); `--edit` is a **deprecated** alias for `update <key> --edit`-style interactive editing |
+| `get <key\|url> [--edit] [--attachments <mode>] [--attachments-dir <path>]` | Fetch and display a single issue (accepts an issue key or full browse URL); attachments are included by default |
 | `update <key\|url> [--show] [--no-edit] [--file <path>]` | Update an existing issue; non-interactively (agents) via `--show`/`--no-edit`/`--file`, or interactively via `$EDITOR` |
 | `create [--project <key>] [--type <type>] [--parent <key>]` | Create a new issue via `$EDITOR` |
 | `board [--view backlog\|kanban\|epics] [--board-id <id>] [--snapshot] [--snapshot-size WxH]` | Launch the unified TUI (backlog + kanban + epics views), or render one frame with `--snapshot` |
@@ -29,7 +29,7 @@ fixture instead of Jira — no config file, credentials, or network required. Se
 
 ---
 
-## `tira get <key|url> [--edit]`
+## `tira get <key|url> [--edit] [--attachments <mode>] [--attachments-dir <path>]`
 
 **File:** `cmd/tira/get.go`
 
@@ -43,22 +43,34 @@ just the one configured in `project`/`board_id`.
 
 ### Without `--edit` (View Mode)
 
-Displays a single issue in a terminal pager:
+Displays a single issue in a terminal pager. Attachments are handled according to
+`--attachments` (default: `auto`):
 
-1. Creates API client from config
-2. Fetches issue with `tui.RunWithSpinner` (shows spinner during fetch)
-3. Renders to Markdown via `display.RenderIssue`
-4. Pages the output:
+- `auto` downloads every attachment, inlines supported small text files, and saves images/binary files locally.
+- `content` downloads attachments and attempts to inline supported text files.
+- `metadata` lists attachment metadata without downloading content.
+- `none` omits attachment content and downloads.
+
+Downloaded files are saved under a temporary issue-scoped directory by default. Use
+`--attachments-dir <path>` to save them under `<path>/<ISSUE-KEY>/`. The Markdown output
+includes each local file path so an AI agent can inspect images and other binary files.
+
+The retrieval flow is:
+
+1. Creates an API client from config
+2. Fetches the issue with `tui.RunWithSpinner`
+3. Downloads and prepares attachments according to the selected mode
+4. Renders the result to Markdown via `display.RenderIssue`
+5. Pages the output:
    - Tries `glow --pager --style=dracula --width=120 -` first
    - Falls back to `less -R`
    - Falls back to stdout
-5. If stdout is not a TTY (piped), writes raw Markdown directly
+6. If stdout is not a TTY (piped), writes raw Markdown directly
 
-**Example:**
+**Examples:**
 ```bash
-./tira get MP-101
-./tira get MP-101 | grep "Status"  # pipe to another command
-./tira get https://example.atlassian.net/browse/MP-101  # full URL also works
+tira get MP-101 --attachments=auto
+tira get MP-101 --attachments=auto --attachments-dir ./tira-attachments
 ```
 
 ### With `--edit` (Edit Mode) — deprecated

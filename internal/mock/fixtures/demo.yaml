@@ -95,6 +95,15 @@ issues:
       - Each step validates before advancing.
       - The browser back button moves one step back, not out of checkout.
       - Keyboard-only users can complete the whole flow.
+    attachments:
+      - id: "10001"
+        filename: checkout-notes.txt
+        mime_type: text/plain
+        size: 44
+        author: Ada Lovelace
+        created: "2026-03-06"
+        content: |
+          Verify the cart summary on every checkout step.
 
   - key: DEMO-4
     summary: Migrate payment gateway

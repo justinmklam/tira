@@ -138,6 +138,19 @@ func (c *Client) GetIssue(key string) (*models.Issue, error) {
 	return &issue, nil
 }
 
+func (c *Client) DownloadAttachment(attachment models.Attachment) ([]byte, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, issue := range c.fixture.Issues {
+		for _, candidate := range issue.Attachments {
+			if (attachment.ID != "" && candidate.ID == attachment.ID) || candidate.Filename == attachment.Filename {
+				return []byte(candidate.Content), nil
+			}
+		}
+	}
+	return nil, fmt.Errorf("attachment %q not found in dev fixture", attachment.Filename)
+}
+
 func (c *Client) GetBoardColumns(boardID int) ([]models.BoardColumn, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -938,6 +951,16 @@ func (c *Client) toIssue(fx IssueFixture, sprintName string) models.Issue {
 		if target, ok := c.lookup(link.Key); ok {
 			issue.LinkedIssues = append(issue.LinkedIssues, c.toLinkedIssue(link.Relationship, target))
 		}
+	}
+	for _, attachment := range fx.Attachments {
+		issue.Attachments = append(issue.Attachments, models.Attachment{
+			ID:       attachment.ID,
+			Filename: attachment.Filename,
+			MimeType: attachment.MimeType,
+			Size:     attachment.Size,
+			Created:  attachment.Created,
+			Author:   attachment.Author,
+		})
 	}
 
 	return issue

@@ -57,6 +57,12 @@ type Client interface {
 	BulkTransitionStatus(keys []string, transitionID string) []error
 }
 
+// AttachmentDownloader is implemented by clients that can download Jira
+// attachment bytes using the same authenticated transport as issue requests.
+type AttachmentDownloader interface {
+	DownloadAttachment(attachment models.Attachment) ([]byte, error)
+}
+
 type jiraClient struct {
 	client      *jira.Client
 	baseURL     string
@@ -263,6 +269,18 @@ func (c *jiraClient) fetchFullIssue(key string) (*models.Issue, error) {
 			Key    string           `json:"key"`
 			Fields *linkIssueFields `json:"fields"`
 		} `json:"subtasks"`
+		Attachments []struct {
+			ID       string `json:"id"`
+			Filename string `json:"filename"`
+			MimeType string `json:"mimeType"`
+			Size     int64  `json:"size"`
+			Created  string `json:"created"`
+			Author   *struct {
+				DisplayName string `json:"displayName"`
+			} `json:"author"`
+			Content   string `json:"content"`
+			Thumbnail string `json:"thumbnail"`
+		} `json:"attachment"`
 	}
 	if err := json.Unmarshal(envelope.Fields, &sf); err != nil {
 		return nil, err
@@ -301,6 +319,21 @@ func (c *jiraClient) fetchFullIssue(key string) (*models.Issue, error) {
 	for _, sub := range sf.SubTasks {
 		result.SubTasks = append(result.SubTasks,
 			linkedIssueFromFields("subtask", sub.Key, sub.Fields))
+	}
+	for _, attachment := range sf.Attachments {
+		item := models.Attachment{
+			ID:           attachment.ID,
+			Filename:     attachment.Filename,
+			MimeType:     attachment.MimeType,
+			Size:         attachment.Size,
+			Created:      attachment.Created,
+			ContentURL:   attachment.Content,
+			ThumbnailURL: attachment.Thumbnail,
+		}
+		if attachment.Author != nil {
+			item.Author = attachment.Author.DisplayName
+		}
+		result.Attachments = append(result.Attachments, item)
 	}
 
 	// Raw field map for custom/ADF fields.

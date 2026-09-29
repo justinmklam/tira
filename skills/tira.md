@@ -9,10 +9,12 @@ Use the `tira` CLI to create and read Jira tickets. The binary is at `~/go/bin/t
 ## Reading a ticket
 
 ```bash
-tira get <KEY>          # e.g. tira get PROJ-123
+tira get <KEY> --attachments=auto
 ```
 
-Output is plain text — ticket summary, description, status, assignee, and comments.
+`tira get` includes attachment metadata by default. With `--attachments=auto`, supported small text attachments are included inline in the Markdown output. Images and other binary files are saved locally and their paths are included in the output so an agent can inspect them with filesystem/image tools. Use `--attachments-dir <path>` for a persistent location, or `--attachments=none` when attachments are not needed.
+
+Output is plain text — ticket summary, description, status, assignee, comments, and attachment content/references.
 
 ## Updating a ticket
 

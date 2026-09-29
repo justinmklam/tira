@@ -154,6 +154,8 @@ See [Keybindings](docs/keybindings-backlog.md) for the complete reference.
 
 ```sh
 tira get MP-101
+tira get MP-101 --attachments=auto --attachments-dir ./tira-attachments  # save attachments for agent inspection
+tira get MP-101 --attachments=none  # omit attachment downloads
 tira get https://your-domain.atlassian.net/browse/MP-101  # full browse URL also works
 ```
 

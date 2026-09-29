@@ -24,8 +24,28 @@ type Issue struct {
 	SubTasks           []LinkedIssue
 	SubTaskCount       int // number of subtasks, populated by child listings
 	Comments           []Comment
+	Attachments        []Attachment
 	StatusChangedDate  string // ISO date when status last changed, e.g. "2026-03-01"
 	ProjectKey         string
+}
+
+// Attachment describes a file associated with a Jira issue. Content is loaded
+// separately by attachment-aware retrieval flows so ordinary board loads stay
+// lightweight.
+type Attachment struct {
+	ID           string
+	Filename     string
+	MimeType     string
+	Size         int64
+	Created      string
+	Author       string
+	ContentURL   string
+	ThumbnailURL string
+
+	// These fields are populated when content is explicitly requested.
+	LocalPath    string
+	TextContent  string
+	ContentError string
 }
 
 type LinkedIssue struct {

@@ -23,11 +23,18 @@ import (
 )
 
 var editFlag bool
+var attachmentMode string
+var attachmentsDir string
 
 var getCmd = &cobra.Command{
 	Use:   "get <key|url>",
 	Short: "Fetch and display a Jira issue",
 	Long: `Fetch and display a Jira issue as Markdown.
+
+Attachments are included by default: text attachments are downloaded and
+included inline, while images and other files are saved locally and referenced
+by path. Use --attachments=none to omit downloads or --attachments-dir to
+choose where files are saved.
 
 Accepts a bare issue key or a full Jira browse URL — the issue key is
 extracted automatically either way.
@@ -61,6 +68,10 @@ Use --edit to open the issue in $EDITOR and write changes back to Jira
 		}
 
 		if !editFlag {
+			if err := prepareIssueAttachments(client, issue, attachmentMode, attachmentsDir); err != nil {
+				debug.LogError("prepareIssueAttachments", err)
+				return err
+			}
 			output := display.RenderIssue(issue)
 			return page(output)
 		}
@@ -77,6 +88,8 @@ Use --edit to open the issue in $EDITOR and write changes back to Jira
 
 func init() {
 	getCmd.Flags().BoolVar(&editFlag, "edit", false, "Open issue in $EDITOR and write changes back to Jira (interactive; for agents use 'tira update')")
+	getCmd.Flags().StringVar(&attachmentMode, "attachments", attachmentModeAuto, "Attachment handling: auto, none, metadata, or content")
+	getCmd.Flags().StringVar(&attachmentsDir, "attachments-dir", "", "Directory for downloaded attachments (default: a temporary directory)")
 	if err := getCmd.Flags().MarkDeprecated("edit", "use 'tira update <key>' instead"); err != nil {
 		panic(err)
 	}

@@ -57,6 +57,9 @@ func TestFetchFullIssue_ParsesAllFields(t *testing.T) {
 					}
 				}
 			],
+			"attachment": [
+				{"id": "10001", "filename": "notes.txt", "mimeType": "text/plain", "size": 12, "created": "2026-03-06", "author": {"displayName": "Jane Doe"}, "content": "SERVER_URL/rest/api/3/attachment/content/10001"}
+			],
 			"customfield_10010": "Sprint Name",
 			"customfield_10020": 5.0,
 			"description": {"type": "doc", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Description text"}]}]},
@@ -137,6 +140,15 @@ func TestFetchFullIssue_ParsesAllFields(t *testing.T) {
 	}
 	if got.SubTasks[0].Summary != "Sub task" {
 		t.Errorf("subtask summary = %q, want %q", got.SubTasks[0].Summary, "Sub task")
+	}
+	if len(got.Attachments) != 1 {
+		t.Fatalf("Attachments = %d, want 1", len(got.Attachments))
+	}
+	if got.Attachments[0].Filename != "notes.txt" || got.Attachments[0].Author != "Jane Doe" {
+		t.Errorf("attachment = %+v, want parsed metadata", got.Attachments[0])
+	}
+	if got.Attachments[0].ContentURL == "" {
+		t.Error("attachment content URL is empty")
 	}
 	if got.Description != "Description text\n\n" {
 		t.Errorf("Description = %q, want %q", got.Description, "Description text\n\n")

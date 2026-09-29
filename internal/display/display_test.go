@@ -125,6 +125,25 @@ func TestRenderIssue_WithLinkedIssues(t *testing.T) {
 	}
 }
 
+func TestRenderIssue_WithAttachments(t *testing.T) {
+	issue := &models.Issue{
+		Key:     "PROJ-8",
+		Summary: "Attachments",
+		Status:  "Open",
+		Attachments: []models.Attachment{
+			{Filename: "notes.txt", MimeType: "text/plain", Size: 12, LocalPath: "/tmp/notes.txt", TextContent: "hello attachment\n"},
+			{Filename: "screenshot.png", MimeType: "image/png", Size: 1024, LocalPath: "/tmp/screenshot.png"},
+		},
+	}
+
+	got := RenderIssue(issue)
+	for _, want := range []string{"# Attachments", "notes.txt", "hello attachment", "screenshot.png", "![screenshot.png](/tmp/screenshot.png)"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("expected attachment output to contain %q", want)
+		}
+	}
+}
+
 func TestRenderIssue_WithParent(t *testing.T) {
 	issue := &models.Issue{
 		Key:           "PROJ-7",

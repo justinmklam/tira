@@ -66,28 +66,39 @@ type SprintFixture struct {
 }
 
 type IssueFixture struct {
-	Key                string           `yaml:"key" json:"key"`
-	Summary            string           `yaml:"summary" json:"summary"`
-	Type               string           `yaml:"type,omitempty" json:"type,omitempty"`
-	Status             string           `yaml:"status,omitempty" json:"status,omitempty"`
-	StatusID           string           `yaml:"status_id,omitempty" json:"status_id,omitempty"`
-	Priority           string           `yaml:"priority,omitempty" json:"priority,omitempty"`
-	Assignee           string           `yaml:"assignee,omitempty" json:"assignee,omitempty"`
-	Reporter           string           `yaml:"reporter,omitempty" json:"reporter,omitempty"`
-	StoryPoints        float64          `yaml:"story_points,omitempty" json:"story_points,omitempty"`
-	Labels             []string         `yaml:"labels,omitempty" json:"labels,omitempty"`
-	Epic               string           `yaml:"epic,omitempty" json:"epic,omitempty"`
-	Parent             string           `yaml:"parent,omitempty" json:"parent,omitempty"`
-	Description        string           `yaml:"description,omitempty" json:"description,omitempty"`
-	AcceptanceCriteria string           `yaml:"acceptance_criteria,omitempty" json:"acceptance_criteria,omitempty"`
-	StatusChanged      string           `yaml:"status_changed,omitempty" json:"status_changed,omitempty"`
-	Comments           []CommentFixture `yaml:"comments,omitempty" json:"comments,omitempty"`
+	Key                string              `yaml:"key" json:"key"`
+	Summary            string              `yaml:"summary" json:"summary"`
+	Type               string              `yaml:"type,omitempty" json:"type,omitempty"`
+	Status             string              `yaml:"status,omitempty" json:"status,omitempty"`
+	StatusID           string              `yaml:"status_id,omitempty" json:"status_id,omitempty"`
+	Priority           string              `yaml:"priority,omitempty" json:"priority,omitempty"`
+	Assignee           string              `yaml:"assignee,omitempty" json:"assignee,omitempty"`
+	Reporter           string              `yaml:"reporter,omitempty" json:"reporter,omitempty"`
+	StoryPoints        float64             `yaml:"story_points,omitempty" json:"story_points,omitempty"`
+	Labels             []string            `yaml:"labels,omitempty" json:"labels,omitempty"`
+	Epic               string              `yaml:"epic,omitempty" json:"epic,omitempty"`
+	Parent             string              `yaml:"parent,omitempty" json:"parent,omitempty"`
+	Description        string              `yaml:"description,omitempty" json:"description,omitempty"`
+	AcceptanceCriteria string              `yaml:"acceptance_criteria,omitempty" json:"acceptance_criteria,omitempty"`
+	StatusChanged      string              `yaml:"status_changed,omitempty" json:"status_changed,omitempty"`
+	Comments           []CommentFixture    `yaml:"comments,omitempty" json:"comments,omitempty"`
+	Attachments        []AttachmentFixture `yaml:"attachments,omitempty" json:"attachments,omitempty"`
 	// Links are returned verbatim as declared. Jira stores issue links as a pair
 	// of directed edges and the real client synthesises the reverse ("is blocked
 	// by") when reading; the fake does not, so a fixture that wants both
 	// directions must declare both.
 	Links    []LinkFixture `yaml:"links,omitempty" json:"links,omitempty"`
 	Subtasks []string      `yaml:"subtasks,omitempty" json:"subtasks,omitempty"`
+}
+
+type AttachmentFixture struct {
+	ID       string `yaml:"id" json:"id"`
+	Filename string `yaml:"filename" json:"filename"`
+	MimeType string `yaml:"mime_type,omitempty" json:"mime_type,omitempty"`
+	Size     int64  `yaml:"size,omitempty" json:"size,omitempty"`
+	Created  string `yaml:"created,omitempty" json:"created,omitempty"`
+	Author   string `yaml:"author,omitempty" json:"author,omitempty"`
+	Content  string `yaml:"content,omitempty" json:"content,omitempty"`
 }
 
 type CommentFixture struct {
