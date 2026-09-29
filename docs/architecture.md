@@ -43,7 +43,7 @@ tira/
 │   ├── tui/
 │   │   ├── spinner.go         # Generic RunWithSpinner[T] for pre-TUI blocking ops
 │   │   ├── styles.go          # Color constants, shared lipgloss styles, helper funcs
-│   │   ├── helpers.go         # FixedWidth, Clamp, SplitPanes, OverlaySize, etc.
+│   │   ├── helpers.go         # FixedWidth, Clamp, Frame, SplitView, OverlaySize, etc.
 │   │   ├── picker.go          # PickerModel: reusable debounced search picker
 │   │   └── help.go            # HelpModel: scrollable keybinding overlay
 │   ├── display/
@@ -217,7 +217,7 @@ kanbanModel: stateBoard → stateLoading (enter) → stateDetail (esc) → state
 2. **Spinner overlay**: `spinner.Model` ticks during loading states.
 3. **Viewport scrolling**: Detail pane uses `viewport.Model` for scrollable content.
 4. **Text input**: Filter bar uses `textinput.Model`.
-5. **Split pane layout**: `tui.SplitPanes()` renders list + detail side-by-side.
+5. **Split pane layout**: `tui.SplitView()` renders the list and detail panes side-by-side, each in its own rounded `tui.Frame` — the detail frame is titled `Details`.
 
 ### Generic Spinner
 
@@ -320,7 +320,7 @@ See [Configuration](configuration.md) for details.
 |------|---------|
 | `spinner.go` | `RunWithSpinner[T]` — generic async spinner for any blocking operation |
 | `styles.go` | Color constants (`ColorRed`, `ColorBlue`, etc.), shared styles (`DimStyle`, `BoldBlue`), `IssueTypeColor()`, `EpicColor()` |
-| `helpers.go` | `FixedWidth`, `DisplayWidth`, `SanitizeRow`, `FitInput`, `Clamp`, `SplitPanes`, `ListPaneWidth`, `DetailPaneWidth`, `RenderPickerModal`, `ContainsCI` |
+| `helpers.go` | `FixedWidth`, `DisplayWidth`, `SanitizeRow`, `FitInput`, `Clamp`, `Frame`, `SplitView`, `ListPaneWidth`, `DetailPaneWidth`, `RenderPickerModal`, `ContainsCI` |
 | `picker.go` | `PickerModel` — reusable search picker; debounced server search or local in-memory filtering |
 | `option_picker.go` | `OptionPickerModel` — static list picker without a text input |
 | `help.go` | `HelpModel` — scrollable keybinding overlay |
@@ -361,7 +361,7 @@ spinner.Spinner = spinner.Dot
 
 ### TUI Helpers
 
-Use `tui.FixedWidth`, `tui.Clamp`, `tui.SplitPanes` and other helpers from `internal/tui/helpers.go` instead of reimplementing:
+Use `tui.FixedWidth`, `tui.Clamp`, `tui.SplitView` and other helpers from `internal/tui/helpers.go` instead of reimplementing:
 
 ```go
 // Good

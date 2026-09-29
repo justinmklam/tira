@@ -1,10 +1,223 @@
 package app
 
 import (
+	"fmt"
+	"strings"
 	"testing"
+	"unicode"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/justinmklam/tira/internal/models"
+	"github.com/justinmklam/tira/internal/tui"
 )
+
+// newTestEditModel builds a blank create form of the given size.
+func newTestEditModel(t *testing.T, w, h int) *editModel {
+	t.Helper()
+	valid := &models.ValidValues{
+		IssueTypes: []string{"Bug", "Story", "Task"},
+		Priorities: []string{"Low", "Medium", "High"},
+	}
+	return newEditModel(&models.Issue{}, valid, w, h)
+}
+
+// editFormLines returns the form body rows after stripping View's single
+// trailing newline.
+func editFormLines(m *editModel) []string {
+	return strings.Split(strings.TrimSuffix(m.View().Content, "\n"), "\n")
+}
+
+func TestEditFormViewLayout(t *testing.T) {
+	for _, size := range []struct{ w, h int }{{100, 30}, {60, 20}, {56, 34}} {
+		t.Run(fmt.Sprintf("%dx%d", size.w, size.h), func(t *testing.T) {
+			m := newTestEditModel(t, size.w, size.h)
+			lines := editFormLines(m)
+			// Fixed rows are the four section frames' borders and title padding
+			// (4x3), the blank row and hint row after the last section = 20.
+			// setSize's overhead constant is the exact fixed cost, not slack.
+			if got, want := len(lines), 20+2*m.taHeight; got != want {
+				t.Errorf("form rendered %d rows, want %d", got, want)
+			}
+			for i, line := range lines {
+				if w := tui.DisplayWidth(line); w > size.w {
+					t.Errorf("row %d width %d exceeds form width %d: %q", i, w, size.w, line)
+				}
+			}
+		})
+	}
+}
+
+func TestEditFormHasNoTextareaPromptBars(t *testing.T) {
+	m := newTestEditModel(t, 100, 30)
+	plain := ansi.Strip(m.View().Content)
+	for _, bar := range []string{"┃", "▌"} {
+		if strings.Contains(plain, bar) {
+			t.Errorf("form still renders the textarea prompt bar %q", bar)
+		}
+	}
+}
+
+func TestEditFormLabelsAreStatic(t *testing.T) {
+	populated := map[int]string{
+		efType:     "Bug",
+		efPriority: "High",
+		efAssignee: "Ada Lovelace",
+	}
+
+	for _, values := range []bool{false, true} {
+		m := newTestEditModel(t, 100, 30)
+		if values {
+			for i, v := range populated {
+				m.inputs[i].SetValue(v)
+			}
+		}
+		for i := 0; i < efInputCount; i++ {
+			m.focused = i
+			focused := m.fieldLabel(i)
+			m.focused = (i + 1) % efInputCount
+			unfocused := m.fieldLabel(i)
+			if focused != unfocused {
+				t.Errorf("populated=%v: fieldLabel(%d) depends on focus: %q vs %q",
+					values, i, focused, unfocused)
+			}
+			if got := tui.DisplayWidth(focused); got != emLabelW {
+				t.Errorf("populated=%v: fieldLabel(%d) width = %d, want %d: %q",
+					values, i, got, emLabelW, ansi.Strip(focused))
+			}
+		}
+	}
+}
+
+// formSectionBorderLine returns the frame-border row carrying the named section
+// title in the current render.
+func formSectionBorderLine(t *testing.T, m *editModel, title string) string {
+	t.Helper()
+	for _, line := range editFormLines(m) {
+		plain := ansi.Strip(line)
+		if strings.Contains(plain, "╭─ "+title+" ") && strings.Contains(plain, "─╮") {
+			return line
+		}
+	}
+	t.Fatalf("section %q has no frame-border row", title)
+	return ""
+}
+
+func TestEditFormSectionTitlesAreStatic(t *testing.T) {
+	titles := []string{"Summary", "Details", "Description", "Acceptance Criteria"}
+
+	m := newTestEditModel(t, 100, 30)
+	plain := ansi.Strip(m.View().Content)
+	for _, title := range titles {
+		if got := strings.Count(plain, title); got != 1 {
+			t.Errorf("section title %q appears %d times in the form, want 1", title, got)
+		}
+	}
+
+	before := make(map[string]string, len(titles))
+	for _, title := range titles {
+		before[title] = formSectionBorderLine(t, m, title)
+	}
+
+	for _, focus := range []int{efDescription, efAccCriteria} {
+		m.focused = focus
+		m.focusFocused()
+		for _, title := range titles {
+			if got := formSectionBorderLine(t, m, title); got != before[title] {
+				t.Errorf("focus %d changed the %q border: %q -> %q", focus, title, before[title], got)
+			}
+		}
+	}
+}
+
+func TestEditFormFitsHeightBudget(t *testing.T) {
+	for _, size := range []struct{ w, h int }{{120, 40}, {100, 30}, {80, 30}} {
+		m := newTestEditModel(t, size.w, size.h)
+		if got := len(editFormLines(m)); got > size.h {
+			t.Errorf("%dx%d: form rendered %d rows, budget %d", size.w, size.h, got, size.h)
+		}
+	}
+}
+
+func TestEditFormLabelsMeasureLabelWidth(t *testing.T) {
+	populated := map[int]string{
+		efType:     "Bug",
+		efPriority: "High",
+		efAssignee: "Ada Lovelace",
+	}
+
+	for _, values := range []bool{false, true} {
+		m := newTestEditModel(t, 100, 30)
+		if values {
+			for i, v := range populated {
+				m.inputs[i].SetValue(v)
+			}
+		}
+		for i := 0; i < efInputCount; i++ {
+			for _, focused := range []bool{false, true} {
+				if focused {
+					m.focused = i
+				} else {
+					m.focused = (i + 1) % efInputCount
+				}
+				if got := tui.DisplayWidth(m.fieldLabel(i)); got != emLabelW {
+					t.Errorf("populated=%v focused=%v: fieldLabel(%d) width = %d, want %d: %q",
+						values, focused, i, got, emLabelW, ansi.Strip(m.fieldLabel(i)))
+				}
+			}
+		}
+	}
+}
+
+func TestEditFormBorderTitle(t *testing.T) {
+	m := boardModel{
+		activeView: viewEdit,
+		editKey:    "DEMO-1\n\x1b[31mx",
+		editIssue:  &models.Issue{Key: "DEMO-1", Summary: "evil\nsummary \x1b[31mred"},
+		editForm:   newEditModel(&models.Issue{}, &models.ValidValues{}, 56, 36),
+	}
+	out := m.viewEditForm(120, 40)
+	lines := strings.Split(out, "\n")
+
+	if len(lines) != 40 {
+		t.Fatalf("modal rendered %d lines, want 40 — a newline escaped the title", len(lines))
+	}
+
+	topIdx := -1
+	for i, line := range lines {
+		if strings.Contains(ansi.Strip(line), "╭─ Edit DEMO-1") {
+			topIdx = i
+			break
+		}
+	}
+	if topIdx < 0 {
+		t.Fatal("modal top border with the issue key not found")
+	}
+
+	top := ansi.Strip(lines[topIdx])
+	if !strings.Contains(top, "x") {
+		t.Errorf("top border lost the title suffix: %q", top)
+	}
+	for _, r := range top {
+		if unicode.IsControl(r) {
+			t.Errorf("control rune %U survived in the top border: %q", r, top)
+		}
+	}
+
+	// The title is drawn in the modal's own frame, so the first body row is the
+	// frame's title padding row and the Summary border sits below it.
+	if pad := ansi.Strip(lines[topIdx+1]); strings.TrimSpace(strings.Trim(strings.TrimSpace(pad), "│")) != "" {
+		t.Errorf("row under the top border is not blank padding: %q", pad)
+	}
+	if second := ansi.Strip(lines[topIdx+2]); !strings.Contains(second, "╭─ Summary") {
+		t.Errorf("line after the title padding is not the Summary frame border: %q", second)
+	}
+
+	// The top border measures exactly the modal width.
+	overlayW, _ := tui.OverlaySize(120, 40)
+	if got, want := tui.DisplayWidth(strings.TrimSpace(lines[topIdx])), overlayW-2; got != want {
+		t.Errorf("top border width = %d, want %d", got, want)
+	}
+}
 
 func TestToIssueFields_AllFields(t *testing.T) {
 	state := editFormState{

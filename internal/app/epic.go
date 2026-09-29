@@ -385,10 +385,11 @@ func (m *epicModel) selectionCommand() tea.Cmd {
 }
 
 func (m epicModel) viewHeight() int {
-	if m.height < 5 {
+	if m.height < 7 {
 		return 1
 	}
-	return m.height - 4
+	// Chrome: top pad + tab strip + the frame's two border rows + column header + footer.
+	return m.height - 6
 }
 
 func (m *epicModel) updateSelection(next int) tea.Cmd {

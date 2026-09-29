@@ -21,7 +21,12 @@ type commentInputModel struct {
 func newCommentInputModel(width, height int) *commentInputModel {
 	ta := textarea.New()
 	ta.ShowLineNumbers = false
-	ta.SetWidth(max(width-4, 10))
+	// Prompt must be cleared before SetWidth: the textarea memoises promptWidth
+	// at SetWidth time, so the default "┃ " prompt would otherwise leave a
+	// two-cell gutter behind on every line. View then indents each rendered line
+	// by one cell, so the block measures exactly `width`.
+	ta.Prompt = ""
+	ta.SetWidth(max(width-1, 10))
 	taH := height - 6
 	if taH < 4 {
 		taH = 4
@@ -37,7 +42,7 @@ func newCommentInputModel(width, height int) *commentInputModel {
 func (m *commentInputModel) setSize(w, h int) {
 	m.width = w
 	m.height = h
-	m.ta.SetWidth(max(w-4, 10))
+	m.ta.SetWidth(max(w-1, 10))
 	taH := h - 6
 	if taH < 4 {
 		taH = 4
@@ -89,7 +94,11 @@ func (m *commentInputModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *commentInputModel) View() tea.View {
 	var lines []string
-	lines = append(lines, m.ta.View())
+	// The prompt is cleared, so View does not reserve its gutter; indent each row
+	// by one cell so the block measures exactly m.width, matching the summary row.
+	for _, line := range strings.Split(m.ta.View(), "\n") {
+		lines = append(lines, " "+line)
+	}
 
 	var hint string
 	if m.confirmAbort {

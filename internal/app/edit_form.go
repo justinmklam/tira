@@ -8,7 +8,6 @@ import (
 	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 	"github.com/justinmklam/tira/internal/models"
 	"github.com/justinmklam/tira/internal/tui"
 )
@@ -53,6 +52,8 @@ type editModel struct {
 
 	width     int
 	height    int
+	secW      int // outer width of each nested section frame
+	secInner  int // content width of each nested section frame (secW-2)
 	taHeight  int
 	completed bool
 	aborted   bool
@@ -77,6 +78,10 @@ func newEditModel(issue *models.Issue, valid *models.ValidValues, width, height 
 		ti.Prompt = ""
 		ti.SetWidth(emInputW)
 		ti.Placeholder = placeholders[i]
+		styles := ti.Styles()
+		styles.Focused.Placeholder = tui.MutedStyle.Italic(true)
+		styles.Blurred.Placeholder = tui.MutedStyle.Italic(true)
+		ti.SetStyles(styles)
 		m.inputs[i] = ti
 	}
 
@@ -92,12 +97,27 @@ func newEditModel(issue *models.Issue, valid *models.ValidValues, width, height 
 	m.inputs[efLabels].SetValue(strings.Join(issue.Labels, ", "))
 
 	m.descTA = textarea.New()
-	m.descTA.SetValue(issue.Description)
+	// Prompt must be cleared before setSize: the textarea memoises promptWidth
+	// at SetWidth time, so the default "┃ " would otherwise leave a two-cell
+	// inset behind on every line.
+	m.descTA.Prompt = ""
+	m.descTA.Placeholder = "Write a description…"
 	m.descTA.ShowLineNumbers = false
+	m.descTA.SetValue(issue.Description)
+	descStyles := m.descTA.Styles()
+	descStyles.Focused.Placeholder = tui.MutedStyle.Italic(true)
+	descStyles.Blurred.Placeholder = tui.MutedStyle.Italic(true)
+	m.descTA.SetStyles(descStyles)
 
 	m.acTA = textarea.New()
-	m.acTA.SetValue(issue.AcceptanceCriteria)
+	m.acTA.Prompt = ""
+	m.acTA.Placeholder = "Add acceptance criteria…"
 	m.acTA.ShowLineNumbers = false
+	m.acTA.SetValue(issue.AcceptanceCriteria)
+	acStyles := m.acTA.Styles()
+	acStyles.Focused.Placeholder = tui.MutedStyle.Italic(true)
+	acStyles.Blurred.Placeholder = tui.MutedStyle.Italic(true)
+	m.acTA.SetStyles(acStyles)
 
 	m.initialState = m.currentState()
 
@@ -110,23 +130,34 @@ func (m *editModel) setSize(w, h int) {
 	m.width = w
 	m.height = h
 
-	// Summary gets the full available width; other inputs use the fixed width.
-	summaryW := w - emLabelW - 2
-	if summaryW < 20 {
-		summaryW = 20
-	}
-	m.inputs[efSummary].SetWidth(summaryW)
+	// The form body sits inside the modal's frame, indented by one cell on each
+	// side. secW is the nested section frame's outer width and secInner its
+	// content width; both setSize and View derive from these two values so the
+	// layout arithmetic lives in one place.
+	m.secW = max(w-2, 20)
+	m.secInner = m.secW - 2
+
+	// Summary gets the section's full content width. textinput.View reserves one
+	// cell for the cursor beyond SetWidth, so it is sized one short of its slot;
+	// otherwise the cursor would spill past the section frame's right border.
+	m.inputs[efSummary].SetWidth(m.secInner - 2)
 	for i := 1; i < efInputCount; i++ {
 		m.inputs[i].SetWidth(emInputW)
 	}
 
-	taW := max(w-4, 10)
+	// The textarea's SetWidth counts the prompt inside its total width. With the
+	// prompt cleared, secInner-1 leaves exactly secInner cells once View indents
+	// the block by one cell, matching the field rows and the section titles.
+	taW := max(m.secInner-1, 10)
 	m.descTA.SetWidth(taW)
 	m.acTA.SetWidth(taW)
 
-	// Compute textarea height from available space.
-	// Fixed rows: 6 inputs + 2 section labels + 2 blank separators + 1 hint + 1 blank before hint ≈ 13
-	const overhead = 13
+	// Compute textarea height from available space. The form renders
+	// 20 + 2*taHeight rows: two border rows and one title padding row per section
+	// frame (4 sections = 12), one Summary value row, five Details value rows, and
+	// one blank plus one hint row after the last section. 20 is the exact fixed
+	// cost, not slack; TestEditFormViewLayout asserts the formula.
+	const overhead = 20
 	taH := (h - overhead) / 2
 	if taH < 4 {
 		taH = 4
@@ -291,33 +322,64 @@ func (m *editModel) setAssignee(displayName, accountID string) {
 	m.origAssigneeID = accountID
 }
 
+// fieldLabel renders one label cell as plain muted text. Focus is shown only by
+// the input's own cursor, so the label is independent of m.focused and of the
+// field's value. The result always measures exactly emLabelW cells, so the value
+// column stays aligned.
+func (m *editModel) fieldLabel(i int) string {
+	return tui.MutedStyle.Render(tui.FixedWidth(emFieldLabels[i], emLabelW))
+}
+
+// section renders one nested section frame with its title in the top border and
+// indents every row by one cell so the section sits inside the modal's frame.
+// Frame itself supplies the blank padding row under the title.
+func (m *editModel) section(title, body string) []string {
+	rows := strings.Split(tui.Frame(title, body, m.secW, 0, tui.ColorSubtle, tui.ColorForegroundBright), "\n")
+	for i, row := range rows {
+		rows[i] = " " + row
+	}
+	return rows
+}
+
+// indent prepends one cell to every line of a rendered block.
+func indent(block string) string {
+	lines := strings.Split(block, "\n")
+	for i, line := range lines {
+		lines[i] = " " + line
+	}
+	return strings.Join(lines, "\n")
+}
+
 func (m *editModel) View() tea.View {
 	var lines []string
 
-	for i := 0; i < efInputCount; i++ {
-		label := tui.MutedStyle.Render(tui.FixedWidth(emFieldLabels[i], emLabelW))
-		lines = append(lines, " "+label+" "+m.inputs[i].View())
+	lines = append(lines, m.section("Summary", " "+m.inputs[efSummary].View())...)
+
+	details := make([]string, 0, efLabels-efType+1)
+	for i := efType; i <= efLabels; i++ {
+		details = append(details, " "+m.fieldLabel(i)+" "+m.inputs[i].View())
 	}
+	lines = append(lines, m.section("Details", strings.Join(details, "\n"))...)
 
-	lines = append(lines, "")
-	lines = append(lines, " "+tui.MutedStyle.Render("Description"))
-	lines = append(lines, strings.Split(m.descTA.View(), "\n")...)
-
-	lines = append(lines, "")
-	lines = append(lines, " "+tui.MutedStyle.Render("Acceptance Criteria"))
-	lines = append(lines, strings.Split(m.acTA.View(), "\n")...)
+	lines = append(lines, m.section("Description", indent(m.descTA.View()))...)
+	lines = append(lines, m.section("Acceptance Criteria", indent(m.acTA.View()))...)
 
 	if m.validErr != "" {
 		lines = append(lines, "")
-		lines = append(lines, lipgloss.NewStyle().Foreground(tui.ColorError).Render("  "+m.validErr))
+		lines = append(lines, " "+tui.Badge("✗ "+m.validErr, tui.ColorOnChrome, tui.ColorError))
 	}
 
 	lines = append(lines, "")
 	if m.confirmAbort {
-		msg := lipgloss.NewStyle().Foreground(tui.ColorError).Bold(true).Render("  Discard unsaved changes? (y/n)")
-		lines = append(lines, msg)
+		lines = append(lines, " "+tui.Badge("! Discard unsaved changes? (y/n)", tui.ColorOnChrome, tui.ColorWarning))
 	} else {
-		lines = append(lines, tui.MutedStyle.Render("  enter: open picker / next  tab: next  shift+tab: back  ctrl+s: save  esc: cancel"))
+		lines = append(lines, " "+tui.FooterHints([]string{
+			"enter open picker / next",
+			"tab next",
+			"shift+tab back",
+			"ctrl+s save",
+			"esc cancel",
+		}, m.width))
 	}
 
 	return tea.NewView(strings.Join(lines, "\n") + "\n")

@@ -126,6 +126,108 @@ Before starting `tea.NewProgram`, `runBoardTUI` calls `glamour.NewTermRenderer(g
 
 ---
 
+## Visual Hierarchy and Semantic Colour
+
+All board views share a five-tier style scale, defined once in `internal/tui`:
+
+| Tier | Treatment | Token / helper |
+|------|-----------|----------------|
+| T0 chrome | full-width padded row, no fill | `TabStrip`, `TitleBar` |
+| T1 title | bold, brightest foreground | `ForegroundBright` |
+| T2 section | bold caller-coloured label | `SectionHeader` |
+| T3 body | normal foreground; the backlog summary is brightest | `Foreground` / `ForegroundBright` |
+| T4 meta | dim: counts, dates, hints, placeholders | `Muted` / `FooterHints`, `EmptyState` |
+
+Each board view opens with one blank row (vertical breathing room), then the tab
+strip. There is no longer a separate divider rule: the topmost frame supplies it —
+the untitled list frame's top border in the backlog and epics, and the kanban
+columns' own top border. `TabDivider` was removed (R2).
+
+**Only the cursor row/card carries a background fill** (`Surface`, via
+`SurfaceBg`). Chrome bands, sprint headers, and glamour headings are flat. Type
+badges are the one exception: they keep their own `IssueTypeColor` fill, with
+`OnChrome` as the ink. That ink is the theme's assumed terminal background,
+which is what keeps a filled pill legible in every theme.
+
+`SetTheme` clears the background from glamour's `Heading` and `H1`–`H6` (all
+three theme configs fill `H1`; glamour's `H1`–`H6` win over `Heading`), so the
+detail pane stays flat too.
+
+### Chrome primitives
+
+Every primitive returns a single line with no newline. Where a width is listed,
+the result measures exactly that many display cells.
+
+| Helper | Guarantee |
+|--------|-----------|
+| `TitleBar(text, right, width)` | full-width row; the right detail is muted and dropped when it cannot fit |
+| `ModalTitle(text, innerW)` | in-modal title, `innerW` cells |
+| `TabStrip(active, right, width)` | full-width row with the active tab bracketed and accented; when tabs and detail cannot both fit the detail is dropped, never a tab |
+| `TabStripStyled(active, right, width)` | as `TabStrip` for a pre-sanitised, pre-styled detail (the backlog's coloured transient badges) |
+| `SectionHeader(text, fg, width)` | bold caller-coloured label; truncates with `…` rather than wrapping |
+| `SectionHeaderRegular(text, fg, width)` | as above without the bold weight (inactive kanban columns) |
+| `EmptyState(text, width)` | centred, dim, italic placeholder |
+| `Badge(text, fg, bg)` | one-line pill with one space of padding each side |
+| `FooterHints(hints, width)` | bold keys, muted descriptions; drops whole hints from the tail and appends `…` |
+
+### Frame primitives
+
+`Frame` and `SplitView` compose the two-pane split views. Unlike the chrome
+primitives they are blocks, not single lines.
+
+| Helper | Guarantee |
+|--------|-----------|
+| `Frame(title, body, outerW, h, bc, tc)` | exactly `outerW` columns × `h` rows (border included); a non-empty title is embedded in the top border and the body is preceded by one blank padding row; `h <= 0` sizes to the body (padding included); a body line is clamped with `FixedWidth(line, outerW-2)` so an over-wide line truncates with `…` rather than wrapping; a padded row is never the empty string, which keeps the snapshot empty-line check honest; `outerW < 4` returns `""` |
+| `SplitView(listBody, detailBody, totalW, h)` | an untitled list frame and a `Details` frame joined by a one-column gutter; exactly `totalW` columns and `h` rows |
+
+`ListPaneWidth` returns the list pane's **content** width. `DetailPaneWidth`
+already subtracts both frames' borders (4) and the gutter (1), so the two framed
+blocks plus the gutter sum to `totalW`. The list pane is deliberately untitled
+(R3): the tab strip already names the view, so a title would repeat it on the
+adjacent row.
+
+Frame geometry, stated once so a height change is a one-line change:
+
+- `viewHeight()` is `height-6` (top pad, tab strip, the frame's two border rows,
+  column header, footer).
+- Pane outer height `paneH` is `viewHeight()+3`, so the top pad, tab strip, pane,
+  and footer sum to exactly `height`.
+- Each pane body is `paneH-2` rows: the column header plus `viewHeight()` issue
+  rows for the untitled list, and the sidebar sliced to `viewHeight()` rows for
+  the titled detail pane, whose first body row is `Frame`'s title padding.
+- Kanban has no split frame, so `availableIssueLines()` is `height-7` (top pad,
+  tab strip, footer, and the per-column border-top, title, separator, and
+  border-bottom).
+
+The sidebar is now rendered at the narrower `DetailPaneWidth`, so it reflows
+taller and scrolls (`updateSidebar`/`WindowSizeMsg` pick the new width up from the
+function).
+
+### Semantic colour helpers
+
+`StatusColor`/`StatusGlyph`, `PriorityColor`/`PriorityGlyph`, `TypeGlyph`,
+`PersonColor`, and `Initials` classify a Jira status, priority, or type name.
+Status and priority names are lower-cased, apostrophes stripped, and matched on
+whole words against `statusKeywords`/`priorityKeywords`, so a misclassification is
+fixed by adding a word rather than editing control flow. An unclassified status
+falls back to the muted colour with the neutral `·` glyph, which is uninformative
+rather than misleading.
+
+### Glyph language
+
+Each axis is distinguishable without colour:
+
+| Axis | Glyphs |
+|------|--------|
+| Status | `○` todo · `◐` in progress · `●` done · `⊘` blocked · `·` unclassified |
+| Selection | blank · `✓` multi-selected · `✂` cut |
+| Priority | `⇈` urgent · `↑` high · `·` medium · `↓` low · blank unclassified |
+| Type (compact mode) | `B` bug · `S` story · `T` task · `E` epic · `·` other |
+
+Every glyph is one display cell.
+
+---
+
 ## Backlog View (blModel)
 
 **Files:** `internal/app/backlog.go`, `internal/app/backlog_view.go`
@@ -200,12 +302,26 @@ On `blMoveMultiDoneMsg`, the model performs a **local optimistic update** — re
 
 ### Column Layout
 
-Fixed column widths:
-```
-KEY(10)  SUMMARY(dynamic)  EPIC(16)  TYPE(8)  SP(5)  ASSIGNEE(14)
-```
+Backlog geometry comes from `blLayoutFor(listPaneW)`, the single source of truth
+for both `blColumnHeader` and `renderIssueRow`. Columns are bought in value order
+(type, priority, story points, assignee, then epic) and only while the summary
+keeps its floor, so a narrow pane drops whole columns instead of squeezing the
+summary:
 
-The summary column takes all remaining space. All columns are rendered with `tui.FixedWidth` (pads or truncates to exact display-cell count with `…` for overflow, so CJK and emoji cannot overflow a column).
+| listPaneW | summary | visible columns |
+|-----------|---------|-----------------|
+| < 52 | 21 at 44 | compact: key, summary, type glyph, initials, priority |
+| 52 | 24 | TYPE, P |
+| 60 | 26 | TYPE, P, SP |
+| 66 | 28 | TYPE, P, SP, OWN(3) |
+| 77 | 28 | TYPE, P, SP, OWN(14) |
+| 99 | 36 | EPIC, TYPE, P, SP, OWN(14) |
+| 110 | 47 | EPIC, TYPE, P, SP, OWN(14) |
+
+`TestBlLayoutGolden` pins the table and `TestBlRowFitsPane` asserts a rendered
+header and issue row measure exactly `listPaneW`. All columns are rendered with
+`tui.FixedWidth` (pads or truncates to an exact display-cell count with `…`, so
+CJK and emoji cannot overflow a column).
 
 ### Epic Coloring
 
@@ -391,6 +507,13 @@ stateDetail ──L──→ stateLinkPicker ──enter/esc──→ stateDetai
 
 Each column maintains its own cursor position (`rowIdxs` slice), preserved across refreshes (clamped to new column size).
 
+**Geometry.** `lipgloss.Style.Width(n)` sets the *total* block width, border
+included, so a column is `Width(colWidth)` with a `colWidth-2` body and no style
+padding; content is inset by one cell manually. The cursor card is a
+`Surface` fill rendered at the full body width, so the highlight runs border to
+border. Sizing a bordered style with a content width instead of the full block
+width silently wraps the title rule and the card.
+
 ### Detail View
 
 On `enter`, `fetchIssueCmd` is fired as a `tea.Cmd`. It:
@@ -417,14 +540,48 @@ When the user presses `e` or `c`, `kanbanModel` sets `m.result.editKey` or `m.re
 
 | # | Field | Widget | Notes |
 |---|-------|--------|-------|
-| 0 | Summary | textinput | Full overlay width |
+| 0 | Summary | textinput | Lives in the `Summary` section frame |
 | 1 | Type | textinput | Fixed width, suggestions from validValues.IssueTypes |
 | 2 | Priority | textinput | Fixed width, suggestions from validValues.Priorities |
 | 3 | Assignee | textinput | Fixed width, opens PickerModel on Enter |
 | 4 | Story Points | textinput | Fixed width |
 | 5 | Labels | textinput | Fixed width, comma-separated |
-| 6 | Description | textarea | Full width |
-| 7 | Acceptance Criteria | textarea | Full width |
+| 6 | Description | textarea | Full width; lives in the `Description` section frame |
+| 7 | Acceptance Criteria | textarea | Full width; lives in the `Acceptance Criteria` section frame |
+
+### Pane Style
+
+The form uses the same five-tier scale as the board:
+
+- The body is four nested `tui.Frame` sections — `Summary`, `Details`,
+  `Description`, `Acceptance Criteria` — each with a subtle border, a bright bold
+  title in its top border, and `Frame`'s blank title-padding row, indented one
+  cell inside the modal's own frame.
+  `setSize` derives `secW = w-2` (a section's outer width) and `secInner = secW-2`
+  (its content width) once, and both it and `View` size every slot off those two
+  values.
+- Field labels are static: every label renders the same muted text whatever the
+  focus or the field's value, and focus is shown only by the input's own cursor.
+  There is no per-field glyph or hue. Inside `Details` the label column holds the
+  field labels and column 16 the values; `fieldLabel(i)` always returns exactly
+  `emLabelW` (14) cells, so the value column stays aligned.
+- The `Description` and `Acceptance Criteria` sections each wrap a textarea in
+  their own frame.
+- The hint row is `FooterHints`; validation errors and the discard prompt are
+  `Badge` pills.
+- Every multiline textarea in the TUI — the edit form's two and the comment
+  modal's — deliberately has **no** `┃` prompt bar. `textarea.Prompt` must be set
+  to `""` **before** `SetWidth`, because the bubbles textarea memoises
+  `promptWidth` at `SetWidth` time. Each `View` then indents every rendered line
+  by one cell and `setSize` sizes the block one short of its slot (`secInner-1`
+  for the edit form, `w-1` for the comment modal), so it measures exactly the
+  content width it sits in.
+
+`setSize`'s `overhead = 20` is the exact fixed row cost — two border rows plus one
+title padding row per section frame (4 sections), one `Summary` value row, five
+`Details` rows, and the blank plus hint row after the last section. The form
+renders `20 + 2*taHeight` rows, with no reserved slack. A change that adds or
+removes a row must re-derive it — `TestEditFormViewLayout` asserts the count.
 
 ### Navigation
 
@@ -470,12 +627,19 @@ fetchCreateDataCmd(client, project) → createFetchedMsg
 
 **File:** `internal/app/comment_form.go`
 
-A simple `textarea.Model` wrapper:
+A simple `textarea.Model` wrapper rendered inside a `tui.Frame` whose top border
+carries `Add Comment · <key> · <summary>` (the title is sanitised at the call
+site); the issue summary is not repeated as a body row.
 
 | Key | Action |
 |-----|--------|
 | `Ctrl+S` | Submits if textarea is non-empty (sets `m.completed = true`) |
 | `Esc` | If textarea is non-empty: prompts y/n abort confirmation; if empty: sets `m.aborted = true` |
+
+The textarea is always focused and carries no `┃` prompt bar: `Prompt` is cleared
+before `SetWidth` and `View` indents each line by one cell, so the block measures
+exactly the width `setSize` was given. `Frame` supplies the blank row between the
+border title and the textarea's first row.
 
 After comment saves (`commentSaveDoneMsg`), `boardModel` refreshes the detail view if currently in the detail state for backlog or kanban (re-fetches the issue to show the new comment).
 

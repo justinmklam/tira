@@ -26,6 +26,23 @@ type Theme struct {
 	Subtle           color.Color
 	Surface          color.Color
 
+	// OnChrome is the ink painted on a coloured fill (type badges). It is the
+	// theme's assumed terminal background, which is what keeps a filled pill
+	// legible in every theme.
+	OnChrome color.Color
+
+	StatusTodo       color.Color
+	StatusInProgress color.Color
+	StatusDone       color.Color
+	StatusBlocked    color.Color
+
+	PriorityUrgent color.Color
+	PriorityHigh   color.Color
+	PriorityMedium color.Color
+	PriorityLow    color.Color
+
+	PersonPalette []color.Color
+
 	EpicPalette []color.Color
 }
 
@@ -35,19 +52,31 @@ var GlamourStyleConfig = styles.DarkStyleConfig
 
 var themes = map[string]Theme{
 	"default": {
-		Error:            lipgloss.Color("9"),
+		Error:            lipgloss.Color("203"),
 		Success:          lipgloss.Color("10"),
 		Warning:          lipgloss.Color("11"),
-		Accent:           lipgloss.Color("12"),
+		Accent:           lipgloss.Color("75"),
 		AccentStr:        "12",
 		Special:          lipgloss.Color("13"),
 		Caution:          lipgloss.Color("208"),
 		Highlight:        lipgloss.Color("15"),
 		Foreground:       lipgloss.Color("252"),
 		ForegroundBright: lipgloss.Color("255"),
-		Muted:            lipgloss.Color("244"),
-		Subtle:           lipgloss.Color("240"),
+		Muted:            lipgloss.Color("248"),
+		Subtle:           lipgloss.Color("242"),
 		Surface:          lipgloss.Color("237"),
+		OnChrome:         lipgloss.Color("235"),
+		StatusTodo:       lipgloss.Color("245"),
+		StatusInProgress: lipgloss.Color("214"),
+		StatusDone:       lipgloss.Color("114"),
+		StatusBlocked:    lipgloss.Color("203"),
+		PriorityUrgent:   lipgloss.Color("203"),
+		PriorityHigh:     lipgloss.Color("208"),
+		PriorityMedium:   lipgloss.Color("214"),
+		PriorityLow:      lipgloss.Color("75"),
+		PersonPalette: []color.Color{
+			lipgloss.Color("39"), lipgloss.Color("141"), lipgloss.Color("43"), lipgloss.Color("203"), lipgloss.Color("45"), lipgloss.Color("220"), lipgloss.Color("214"), lipgloss.Color("208"),
+		},
 		EpicPalette: []color.Color{
 			lipgloss.Color("39"), lipgloss.Color("208"), lipgloss.Color("141"), lipgloss.Color("43"), lipgloss.Color("214"), lipgloss.Color("99"), lipgloss.Color("203"), lipgloss.Color("118"), lipgloss.Color("45"), lipgloss.Color("220"),
 		},
@@ -63,9 +92,22 @@ var themes = map[string]Theme{
 		Highlight:        lipgloss.Color("#a9b1d6"), // white
 		Foreground:       lipgloss.Color("#c0caf5"), // foreground
 		ForegroundBright: lipgloss.Color("#c0caf5"), // bright white
-		Muted:            lipgloss.Color("#414868"), // bright black
-		Subtle:           lipgloss.Color("#283457"), // comment
-		Surface:          lipgloss.Color("#283457"), // selection
+		Muted:            lipgloss.Color("#9aa5ce"), // comment
+		Subtle:           lipgloss.Color("#656d92"), // border
+		Surface:          lipgloss.Color("#364a82"), // selection
+		OnChrome:         lipgloss.Color("#1a1b26"),
+		StatusTodo:       lipgloss.Color("#737aa2"),
+		StatusInProgress: lipgloss.Color("#e0af68"),
+		StatusDone:       lipgloss.Color("#9ece6a"),
+		StatusBlocked:    lipgloss.Color("#f7768e"),
+		PriorityUrgent:   lipgloss.Color("#f7768e"),
+		PriorityHigh:     lipgloss.Color("#ff9e64"),
+		PriorityMedium:   lipgloss.Color("#e0af68"),
+		PriorityLow:      lipgloss.Color("#7dcfff"),
+		PersonPalette: []color.Color{
+			lipgloss.Color("#7aa2f7"), lipgloss.Color("#9ece6a"), lipgloss.Color("#7dcfff"), lipgloss.Color("#bb9af7"),
+			lipgloss.Color("#f7768e"), lipgloss.Color("#73daca"), lipgloss.Color("#2ac3de"), lipgloss.Color("#ff9e64"),
+		},
 		EpicPalette: []color.Color{
 			lipgloss.Color("#7aa2f7"), lipgloss.Color("#ff9e64"), lipgloss.Color("#9ece6a"), lipgloss.Color("#7dcfff"), lipgloss.Color("#e0af68"),
 			lipgloss.Color("#bb9af7"), lipgloss.Color("#f7768e"), lipgloss.Color("#73daca"), lipgloss.Color("#2ac3de"), lipgloss.Color("#ff007c"),
@@ -82,9 +124,22 @@ var themes = map[string]Theme{
 		Highlight:        lipgloss.Color("#bac2de"), // subtext1
 		Foreground:       lipgloss.Color("#cdd6f4"), // text
 		ForegroundBright: lipgloss.Color("#cdd6f4"), // text
-		Muted:            lipgloss.Color("#6c7086"), // overlay0
-		Subtle:           lipgloss.Color("#585b70"), // surface2
-		Surface:          lipgloss.Color("#313244"), // surface0
+		Muted:            lipgloss.Color("#838ba7"), // overlay1
+		Subtle:           lipgloss.Color("#6c7086"), // overlay0
+		Surface:          lipgloss.Color("#45475a"), // surface1
+		OnChrome:         lipgloss.Color("#1e1e2e"),
+		StatusTodo:       lipgloss.Color("#7f849c"),
+		StatusInProgress: lipgloss.Color("#f9e2af"),
+		StatusDone:       lipgloss.Color("#a6e3a1"),
+		StatusBlocked:    lipgloss.Color("#f38ba8"),
+		PriorityUrgent:   lipgloss.Color("#f38ba8"),
+		PriorityHigh:     lipgloss.Color("#fab387"),
+		PriorityMedium:   lipgloss.Color("#f9e2af"),
+		PriorityLow:      lipgloss.Color("#89b4fa"),
+		PersonPalette: []color.Color{
+			lipgloss.Color("#89b4fa"), lipgloss.Color("#a6e3a1"), lipgloss.Color("#94e2d5"), lipgloss.Color("#f9e2af"),
+			lipgloss.Color("#cba6f7"), lipgloss.Color("#f38ba8"), lipgloss.Color("#74c7ec"), lipgloss.Color("#fab387"),
+		},
 		EpicPalette: []color.Color{
 			lipgloss.Color("#89b4fa"), lipgloss.Color("#fab387"), lipgloss.Color("#a6e3a1"), lipgloss.Color("#94e2d5"), lipgloss.Color("#f9e2af"),
 			lipgloss.Color("#cba6f7"), lipgloss.Color("#f38ba8"), lipgloss.Color("#f5c2e7"), lipgloss.Color("#74c7ec"), lipgloss.Color("#f5e0dc"),
@@ -121,24 +176,54 @@ func SetTheme(name string) error {
 	ColorSubtle = t.Subtle
 	ColorSurface = t.Surface
 	ColorSpinner = t.Accent
+	ColorOnChrome = t.OnChrome
+	ColorStatusTodo = t.StatusTodo
+	ColorStatusInProgress = t.StatusInProgress
+	ColorStatusDone = t.StatusDone
+	ColorStatusBlocked = t.StatusBlocked
+	ColorPriorityUrgent = t.PriorityUrgent
+	ColorPriorityHigh = t.PriorityHigh
+	ColorPriorityMedium = t.PriorityMedium
+	ColorPriorityLow = t.PriorityLow
 
 	if len(t.EpicPalette) > 0 {
 		epicPalette = t.EpicPalette
+	}
+	if len(t.PersonPalette) > 0 {
+		personPalette = t.PersonPalette
 	}
 
 	// Rebuild pre-built styles with new colors.
 	MutedStyle = lipgloss.NewStyle().Foreground(ColorMuted)
 	BoldAccent = lipgloss.NewStyle().Bold(true).Foreground(ColorAccent)
 	SurfaceBg = lipgloss.NewStyle().Background(ColorSurface)
+	OnChromeStyle = lipgloss.NewStyle().Foreground(ColorOnChrome)
 
 	if gs, ok := glamourStyles[name]; ok {
 		GlamourStyleConfig = gs
 	}
+	// Heading fills are removed from every theme: only the cursor row carries a
+	// background in the board TUI.
+	clearHeadingBackgrounds(&GlamourStyleConfig)
 
 	// Override glamour heading color to match the active theme's Accent.
 	GlamourStyleConfig.Heading.Color = &t.AccentStr
 
 	return nil
+}
+
+// clearHeadingBackgrounds strips the background fill from every glamour heading
+// style. Glamour's H1–H6 carry their own background and win over Heading, so all
+// seven must be cleared. It only reassigns pointer fields on the copy handed in,
+// never through the pointers, so the shared style configs are not mutated.
+func clearHeadingBackgrounds(sc *ansi.StyleConfig) {
+	sc.Heading.BackgroundColor = nil
+	sc.H1.BackgroundColor = nil
+	sc.H2.BackgroundColor = nil
+	sc.H3.BackgroundColor = nil
+	sc.H4.BackgroundColor = nil
+	sc.H5.BackgroundColor = nil
+	sc.H6.BackgroundColor = nil
 }
 
 // ThemeNames returns the sorted list of available theme names.

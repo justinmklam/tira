@@ -1,10 +1,14 @@
 package app
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/justinmklam/tira/internal/models"
+	"github.com/justinmklam/tira/internal/tui"
 )
 
 func TestBuildColumns_MapsStatusIDs(t *testing.T) {
@@ -233,4 +237,83 @@ func TestKanbanArrowKeys_AtBoundaries(t *testing.T) {
 			t.Errorf("rowIdxs[0] = %d, want %d", got.(kanbanModel).rowIdxs[0], last)
 		}
 	})
+}
+
+// TestKanbanColumnsUseStatusColours checks that the three fixture columns get
+// three distinct status colours and that each colour actually reaches the
+// rendered frame.
+func TestKanbanColumnsUseStatusColours(t *testing.T) {
+	m := kanbanArrowTestModel()
+	view := m.viewBoard()
+
+	seen := map[string]bool{}
+	for _, name := range []string{"To Do", "In Progress", "Done"} {
+		c := tui.StatusColor(name)
+		if c == nil {
+			t.Fatalf("StatusColor(%q) is nil", name)
+		}
+		key := fmt.Sprint(c)
+		if seen[key] {
+			t.Errorf("column %q shares a status colour with an earlier column", name)
+		}
+		seen[key] = true
+
+		// The SGR prefix the style introduces, without comparing a literal.
+		prefix := strings.SplitN(lipgloss.NewStyle().Foreground(c).Render("x"), "m", 2)[0]
+		if !strings.Contains(view, prefix) {
+			t.Errorf("rendered board does not contain the %q column colour %q", name, prefix)
+		}
+	}
+}
+
+// TestKanbanViewFitsHeight is the F11 regression test: the chrome tallied by
+// availableIssueLines must match the lines viewBoard actually renders, so the
+// footer cannot be pushed off-screen.
+func TestKanbanViewFitsHeight(t *testing.T) {
+	for _, width := range []int{80, 120, 200} {
+		for _, height := range []int{24, 40} {
+			t.Run(fmt.Sprintf("%dx%d", width, height), func(t *testing.T) {
+				m := kanbanArrowTestModel()
+				m.width = width
+				m.height = height
+
+				if got, want := m.availableIssueLines(), height-7; got != want {
+					t.Errorf("availableIssueLines() = %d, want %d", got, want)
+				}
+
+				view := m.viewBoard()
+				lines := strings.Split(view, "\n")
+				if len(lines) != height {
+					t.Errorf("view rendered %d lines, want %d", len(lines), height)
+				}
+				if got := strings.Count(view, "▶"); got != 1 {
+					t.Errorf("view has %d cursor markers, want exactly 1", got)
+				}
+
+				// R1: only the columns carry a frame. The columns share the row, so
+				// this counts one top-border glyph per column and none per card,
+				// which keeps the board flat and the card density intact.
+				if got := strings.Count(stripANSI(view), "╭"); got != len(m.columns) {
+					t.Errorf("board has %d top-border glyphs, want one per column (%d)", got, len(m.columns))
+				}
+
+				// A column title rule or cursor card wider than the column body
+				// wraps and adds a physical line; the height check above catches
+				// that, and this pins the per-column width budget.
+				colWidth := width / len(m.columns)
+				if colWidth < 24 {
+					colWidth = 24
+				}
+				for _, line := range lines {
+					plain := stripANSI(line)
+					if !strings.HasPrefix(plain, "╭") && !strings.HasPrefix(plain, "│") && !strings.HasPrefix(plain, "╰") {
+						continue
+					}
+					if got := tui.DisplayWidth(line); got > colWidth*len(m.columns) {
+						t.Errorf("column line width %d exceeds the board width %d: %q", got, colWidth*len(m.columns), line)
+					}
+				}
+			})
+		}
+	}
 }

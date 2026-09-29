@@ -5,7 +5,9 @@ import (
 	"math"
 	"strings"
 	"testing"
+	"unicode"
 
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -160,9 +162,15 @@ func TestListPaneWidth(t *testing.T) {
 
 func TestDetailPaneWidth(t *testing.T) {
 	w := DetailPaneWidth(120)
-	expected := 120 - ListPaneWidth(120) - 1
+	expected := 120 - (ListPaneWidth(120) + 2) - 1 - 2
 	if w != expected {
 		t.Errorf("DetailPaneWidth(120) = %d, want %d", w, expected)
+	}
+	if w != 49 {
+		t.Errorf("DetailPaneWidth(120) = %d, want 49", w)
+	}
+	if got := DetailPaneWidth(80); got != 31 {
+		t.Errorf("DetailPaneWidth(80) = %d, want 31", got)
 	}
 	// Small width should return at least 20
 	w = DetailPaneWidth(40)
@@ -171,19 +179,135 @@ func TestDetailPaneWidth(t *testing.T) {
 	}
 }
 
-func TestSplitPanes(t *testing.T) {
-	left := "A\nB"
-	right := "X\nY\nZ"
-	result := SplitPanes(left, right, 10, 3)
-	lines := strings.Split(result, "\n")
-	if len(lines) != 3 {
-		t.Errorf("expected 3 lines, got %d", len(lines))
+// TestFrame pins the exact outerW × h contract, the FixedWidth clamp, and the
+// no-control-runes guarantee every framed pane relies on.
+func TestFrame(t *testing.T) {
+	body := strings.Join([]string{"one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"}, "\n")
+	cases := []struct {
+		name   string
+		title  string
+		body   string
+		outerW int
+		h      int
+	}{
+		{"untitled/short", "", "one", 12, 4},
+		{"untitled/exact", "", body, 40, 5},
+		{"untitled/tall", "", body, 40, 12},
+		{"titled/short", "Details", body, 40, 4},
+		{"titled/exact", "Details", body, 40, 12},
+		{"titled/overlong", "A very long pane title that cannot fit", "x", 20, 5},
 	}
-	// Each line should contain the vertical bar separator.
-	for i, line := range lines {
-		if !strings.Contains(line, "│") {
-			t.Errorf("line %d missing separator: %q", i, line)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			out := Frame(tc.title, tc.body, tc.outerW, tc.h, ColorSubtle, ColorForegroundBright)
+			lines := strings.Split(out, "\n")
+			if len(lines) != tc.h {
+				t.Fatalf("Frame rendered %d rows, want %d:\n%s", len(lines), tc.h, out)
+			}
+			for i, line := range lines {
+				if w := DisplayWidth(line); w != tc.outerW {
+					t.Errorf("row %d width = %d, want %d: %q", i, w, tc.outerW, line)
+				}
+				for _, r := range ansi.Strip(line) {
+					if unicode.IsControl(r) {
+						t.Errorf("row %d: control rune %U survived: %q", i, r, line)
+					}
+				}
+			}
+		})
+	}
+
+	t.Run("titled frame pads under the title", func(t *testing.T) {
+		out := Frame("Details", "one\ntwo", 30, 0, ColorSubtle, ColorForegroundBright)
+		lines := strings.Split(out, "\n")
+		if len(lines) != 5 {
+			t.Fatalf("titled frame rendered %d rows, want 5"+"\n%s", len(lines), out)
 		}
+		if !strings.Contains(ansi.Strip(lines[0]), "Details") {
+			t.Errorf("top border lacks the title: %q", ansi.Strip(lines[0]))
+		}
+		if !blankInner(lines[1]) {
+			t.Errorf("row under the title is not blank padding: %q", ansi.Strip(lines[1]))
+		}
+		if !strings.Contains(ansi.Strip(lines[2]), "one") {
+			t.Errorf("body did not shift down by the padding row: %q", ansi.Strip(lines[2]))
+		}
+	})
+
+	t.Run("untitled frame has no padding row", func(t *testing.T) {
+		out := Frame("", "one\ntwo", 30, 0, ColorSubtle, ColorForegroundBright)
+		lines := strings.Split(out, "\n")
+		if len(lines) != 4 {
+			t.Fatalf("untitled frame rendered %d rows, want 4", len(lines))
+		}
+		if !strings.Contains(ansi.Strip(lines[1]), "one") {
+			t.Errorf("untitled body did not start under the border: %q", ansi.Strip(lines[1]))
+		}
+	})
+
+	t.Run("wide body does not add rows", func(t *testing.T) {
+		out := Frame("", strings.Repeat("x", 200), 20, 4, ColorSubtle, ColorForegroundBright)
+		if got := len(strings.Split(out, "\n")); got != 4 {
+			t.Fatalf("Frame rendered %d rows, want 4", got)
+		}
+		for _, line := range strings.Split(out, "\n") {
+			if w := DisplayWidth(line); w != 20 {
+				t.Errorf("row width = %d, want 20: %q", w, line)
+			}
+		}
+	})
+
+	t.Run("hostile body", func(t *testing.T) {
+		out := Frame("", "line one\n\x1b[31mline two", 30, 4, ColorSubtle, ColorForegroundBright)
+		for _, line := range strings.Split(out, "\n") {
+			for _, r := range ansi.Strip(line) {
+				if unicode.IsControl(r) {
+					t.Errorf("control rune %U survived: %q", r, line)
+				}
+			}
+		}
+	})
+
+	t.Run("narrow frame", func(t *testing.T) {
+		if got := Frame("t", "body", 3, 4, ColorSubtle, ColorForegroundBright); got != "" {
+			t.Errorf("Frame with outerW < 4 = %q, want empty", got)
+		}
+	})
+}
+
+// blankInner reports whether a framed row's content between its borders is blank.
+func blankInner(line string) bool {
+	return strings.TrimSpace(strings.Trim(strings.TrimSpace(ansi.Strip(line)), "│")) == ""
+}
+
+// TestSplitView pins the two-pane geometry: exactly the terminal width, each
+// pane framed, and only the detail pane titled.
+func TestSplitView(t *testing.T) {
+	listBody := strings.Join([]string{"KEY  SUMMARY", "DEMO-1  One", "DEMO-2  Two"}, "\n")
+	detailBody := strings.Join([]string{"DEMO-1", "One", "", "• Status: Done"}, "\n")
+
+	for _, size := range []struct{ w, h int }{{120, 40}, {80, 24}} {
+		t.Run(fmt.Sprintf("%dx%d", size.w, size.h), func(t *testing.T) {
+			out := SplitView(listBody, detailBody, size.w, size.h)
+			lines := strings.Split(out, "\n")
+			if len(lines) != size.h {
+				t.Fatalf("SplitView rendered %d rows, want %d", len(lines), size.h)
+			}
+			for i, line := range lines {
+				if w := DisplayWidth(line); w != size.w {
+					t.Errorf("row %d width = %d, want %d: %q", i, w, size.w, line)
+				}
+			}
+
+			top := lines[0]
+			if got := strings.Count(top, "Details"); got != 1 {
+				t.Errorf("top border contains %q %d times, want 1: %q", "Details", got, top)
+			}
+			rest := strings.Replace(ansi.Strip(top), "Details", "", 1)
+			if idx := strings.IndexFunc(rest, unicode.IsLetter); idx >= 0 {
+				t.Errorf("top border carries a second title at %d: %q", idx, ansi.Strip(top))
+			}
+		})
 	}
 }
 
@@ -384,5 +508,123 @@ func TestOverlayViewportSize_MinValues(t *testing.T) {
 				t.Errorf("OverlayViewportSize(%d, %d) height = %d, want >= %d", tt.totalWidth, tt.totalHeight, gotVpH, tt.minVpH)
 			}
 		})
+	}
+}
+
+// hostileInputs are the shapes a caller-supplied string can take: a newline, an
+// injected escape sequence, double-width characters, an over-long value, and the
+// empty string.
+var hostileInputs = []string{
+	"a\nb",
+	"a\x1b[31mb",
+	"日本語のテキスト",
+	strings.Repeat("x", 200),
+	"",
+}
+
+// TestPrimitivesRejectHostileInput runs every chrome primitive against the
+// hostile inputs. The only escapes allowed in the output are the ones our own
+// styling introduced, so a caller's ESC must never survive ansi.Strip, and a
+// band must still measure exactly its width.
+func TestPrimitivesRejectHostileInput(t *testing.T) {
+	const width = 40
+
+	check := func(name, out string, w int) {
+		t.Helper()
+		if strings.Contains(out, "\n") {
+			t.Errorf("%s: result contains a newline: %q", name, out)
+		}
+		if w > 0 && DisplayWidth(out) > w {
+			t.Errorf("%s: width %d exceeds %d: %q", name, DisplayWidth(out), w, out)
+		}
+		for _, r := range ansi.Strip(out) {
+			if unicode.IsControl(r) {
+				t.Errorf("%s: control rune %U survived sanitising: %q", name, r, out)
+			}
+		}
+	}
+
+	for _, in := range hostileInputs {
+		check("TitleBar", TitleBar(in, in, width), width)
+		check("ModalTitle", ModalTitle(in, width), width)
+		check("TabStrip", TabStrip(0, in, width), width)
+		check("SectionHeader", SectionHeader(in, ColorAccent, width), width)
+		check("EmptyState", EmptyState(in, width), width)
+		check("Badge", Badge(in, ColorOnChrome, ColorError), 0)
+		check("FooterHints", FooterHints([]string{in, in}, width), width)
+	}
+}
+
+// TestFooterHintsDropsWholeHints pins the "no partial tokens" rule: hints are
+// dropped from the tail as whole units and the drop is marked with an ellipsis.
+func TestFooterHintsDropsWholeHints(t *testing.T) {
+	hints := []string{"j/k move", "enter details", "e edit", "s status", "m move", "/ filter", "x cut", "? help"}
+
+	out := FooterHints(hints, 80)
+	if got := DisplayWidth(out); got > 80 {
+		t.Errorf("FooterHints width = %d, want <= 80", got)
+	}
+	if !strings.Contains(ansi.Strip(out), "…") {
+		t.Errorf("dropping hints should append an ellipsis: %q", ansi.Strip(out))
+	}
+	plain := ansi.Strip(out)
+	for _, fragment := range []string{"adj", "scroll d"} {
+		if strings.Contains(plain, fragment) {
+			t.Errorf("result contains a partial hint token %q: %q", fragment, plain)
+		}
+	}
+	if !strings.Contains(plain, "j/k move") {
+		t.Errorf("the first (highest priority) hint should survive: %q", plain)
+	}
+}
+
+// TestTabStripStyledKeepsColourAndFits checks the pre-styled variant used by the
+// backlog's transient badges: it preserves the caller's styling and still
+// measures exactly the strip width.
+func TestTabStripStyledKeepsColourAndFits(t *testing.T) {
+	right := lipgloss.NewStyle().Foreground(ColorError).Render("⚠ boom")
+	out := TabStripStyled(0, right, 60)
+	if got := DisplayWidth(out); got != 60 {
+		t.Errorf("width = %d, want 60", got)
+	}
+	if !strings.Contains(out, right) {
+		t.Error("pre-styled right detail was not preserved")
+	}
+	// A detail that cannot fit is dropped, never truncated into the tabs.
+	narrow := TabStripStyled(0, right, 12)
+	if got := DisplayWidth(narrow); got > 12 {
+		t.Errorf("narrow width = %d, want <= 12", got)
+	}
+	if strings.Contains(narrow, "boom") {
+		t.Errorf("over-wide detail should be dropped: %q", narrow)
+	}
+}
+
+// TestChromePrimitivesHaveNoBackground pins the flat chrome: bands carry no
+// background fill, so the only background in the board is the cursor row.
+func TestChromePrimitivesHaveNoBackground(t *testing.T) {
+	outs := map[string]string{
+		"TitleBar":             TitleBar("Backlog", "DEMO Sprint 1", 60),
+		"ModalTitle":           ModalTitle("Edit Issue", 60),
+		"TabStrip":             TabStrip(0, "DEMO Sprint 1", 60),
+		"TabStripStyled":       TabStripStyled(1, lipgloss.NewStyle().Foreground(ColorError).Render("⚠ boom"), 60),
+		"SectionHeader":        SectionHeader("KEY SUMMARY", ColorMuted, 60),
+		"SectionHeaderRegular": SectionHeaderRegular("TO DO (3)", ColorAccent, 60),
+		"EmptyState":           EmptyState("No issue selected", 60),
+		"FooterHints":          FooterHints([]string{"j/k move", "e edit"}, 60),
+	}
+	for name, out := range outs {
+		if strings.Contains(out, "48;") {
+			t.Errorf("%s: result carries a background fill: %q", name, out)
+		}
+	}
+}
+
+// TestBadgeKeepsItsFill confirms the type pills still render a background.
+func TestBadgeKeepsItsFill(t *testing.T) {
+	out := Badge(" Bug ", ColorOnChrome, ColorError)
+	fgOnly := lipgloss.NewStyle().Foreground(ColorOnChrome).Render(" Bug ")
+	if out == fgOnly {
+		t.Errorf("Badge should keep a background fill: %q", out)
 	}
 }

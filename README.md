@@ -7,7 +7,11 @@ A terminal interface for Jira. Fast, keyboard-driven, and built for people who f
 
 ![backlog](./docs/screenshots/backlog.png)
 
+> Screenshots predate the bordered-pane layout.
+
 ![kanban](./docs/screenshots/kanban.png)
+
+> Screenshots predate the bordered-pane layout.
 
 Demo:
 <video src="https://github.com/user-attachments/assets/65dfa774-d51a-4980-a965-76393f43c00f" width="320" height="240" controls></video>
