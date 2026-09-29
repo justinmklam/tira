@@ -109,17 +109,13 @@ Two constructors:
 | Constructor | Behaviour |
 |-------------|-----------|
 | `NewPickerModel(search SearchFunc)` | Debounced server-side search via `SearchFunc`. Used where choices must be queried (assignees, parents, statuses, epic filters). |
-| `NewLocalPickerModel(items []PickerItem)` | Filters a fixed in-memory list with no debounce or loading state. `Local()` reports which kind a picker is. Used by the Linked Items picker, whose choices are already held by the caller. |
+| `NewLocalPickerModel(items []PickerItem)` | Filters a fixed in-memory list with no debounce or loading state. `Local()` reports which kind a picker is. Used by the Linked Items picker, whose choices are already held by the caller, and by the issue type and priority pickers in the create/edit form. |
 
 In both cases the input is focused by `Init()`, arrow keys (`up`/`down`, `ctrl+p`/`ctrl+n`) move the selection, and typed characters go to the filter input. For local pickers, typing narrows the list synchronously via `filterPickerItems`, which matches case-insensitively across `Label`, `SubLabel`, and `Value` (an empty query matches everything).
 
 **View** takes `(innerW, maxListRows int)` — does NOT include a border; caller wraps it in a lipgloss bordered box.
 
-**Used for:** assignee selection, parent/epic selection, status transition selection, epic filter selection, and the Linked Items picker (local).
-
-### option_picker.go — Static Option Picker
-
-`OptionPickerModel` is a simpler static list picker (`NewOptionPickerModel(items, initialValue)`) with no text input: `j`/`k` or arrow keys navigate, `Enter` selects, `Esc` cancels. `Cursor` is exported, so callers can map the highlighted row back to their own data. Used for issue type and priority selection, where the choice set is small and fixed.
+**Used for:** assignee selection, parent/epic selection, status transition selection, epic filter selection, issue type and priority selection (local), and the Linked Items picker (local).
 
 ### help.go — Scrollable Help Overlay
 

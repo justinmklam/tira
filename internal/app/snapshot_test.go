@@ -95,7 +95,7 @@ func renderBoardContent(t *testing.T, client api.Client, project string, data Bo
 // itself so tests can assert against the rendered geometry.
 func sizedBoardModel(t *testing.T, client api.Client, project string, data BoardInitData, view BoardView, w, h int) boardModel {
 	t.Helper()
-	m, _ := newBoardModel(client, 1, "https://demo.atlassian.net", project, true, data, view)
+	m, _ := newBoardModel(client, 1, "https://demo.atlassian.net", project, true, data, view, "")
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: w, Height: h})
 	board, ok := updated.(boardModel)
 	if !ok {

@@ -185,5 +185,5 @@ func runBoardCmd(startView app.BoardView) error {
 		return nil
 	}
 
-	return app.RunBoardTUI(client, id, cfg.JiraURL, project, cfg.ClassicProject, data, startView)
+	return app.RunBoardTUI(client, id, cfg.JiraURL, project, cfg.ClassicProject, data, startView, cfg.DefaultIssueType)
 }

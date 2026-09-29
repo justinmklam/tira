@@ -22,6 +22,10 @@ type Config struct {
 	// DefaultView is the board view `tira board` starts on when --view is not
 	// passed: "backlog" (also the fallback when empty), "kanban", or "epics".
 	DefaultView string `mapstructure:"default_view"`
+	// DefaultIssueType is the issue type new issues start as when no explicit
+	// type is chosen. It must name a type valid for the project; an unrecognised
+	// value falls back to the first valid type with a warning.
+	DefaultIssueType string `mapstructure:"default_issue_type"`
 }
 
 func Load(profileName string, searchPaths ...string) (*Config, error) {
@@ -128,6 +132,9 @@ func applyEnv(cfg *Config) {
 	}
 	if v := os.Getenv("TIRA_DEFAULT_VIEW"); v != "" {
 		cfg.DefaultView = v
+	}
+	if v := os.Getenv("TIRA_DEFAULT_ISSUE_TYPE"); v != "" {
+		cfg.DefaultIssueType = v
 	}
 	if v := os.Getenv("TIRA_CLASSIC_PROJECT"); v != "" {
 		cfg.ClassicProject = strings.EqualFold(v, "true")

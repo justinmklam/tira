@@ -11,6 +11,7 @@ import (
 	"github.com/justinmklam/tira/internal/editor"
 	"github.com/justinmklam/tira/internal/models"
 	"github.com/justinmklam/tira/internal/tui"
+	"github.com/justinmklam/tira/internal/validator"
 	"github.com/spf13/cobra"
 )
 
@@ -106,14 +107,6 @@ For AI Agents:
 			return err
 		}
 
-		// Validate --type early so the user gets a clear error before the editor opens.
-		if createType != "" && len(valid.IssueTypes) > 0 {
-			if !tui.ContainsCI(valid.IssueTypes, createType) {
-				return fmt.Errorf("invalid type %q. Valid types: %s",
-					createType, strings.Join(valid.IssueTypes, ", "))
-			}
-		}
-
 		var content string
 
 		// Non-interactive mode: read from file or stdin
@@ -134,15 +127,15 @@ For AI Agents:
 				return fmt.Errorf("summary is required")
 			}
 
-			// Validate issue type if provided
-			if fields.IssueType != "" && len(valid.IssueTypes) > 0 {
-				if !tui.ContainsCI(valid.IssueTypes, fields.IssueType) {
-					return fmt.Errorf("invalid type %q. Valid types: %s",
-						fields.IssueType, strings.Join(valid.IssueTypes, ", "))
-				}
-			} else if len(valid.IssueTypes) > 0 {
-				fields.IssueType = valid.IssueTypes[0]
+			// Validate/resolve issue type: template value > config default > first valid.
+			resolvedType, typeWarn, typeErr := resolveCreateIssueType(fields.IssueType, cfg.DefaultIssueType, valid.IssueTypes)
+			if typeErr != nil {
+				return typeErr
 			}
+			if typeWarn != "" {
+				fmt.Fprintln(os.Stderr, typeWarn)
+			}
+			fields.IssueType = resolvedType
 
 			// Validate priority if provided
 			if fields.Priority != "" && len(valid.Priorities) > 0 {
@@ -180,12 +173,16 @@ For AI Agents:
 
 		// Interactive mode: open editor
 		// Build a blank issue, pre-filling type and parent.
-		blank := &models.Issue{
-			IssueType: createType,
-			ParentKey: createParent,
+		blankType, typeWarn, typeErr := resolveCreateIssueType(createType, cfg.DefaultIssueType, valid.IssueTypes)
+		if typeErr != nil {
+			return typeErr
 		}
-		if blank.IssueType == "" && len(valid.IssueTypes) > 0 {
-			blank.IssueType = valid.IssueTypes[0]
+		if typeWarn != "" {
+			fmt.Fprintln(os.Stderr, typeWarn)
+		}
+		blank := &models.Issue{
+			IssueType: blankType,
+			ParentKey: createParent,
 		}
 		if len(valid.Priorities) > 0 {
 			blank.Priority = valid.Priorities[len(valid.Priorities)/2]
@@ -211,6 +208,24 @@ For AI Agents:
 		fmt.Fprintf(os.Stderr, "✓ Created %s.\n", issue.Key)
 		return nil
 	},
+}
+
+// resolveCreateIssueType applies the precedence --type (or a template's type)
+// > default_issue_type > first valid type. It returns the resolved type, a
+// non-empty warning when a configured default was rejected, and an error when
+// an explicit value is not a valid type.
+func resolveCreateIssueType(flagType, configured string, valid []string) (issueType, warning string, err error) {
+	if flagType != "" {
+		if len(valid) > 0 && !tui.ContainsCI(valid, flagType) {
+			return "", "", fmt.Errorf("invalid type %q. Valid types: %s", flagType, strings.Join(valid, ", "))
+		}
+		return flagType, "", nil
+	}
+	resolved, rejected := validator.DefaultIssueType(configured, valid)
+	if rejected {
+		warning = fmt.Sprintf("warning: default_issue_type %q is not valid; using %q", configured, resolved)
+	}
+	return resolved, warning, nil
 }
 
 func init() {

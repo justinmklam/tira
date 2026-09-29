@@ -12,8 +12,9 @@ type Config struct {
     Project        string `mapstructure:"project"`
     BoardID        int    `mapstructure:"board_id"`
     ClassicProject bool   `mapstructure:"classic_project"`
-    Theme          string `mapstructure:"theme"`
-    DefaultView    string `mapstructure:"default_view"`
+    Theme            string `mapstructure:"theme"`
+    DefaultView      string `mapstructure:"default_view"`
+    DefaultIssueType string `mapstructure:"default_issue_type"`
 }
 ```
 
@@ -40,6 +41,7 @@ profiles:
     classic_project: true   # for company-managed (classic) projects
     theme: catppuccin       # color theme (default, tokyonight, catppuccin)
     default_view: backlog   # starting view for `tira board` (backlog, kanban, epics)
+    default_issue_type: Task  # type new issues start as (must be valid for the project)
   dev:
     jira_url: https://dev-domain.atlassian.net
     email: dev-email@example.com
@@ -61,6 +63,7 @@ profiles:
 - `classic_project` — Set to `true` for company-managed (classic) projects; affects browser URL construction only
 - `theme` — Color theme for the TUI. Available themes: `default`, `tokyonight`, `catppuccin`. If omitted, uses terminal's default ANSI 256 colors. The theme drives every colour role in the board — chrome, status, issue type, priority, and assignee colours — not just the accent; see [Visual Hierarchy and Semantic Colour](tui-architecture.md#visual-hierarchy-and-semantic-colour).
 - `default_view` — View `tira board` starts on when `--view` is omitted: `backlog`, `kanban`, or `epics`. Defaults to `backlog` when unset. An explicit `--view` always overrides it, and the deprecated `backlog`/`kanban` aliases ignore it (they pin their own view). An unrecognised value is a startup error rather than a silent fallback.
+- `default_issue_type` — Issue type new issues start as in the create form and `tira create`, e.g. `Task`. Must name a type valid for the project (matched case-insensitively). An unrecognised value warns on stderr and falls back to the first valid type rather than failing. When unset, the first valid type is used. An explicit `--type` always wins.
 
 ## Environment Variables
 
@@ -74,6 +77,7 @@ All configuration fields can be overridden via environment variables with the `T
 | `project` | `TIRA_PROJECT` |
 | `board_id` | `TIRA_BOARD_ID` |
 | `default_view` | `TIRA_DEFAULT_VIEW` |
+| `default_issue_type` | `TIRA_DEFAULT_ISSUE_TYPE` |
 | `classic_project` | `TIRA_CLASSIC_PROJECT` |
 | `theme` | `TIRA_THEME` |
 

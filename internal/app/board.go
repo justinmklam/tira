@@ -95,6 +95,10 @@ type boardModel struct {
 	project        string
 	classicProject bool
 
+	// defaultIssueType seeds the create form when no type is chosen; empty means
+	// fall back to the first valid type.
+	defaultIssueType string
+
 	// Shared data for rebuilding views on refresh/switch.
 	initData BoardInitData
 
@@ -118,8 +122,8 @@ type boardModel struct {
 	assigneeForEdit bool // true = inject result into editForm; false = used externally
 
 	// In-TUI type/priority picker state.
-	typePicker     tui.OptionPickerModel
-	priorityPicker tui.OptionPickerModel
+	typePicker     tui.PickerModel
+	priorityPicker tui.PickerModel
 
 	// Help overlay state.
 	helpModel tui.HelpModel
@@ -257,7 +261,7 @@ func activeSprintFromGroups(groups []models.SprintGroup) ([]models.Issue, string
 	return nil, ""
 }
 
-func newBoardModel(client api.Client, boardID int, jiraURL, project string, classicProject bool, data BoardInitData, startView BoardView) (boardModel, tea.Cmd) {
+func newBoardModel(client api.Client, boardID int, jiraURL, project string, classicProject bool, data BoardInitData, startView BoardView, defaultIssueType string) (boardModel, tea.Cmd) {
 	issues, sprintName := activeSprintFromGroups(data.Groups)
 
 	s := spinner.New()
@@ -285,18 +289,19 @@ func newBoardModel(client api.Client, boardID int, jiraURL, project string, clas
 	initCmd := tea.Batch(cmds...)
 
 	return boardModel{
-		activeView:     startView,
-		backlog:        backlog,
-		kanban:         newKanbanModel(client, data.BoardCols, issues, sprintName, project, jiraURL),
-		epics:          epics,
-		client:         client,
-		boardID:        boardID,
-		jiraURL:        strings.TrimRight(jiraURL, "/"),
-		project:        project,
-		classicProject: classicProject,
-		initData:       data,
-		editSpinner:    s,
-		initCmd:        initCmd,
+		activeView:       startView,
+		backlog:          backlog,
+		kanban:           newKanbanModel(client, data.BoardCols, issues, sprintName, project, jiraURL),
+		epics:            epics,
+		client:           client,
+		boardID:          boardID,
+		jiraURL:          strings.TrimRight(jiraURL, "/"),
+		project:          project,
+		classicProject:   classicProject,
+		defaultIssueType: defaultIssueType,
+		initData:         data,
+		editSpinner:      s,
+		initCmd:          initCmd,
 	}, initCmd
 }
 
@@ -504,13 +509,15 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.editForm != nil && m.editForm.wantTypePicker {
 			m.editForm.wantTypePicker = false
-			m.typePicker = newTypePicker(m.editValid.IssueTypes, m.editForm.inputs[efType].Value())
+			m.typePicker = newLocalOptionPicker(m.editValid.IssueTypes, m.editForm.inputs[efType].Value())
 			m.activeView = viewTypePicker
+			return m, m.typePicker.Init()
 		}
 		if m.editForm != nil && m.editForm.wantPriorityPicker {
 			m.editForm.wantPriorityPicker = false
-			m.priorityPicker = newPriorityPicker(m.editValid.Priorities, m.editForm.inputs[efPriority].Value())
+			m.priorityPicker = newLocalOptionPicker(m.editValid.Priorities, m.editForm.inputs[efPriority].Value())
 			m.activeView = viewPriorityPicker
+			return m, m.priorityPicker.Init()
 		}
 		return m, cmd
 
@@ -547,7 +554,7 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			m.editValid = msg.valid
-			blank := blankIssueFromValid(msg.valid)
+			blank := blankIssueFromValid(msg.valid, m.defaultIssueType)
 			overlayW, overlayH := tui.OverlaySize(m.width, m.height)
 			m.editForm = newEditModel(blank, msg.valid, overlayW-4, overlayH-4)
 			m.activeView = viewCreate
@@ -596,13 +603,15 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.editForm != nil && m.editForm.wantTypePicker {
 			m.editForm.wantTypePicker = false
-			m.typePicker = newTypePicker(m.editValid.IssueTypes, m.editForm.inputs[efType].Value())
+			m.typePicker = newLocalOptionPicker(m.editValid.IssueTypes, m.editForm.inputs[efType].Value())
 			m.activeView = viewTypePicker
+			return m, m.typePicker.Init()
 		}
 		if m.editForm != nil && m.editForm.wantPriorityPicker {
 			m.editForm.wantPriorityPicker = false
-			m.priorityPicker = newPriorityPicker(m.editValid.Priorities, m.editForm.inputs[efPriority].Value())
+			m.priorityPicker = newLocalOptionPicker(m.editValid.Priorities, m.editForm.inputs[efPriority].Value())
 			m.activeView = viewPriorityPicker
+			return m, m.priorityPicker.Init()
 		}
 		return m, cmd
 
@@ -684,8 +693,8 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if m.typePicker.Completed {
-			if val := m.typePicker.SelectedItem(); val != "" && m.editForm != nil {
-				m.editForm.inputs[efType].SetValue(val)
+			if val := m.typePicker.SelectedItem(); val != nil && val.Value != "" && m.editForm != nil {
+				m.editForm.inputs[efType].SetValue(val.Value)
 			}
 			m.activeView = editFormView
 			return m, nil
@@ -704,8 +713,8 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if m.priorityPicker.Completed {
-			if val := m.priorityPicker.SelectedItem(); val != "" && m.editForm != nil {
-				m.editForm.inputs[efPriority].SetValue(val)
+			if val := m.priorityPicker.SelectedItem(); val != nil && val.Value != "" && m.editForm != nil {
+				m.editForm.inputs[efPriority].SetValue(val.Value)
 			}
 			m.activeView = editFormView
 			return m, nil
@@ -1061,8 +1070,8 @@ func (m boardModel) issueURL(key string) string {
 }
 
 // RunBoardTUI runs the interactive board TUI.
-func RunBoardTUI(client api.Client, boardID int, jiraURL, project string, classicProject bool, data BoardInitData, startView BoardView) error {
-	m, _ := newBoardModel(client, boardID, jiraURL, project, classicProject, data, startView)
+func RunBoardTUI(client api.Client, boardID int, jiraURL, project string, classicProject bool, data BoardInitData, startView BoardView, defaultIssueType string) error {
+	m, _ := newBoardModel(client, boardID, jiraURL, project, classicProject, data, startView, defaultIssueType)
 	p := tea.NewProgram(m)
 	_, err := p.Run()
 	if err != nil {

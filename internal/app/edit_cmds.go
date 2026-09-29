@@ -165,14 +165,16 @@ func validateEditFields(fields models.IssueFields, valid *models.ValidValues) st
 	return errs[0].Message
 }
 
-// newTypePicker builds an OptionPickerModel for selecting an issue type.
-func newTypePicker(typeOpts []string, initialValue string) tui.OptionPickerModel {
-	return tui.NewOptionPickerModel(typeOpts, initialValue)
-}
-
-// newPriorityPicker builds an OptionPickerModel for selecting a priority.
-func newPriorityPicker(priorityOpts []string, initialValue string) tui.OptionPickerModel {
-	return tui.NewOptionPickerModel(priorityOpts, initialValue)
+// newLocalOptionPicker builds a typeable picker over a fixed list of options.
+// Typing filters the list; arrow keys (and ctrl+p/ctrl+n) move the selection.
+func newLocalOptionPicker(options []string, initialValue string) tui.PickerModel {
+	items := make([]tui.PickerItem, len(options))
+	for i, o := range options {
+		items[i] = tui.PickerItem{Label: o, Value: o}
+	}
+	m := tui.NewLocalPickerModel(items)
+	m.InitialValue = initialValue
+	return m
 }
 
 // newAssigneePicker builds a PickerModel backed by a debounced assignee search.
@@ -199,12 +201,12 @@ func newAssigneePicker(client api.Client, projectKey string) tui.PickerModel {
 	return m
 }
 
-// blankIssueFromValid returns a blank issue pre-filled with default type and priority.
-func blankIssueFromValid(valid *models.ValidValues) *models.Issue {
+// blankIssueFromValid returns a blank issue pre-filled with the default type and
+// the middle priority. defaultType may be empty; an invalid value falls back to
+// the first valid type.
+func blankIssueFromValid(valid *models.ValidValues, defaultType string) *models.Issue {
 	blank := &models.Issue{}
-	if len(valid.IssueTypes) > 0 {
-		blank.IssueType = valid.IssueTypes[0]
-	}
+	blank.IssueType, _ = validator.DefaultIssueType(defaultType, valid.IssueTypes)
 	if len(valid.Priorities) > 0 {
 		blank.Priority = valid.Priorities[len(valid.Priorities)/2]
 	}

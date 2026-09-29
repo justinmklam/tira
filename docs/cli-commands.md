@@ -130,7 +130,7 @@ When no `--file` or `--no-edit` flag is provided and stdin is a terminal:
 3. Validates `--type` early if provided
 4. Builds a blank `*models.Issue` pre-filled with `IssueType` and `ParentKey`
 5. Pre-fills defaults:
-   - `IssueType`: first valid type from the list
+   - `IssueType`: the `--type` flag if given, else `default_issue_type`, else the first valid type (an unrecognised configured default warns on stderr and falls back)
    - `Priority`: middle value from priorities list
 6. Calls `openAndValidate` (same loop as edit)
 7. Validates that Summary is non-empty and not the placeholder text
@@ -138,7 +138,7 @@ When no `--file` or `--no-edit` flag is provided and stdin is a terminal:
 
 **Flags:**
 - `--project <key>` — Project key (overrides config default)
-- `--type <type>` — Issue type (e.g., `Bug`, `Story`, `Task`)
+- `--type <type>` — Issue type (e.g., `Bug`, `Story`, `Task`). Overrides `default_issue_type`.
 - `--parent <key>` — Parent issue key (for sub-tasks)
 
 **Example:**
@@ -159,7 +159,7 @@ When `--file`, `--no-edit`, or piped stdin is used:
 
 1. Reads template content from file (`--file`) or stdin (`--no-edit` or pipe)
 2. Parses the template format (YAML-like front matter + Markdown body)
-3. Validates all fields (type, priority, required summary)
+3. Validates all fields (type, priority, required summary); an omitted type resolves to `--type` > `default_issue_type` > first valid type
 4. Resolves assignee display name to account ID if provided
 5. Calls `client.CreateIssue`
 

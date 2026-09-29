@@ -20,7 +20,7 @@ import (
 // an unexpected model type.
 func RenderBoardSnapshot(client api.Client, boardID int, jiraURL, project string,
 	classicProject bool, data BoardInitData, view BoardView, width, height int) string {
-	m, _ := newBoardModel(client, boardID, jiraURL, project, classicProject, data, view)
+	m, _ := newBoardModel(client, boardID, jiraURL, project, classicProject, data, view, "")
 
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: width, Height: height})
 	board, ok := updated.(boardModel)

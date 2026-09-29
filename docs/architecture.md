@@ -322,7 +322,6 @@ See [Configuration](configuration.md) for details.
 | `styles.go` | Color constants (`ColorRed`, `ColorBlue`, etc.), shared styles (`DimStyle`, `BoldBlue`), `IssueTypeColor()`, `EpicColor()` |
 | `helpers.go` | `FixedWidth`, `DisplayWidth`, `SanitizeRow`, `FitInput`, `Clamp`, `Frame`, `SplitView`, `ListPaneWidth`, `DetailPaneWidth`, `RenderPickerModal`, `ContainsCI` |
 | `picker.go` | `PickerModel` — reusable search picker; debounced server search or local in-memory filtering |
-| `option_picker.go` | `OptionPickerModel` — static list picker without a text input |
 | `help.go` | `HelpModel` — scrollable keybinding overlay |
 
 **Design constraint:** This package has **no dependencies** on other internal packages. It only imports Charm libraries. This keeps it reusable and prevents circular dependencies.
