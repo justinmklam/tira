@@ -41,7 +41,7 @@ Modelled on yazi's philosophy: modal only where the modality is obvious from con
 
 | Key | Action |
 |-----|--------|
-| `j` / `k` | Move down / up through epics |
+| `j` / `k` / `↓` / `↑` | Move down / up through epics |
 | `g` / `G` | Jump to first / last epic |
 | `d` / `u` | Scroll the epic list by 1/4 page |
 | `<C-d>` / `<C-u>` | Scroll the selected epic sidebar |
@@ -135,7 +135,8 @@ Quick pickers (`s`, `P`, `A`, `F`) open a small overlay, navigate with `j`/`k`, 
 | `1` | Switch to backlog view |
 | `2` | Switch to kanban board view |
 | `3` | Switch to epics view |
-| `<Tab>` | Cycle between backlog, kanban, and epics |
+| `<Tab>` | Cycle forward between backlog, kanban, and epics |
+| `<shift+tab>` | Cycle backward between backlog, kanban, and epics |
 | `R` | Refresh from Jira API |
 | `?` | Show keybindings help overlay |
 | `q` | Quit |

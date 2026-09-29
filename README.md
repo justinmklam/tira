@@ -121,10 +121,10 @@ starts on.
 
 | Key | Action |
 |-----|--------|
-| `Tab` | Toggle between backlog, kanban, and epics |
+| `Tab` / `Shift+Tab` | Cycle between backlog, kanban, and epics (forward / backward) |
 | `1` / `2` / `3` | Switch to backlog / kanban / epics |
-| `j`/`k` | Move cursor to next/prev issue |
-| `J`/`K` | Move cursor to next/prev sprint |
+| `j`/`k` or `↓`/`↑` | Move cursor to next/prev issue |
+| `J`/`K` or `→`/`←` | Move cursor to next/prev sprint (backlog) or column (kanban) |
 | `Enter` | Open issue/epic detail / Toggle sprint collapse |
 | `e` | Edit issue |
 | `c` | Add comment |

@@ -823,16 +823,9 @@ func (m boardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if key, ok := msg.(tea.KeyPressMsg); ok && m.canSwitchView() {
 		switch key.String() {
 		case "tab":
-			switch m.activeView {
-			case ViewBacklog:
-				m.activeView = ViewKanban
-			case ViewKanban:
-				m.activeView = ViewEpics
-				return m, m.syncEpicsFromBacklog()
-			case ViewEpics:
-				m.activeView = ViewBacklog
-			}
-			return m, nil
+			return m, m.cycleView(true)
+		case "shift+tab":
+			return m, m.cycleView(false)
 		case "1":
 			m.activeView = ViewBacklog
 			return m, nil
@@ -985,6 +978,36 @@ func (m boardModel) canSwitchView() bool {
 		return m.epics.state == epicList
 	}
 	return false // edit states: no switching
+}
+
+// cycleView advances the active view one step through the backlog → kanban →
+// epics ring, or back one step when forward is false. Switching into epics
+// rebuilds its projection from the backlog's current groups, so both
+// directions return the same sync command.
+func (m *boardModel) cycleView(forward bool) tea.Cmd {
+	if forward {
+		switch m.activeView {
+		case ViewBacklog:
+			m.activeView = ViewKanban
+		case ViewKanban:
+			m.activeView = ViewEpics
+			return m.syncEpicsFromBacklog()
+		case ViewEpics:
+			m.activeView = ViewBacklog
+		}
+		return nil
+	}
+
+	switch m.activeView {
+	case ViewBacklog:
+		m.activeView = ViewEpics
+		return m.syncEpicsFromBacklog()
+	case ViewKanban:
+		m.activeView = ViewBacklog
+	case ViewEpics:
+		m.activeView = ViewKanban
+	}
+	return nil
 }
 
 // syncEpicsFromBacklog rebuilds the epic projection from the backlog's current

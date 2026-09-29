@@ -93,6 +93,26 @@ func TestBoardTabCyclesAllViews(t *testing.T) {
 	}
 }
 
+func TestBoardShiftTabCyclesBackwards(t *testing.T) {
+	m := boardModel{
+		activeView: ViewBacklog,
+		backlog:    blModel{state: blList},
+		kanban:     kanbanModel{state: stateBoard},
+		epics:      epicModel{state: epicList},
+	}
+	shiftTab := tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift})
+	// Backwards from the backlog wraps through epics and kanban.
+	want := []BoardView{ViewEpics, ViewKanban, ViewBacklog}
+
+	for i, expected := range want {
+		updated, _ := m.Update(shiftTab)
+		m = updated.(boardModel)
+		if m.activeView != expected {
+			t.Fatalf("Shift+Tab %d: active view = %v, want %v", i+1, m.activeView, expected)
+		}
+	}
+}
+
 func TestBoardDirectViewKeys(t *testing.T) {
 	m := boardModel{
 		activeView: ViewBacklog,
