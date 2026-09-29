@@ -567,11 +567,13 @@ The form uses the same five-tier scale as the board:
   their own frame.
 - The hint row is `FooterHints`; validation errors and the discard prompt are
   `Badge` pills.
-- The two textareas deliberately have **no** `┃` prompt bar. `textarea.Prompt`
-  must be set to `""` **before** `SetWidth`, because the bubbles textarea
-  memoises `promptWidth` at `SetWidth` time. `setSize` then sizes the block as
-  `secInner-1` so it measures exactly `secInner` once `View` indents each line by
-  one cell.
+- Every multiline textarea in the TUI — the edit form's two and the comment
+  modal's — deliberately has **no** `┃` prompt bar. `textarea.Prompt` must be set
+  to `""` **before** `SetWidth`, because the bubbles textarea memoises
+  `promptWidth` at `SetWidth` time. Each `View` then indents every rendered line
+  by one cell and `setSize` sizes the block one short of its slot (`secInner-1`
+  for the edit form, `w-1` for the comment modal), so it measures exactly the
+  content width it sits in.
 
 `setSize`'s `overhead = 16` is the exact fixed row cost — two border rows per
 section frame (4 sections), one `Summary` value row, five `Details` rows, and the
@@ -623,12 +625,19 @@ fetchCreateDataCmd(client, project) → createFetchedMsg
 
 **File:** `internal/app/comment_form.go`
 
-A simple `textarea.Model` wrapper:
+A simple `textarea.Model` wrapper rendered inside a `tui.Frame` whose top border
+carries `Add Comment · <key> · <summary>` (the title is sanitised at the call
+site); the issue summary is not repeated as a body row.
 
 | Key | Action |
 |-----|--------|
 | `Ctrl+S` | Submits if textarea is non-empty (sets `m.completed = true`) |
 | `Esc` | If textarea is non-empty: prompts y/n abort confirmation; if empty: sets `m.aborted = true` |
+
+The textarea is always focused and carries no `┃` prompt bar: `Prompt` is cleared
+before `SetWidth` and `View` indents each line by one cell, so the block measures
+exactly the width `setSize` was given. A blank body row separates the border title
+from the textarea's first row.
 
 After comment saves (`commentSaveDoneMsg`), `boardModel` refreshes the detail view if currently in the detail state for backlog or kanban (re-fetches the issue to show the new comment).
 

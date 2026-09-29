@@ -245,8 +245,12 @@ Gotchas:
 - `TabDivider` is vestigial: the topmost frame's top border provides the rule
   under the tab strip. Do not reintroduce it under a frame.
 - A bubbles `textarea` defaults to a `┃ ` prompt that consumes two cells on every
-  line. The edit form sets `Prompt = ""` **before** `SetWidth` (the width is
-  memoised at `SetWidth` time), then indents each rendered line by one cell. A
+  line. **Every** multiline textarea in the TUI (the edit form's Description and
+  Acceptance Criteria, and the comment modal) clears `Prompt = ""` **before**
+  `SetWidth`, because the width — and with it `promptWidth` — is memoised at
+  `SetWidth` time; a later `Prompt` change leaves the gutter behind. Each then
+  indents every rendered line by one cell and sizes the block one short of its
+  slot (`contentWidth-1`), so it measures exactly `contentWidth`. A
   `textinput`/`textarea` `View()` also reserves one cell for the cursor beyond
   `SetWidth`.
 - The edit form's `overhead = 16` in `setSize` is the exact fixed row budget (four
@@ -255,7 +259,9 @@ Gotchas:
   `TestEditFormViewLayout` asserts the count (the form renders `16 + 2*taHeight`).
   The create/edit and comment modals draw their title with `tui.Frame` — the
   caller sanitises a dynamic title first, since `Frame` truncates but does not
-  strip control characters — rather than `tui.TitleBar`.
+  strip control characters — rather than `tui.TitleBar`. The comment modal's
+  title is `Add Comment · <key> · <summary>`, so the issue context rides in the
+  border and no body row is spent on it.
 - Board chrome is counted unconditionally: the split views' `viewHeight()` is
   `height - 6` (top pad, `TabStrip`, the frame's two border rows, column header,
   footer), and kanban's `availableIssueLines` deducts 7 (top pad, `TabStrip`,

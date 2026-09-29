@@ -153,8 +153,8 @@ func (m boardModel) viewHelpOverlay(w, h int) string {
 }
 
 // viewCommentForm renders the comment modal with its title in the frame's top
-// border. The issue summary has no other home on the blank alt-screen, so it
-// stays as the single muted row directly under that border.
+// border: the issue key followed by the issue summary, so no body row is spent
+// on context.
 func (m boardModel) viewCommentForm(w, h int) string {
 	if m.commentForm == nil {
 		return ""
@@ -162,13 +162,18 @@ func (m boardModel) viewCommentForm(w, h int) string {
 	overlayW, _ := tui.OverlaySize(w, h)
 	innerW := overlayW - 2
 
-	title := tui.SanitizeRow("Add Comment · " + m.commentKey)
-	body := " " + tui.MutedStyle.Render(tui.FixedWidth(tui.SanitizeRow(m.commentSummary), innerW-3))
-	body += "\n" + strings.TrimSuffix(m.commentForm.View().Content, "\n")
+	title := "Add Comment · " + m.commentKey
+	if summary := tui.SanitizeRow(m.commentSummary); summary != "" {
+		title += " · " + summary
+	}
+
+	body := "\n" + strings.TrimSuffix(m.commentForm.View().Content, "\n")
 	if m.commentErr != "" {
 		body += "\n" + lipgloss.NewStyle().Foreground(tui.ColorError).Render("  "+m.commentErr)
 	}
 
-	modal := tui.Frame(title, body, innerW, 0, tui.ColorAccent, tui.ColorForegroundBright)
+	// Frame truncates an over-wide title but does not strip control characters, so
+	// the dynamic title is sanitised here rather than inside Frame.
+	modal := tui.Frame(tui.SanitizeRow(title), body, innerW, 0, tui.ColorAccent, tui.ColorForegroundBright)
 	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, modal)
 }
