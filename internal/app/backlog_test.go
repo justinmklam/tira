@@ -66,6 +66,28 @@ func TestBlBuildRows_BasicStructure(t *testing.T) {
 	}
 }
 
+func TestRenderSprintRowShowsStoryPointTotalBeforeIssueCount(t *testing.T) {
+	m := blModel{
+		groups: []models.SprintGroup{{
+			Sprint: models.Sprint{Name: "Sprint 1"},
+			Issues: []models.Issue{
+				{StoryPoints: 3},
+				{StoryPoints: 4.5},
+			},
+		}},
+	}
+
+	row := m.renderSprintRow(blRow{kind: blRowSprint, groupIdx: 0}, false, -1, 80)
+	points := strings.Index(row, "7.5 SP")
+	issues := strings.Index(row, "2 issues")
+	if points < 0 || issues < 0 {
+		t.Fatalf("sprint row = %q, want story points and issue count", row)
+	}
+	if points >= issues {
+		t.Errorf("story point total appears at %d, issue count at %d; want points first", points, issues)
+	}
+}
+
 func TestBlBuildRows_Collapsed(t *testing.T) {
 	groups := []models.SprintGroup{
 		{

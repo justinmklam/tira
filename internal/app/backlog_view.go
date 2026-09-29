@@ -376,13 +376,19 @@ func (m blModel) renderSprintRow(row blRow, isSelected bool, activeGroupIdx, wid
 		dateBadge = group.Sprint.State
 	}
 
+	var storyPoints float64
+	for _, issue := range group.Issues {
+		storyPoints += issue.StoryPoints
+	}
+	pointsStr := tui.FormatStoryPoints(storyPoints) + " SP"
 	countStr := fmt.Sprintf("%d issues", len(group.Issues))
-	count := fill.Foreground(tui.ColorMuted).Render(countStr)
+	rightStr := pointsStr + " · " + countStr
+	right := fill.Foreground(tui.ColorMuted).Render(rightStr)
 
 	// A long sprint name must not wrap inside the list pane: the accent and
 	// space take two cells, the state badge is dropped first, then the name is
 	// shortened so the rule below always has at least one cell.
-	maxLeft := width - tui.DisplayWidth(countStr) - 3
+	maxLeft := width - tui.DisplayWidth(rightStr) - 3
 	if maxLeft < 3 {
 		maxLeft = 3
 	}
@@ -403,13 +409,13 @@ func (m blModel) renderSprintRow(row blRow, isSelected bool, activeGroupIdx, wid
 		left += fill.Render("  ") + statePart
 	}
 	leftLen := lipgloss.Width(left)
-	rightLen := tui.DisplayWidth(countStr)
+	rightLen := tui.DisplayWidth(rightStr)
 	fillLen := width - leftLen - rightLen - 2
 	if fillLen < 1 {
 		fillLen = 1
 	}
 	rule := fill.Foreground(accentColor).Render(strings.Repeat("─", fillLen))
-	return left + fill.Render(" ") + rule + fill.Render(" ") + count
+	return left + fill.Render(" ") + rule + fill.Render(" ") + right
 }
 
 func (m blModel) renderIssueRow(row blRow, isSelected bool, width int) string {
