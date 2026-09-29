@@ -297,8 +297,9 @@ snapshot's contents must be deterministic across profiles.
 The frame is clipped to `W` columns so nothing wraps. Only what the initial board fetch provides is
 rendered — the first batch of sprint groups. Everything loaded by asynchronous commands is absent:
 the **backlog group** and any remaining sprints, the issue **description and comments**, and the
-**epic children list**. Fields the board-list payload does not carry (reporter, status-change date,
-subtasks, links) are empty as well.
+**epic children list**. Fields the board-list payload does not carry (reporter, subtasks, links)
+are empty as well. The board-list status-category change date is included for the kanban
+days-in-column indicator; opening an issue fetches the exact latest status change from its changelog.
 
 ### Execution Flow
 

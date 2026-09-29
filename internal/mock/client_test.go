@@ -475,7 +475,7 @@ func TestBoardListIssuesUseTheSparseAgileProjection(t *testing.T) {
 	assert.Empty(t, listIssue.Description)
 	assert.Empty(t, listIssue.AcceptanceCriteria)
 	assert.Empty(t, listIssue.Reporter)
-	assert.Empty(t, listIssue.StatusChangedDate)
+	assert.Equal(t, "2026-03-05", listIssue.StatusChangedDate)
 	assert.Empty(t, listIssue.ParentKey)
 	assert.Empty(t, listIssue.ParentSummary)
 	assert.Empty(t, listIssue.SubTasks)

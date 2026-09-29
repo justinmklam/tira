@@ -804,25 +804,26 @@ func (c *Client) issuesFor(keys []string, sprintName string) []models.Issue {
 }
 
 // toBoardIssue is the board-list projection. The real agile endpoints request
-// only summary, status, issuetype, priority, assignee, labels, parent, project
-// and story points (see fetchAgileIssues in internal/api/client.go), so
-// description, acceptance criteria, reporter, status-change date, subtasks, links
-// and the parent link are deliberately left zero here; they arrive only from
-// GetIssue.
+// summary, status, status-category change date, issuetype, priority, assignee,
+// labels, parent, project, and story points (see fetchAgileIssues in
+// internal/api/client.go), so description, acceptance criteria, reporter,
+// subtasks, links, and the parent link are deliberately left zero here; they
+// arrive only from GetIssue.
 func (c *Client) toBoardIssue(fx IssueFixture, sprintName string) models.Issue {
 	issue := models.Issue{
-		Key:         fx.Key,
-		Summary:     fx.Summary,
-		Status:      fx.Status,
-		StatusID:    c.statusIDFor(fx),
-		IssueType:   fx.Type,
-		Priority:    fx.Priority,
-		Assignee:    fx.Assignee,
-		AssigneeID:  c.accountIDFor(fx.Assignee),
-		StoryPoints: fx.StoryPoints,
-		Labels:      slices.Clone(fx.Labels),
-		ProjectKey:  projectKeyOf(fx.Key),
-		SprintName:  sprintName,
+		Key:               fx.Key,
+		Summary:           fx.Summary,
+		Status:            fx.Status,
+		StatusID:          c.statusIDFor(fx),
+		IssueType:         fx.Type,
+		Priority:          fx.Priority,
+		Assignee:          fx.Assignee,
+		AssigneeID:        c.accountIDFor(fx.Assignee),
+		StoryPoints:       fx.StoryPoints,
+		StatusChangedDate: fx.StatusChanged,
+		Labels:            slices.Clone(fx.Labels),
+		ProjectKey:        projectKeyOf(fx.Key),
+		SprintName:        sprintName,
 	}
 	if fx.Epic != "" {
 		issue.EpicKey = fx.Epic

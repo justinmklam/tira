@@ -127,13 +127,9 @@ func buildColumns(boardCols []models.BoardColumn, issues []models.Issue) []kanba
 }
 
 // kanbanItemLines returns the number of rendered lines an issue occupies in a column.
-// Issues with an assignee or a non-zero days-in-column value render a third meta line.
-func kanbanItemLines(issue models.Issue) int {
-	days := tui.DaysInColumn(issue.StatusChangedDate)
-	if issue.Assignee != "" || days > 0 {
-		return 3
-	}
-	return 2
+// Every kanban card has a summary, epic, and metadata line.
+func kanbanItemLines(models.Issue) int {
+	return 3
 }
 
 // availableIssueLines returns how many lines are available for issue rows within

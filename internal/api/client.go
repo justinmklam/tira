@@ -1111,7 +1111,7 @@ func (c *jiraClient) GetSprintList(boardID int) ([]models.Sprint, error) {
 // agileIssueFields returns the fields query parameter for agile board endpoints.
 // spField is the resolved story points field ID and is omitted when empty.
 func agileIssueFields(spField string) string {
-	const base = "summary,status,issuetype,priority,assignee,labels,parent"
+	const base = "summary,status,statuscategorychangedate,issuetype,priority,assignee,labels,parent"
 	if spField == "" {
 		return base + ",project"
 	}
@@ -1199,7 +1199,8 @@ func (c *jiraClient) fetchAgileIssues(url, sprintName, spField string) ([]models
 			ID   string `json:"id"`
 			Name string `json:"name"`
 		} `json:"status"`
-		Issuetype struct {
+		StatusCategoryChangedDate string `json:"statuscategorychangedate"`
+		Issuetype                 struct {
 			Name string `json:"name"`
 		} `json:"issuetype"`
 		Priority struct {
@@ -1234,15 +1235,16 @@ func (c *jiraClient) fetchAgileIssues(url, sprintName, spField string) ([]models
 			continue
 		}
 		issue := models.Issue{
-			Key:        raw.Key,
-			Summary:    af.Summary,
-			Status:     af.Status.Name,
-			StatusID:   af.Status.ID,
-			IssueType:  af.Issuetype.Name,
-			Priority:   af.Priority.Name,
-			SprintName: sprintName,
-			Labels:     af.Labels,
-			ProjectKey: af.Project.Key,
+			Key:               raw.Key,
+			Summary:           af.Summary,
+			Status:            af.Status.Name,
+			StatusID:          af.Status.ID,
+			StatusChangedDate: trimDateStr(af.StatusCategoryChangedDate),
+			IssueType:         af.Issuetype.Name,
+			Priority:          af.Priority.Name,
+			SprintName:        sprintName,
+			Labels:            af.Labels,
+			ProjectKey:        af.Project.Key,
 		}
 		if af.Assignee != nil {
 			issue.Assignee = af.Assignee.DisplayName

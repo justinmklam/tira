@@ -6,8 +6,77 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/justinmklam/tira/internal/models"
 	"github.com/justinmklam/tira/internal/tui"
 )
+
+func renderKanbanCard(issue models.Issue, selected bool, width int) []string {
+	fill := lipgloss.NewStyle()
+	if selected {
+		fill = tui.SurfaceBg
+	}
+
+	typeColor := tui.IssueTypeColor(issue.IssueType)
+	bar := fill.Foreground(typeColor).Render("▌")
+	prefix := bar + fill.Render(" ")
+	contentW := width - lipgloss.Width(prefix)
+	if contentW < 1 {
+		contentW = 1
+	}
+
+	renderText := func(text string, maxWidth int) string {
+		return tui.TruncateWidth(tui.SanitizeRow(text), maxWidth)
+	}
+
+	summary := renderText(issue.Summary, contentW)
+	epic := issue.EpicName
+	if epic == "" {
+		epic = "—"
+	}
+	epic = renderText(epic, contentW)
+
+	points := tui.FormatStoryPoints(issue.StoryPoints) + " SP"
+	assigneeText := "—"
+	daysText := ""
+	separator := " · "
+	metadataKey := tui.SanitizeRow(issue.Key)
+	days := tui.DaysInColumn(issue.StatusChangedDate)
+	metadataPrefix := metadataKey + separator + points
+	if days > 0 {
+		daysText = fmt.Sprintf("%dd", days)
+		metadataPrefix += separator + daysText
+	}
+	assigneeWidth := contentW - lipgloss.Width(metadataPrefix) - lipgloss.Width(separator)
+	if assigneeWidth < 1 {
+		assigneeWidth = 1
+	}
+	if issue.Assignee != "" {
+		assigneeText = renderText(issue.Assignee, assigneeWidth)
+	}
+
+	epicColor := tui.EpicColor(issue.EpicKey)
+	if epicColor == nil {
+		epicColor = tui.ColorMuted
+	}
+
+	// The card is deliberately assembled from individually filled segments so
+	// the selected background survives the lipgloss resets between colours.
+	summaryLine := prefix + fill.Foreground(tui.ColorForegroundBright).Render(summary)
+	epicLine := prefix + fill.Foreground(epicColor).Render(epic)
+	metadataLine := prefix
+	metadataSeparator := fill.Foreground(tui.ColorMuted).Render(separator)
+	metadataParts := []string{
+		fill.Foreground(tui.ColorMuted).Render(metadataKey),
+		fill.Foreground(tui.ColorMuted).Render(points),
+	}
+	if daysText != "" {
+		metadataParts = append(metadataParts, fill.Foreground(tui.DaysColor(days)).Render(daysText))
+	}
+	metadataParts = append(metadataParts, fill.Foreground(tui.ColorMuted).Render(assigneeText))
+	metadataLine += strings.Join(metadataParts, metadataSeparator)
+
+	return []string{summaryLine, epicLine, metadataLine}
+}
 
 func (m kanbanModel) View() tea.View {
 	switch m.state {
@@ -99,10 +168,6 @@ func (m kanbanModel) viewBoard() string {
 	contentW := colWidth - 2
 	innerW := contentW - 2
 
-	keyStyle := lipgloss.NewStyle().Bold(true).Foreground(tui.ColorAccent)
-	assigneeStyle := lipgloss.NewStyle().Foreground(tui.ColorMuted)
-	daysStyle := lipgloss.NewStyle().Bold(true)
-
 	avail := m.availableIssueLines()
 
 	var renderedCols []string
@@ -153,66 +218,12 @@ func (m kanbanModel) viewBoard() string {
 			linesUsed += ilines
 
 			isSelected := ci == m.colIdx && ri == m.rowIdxs[ci]
-			// One cell of inset on each side, plus the two-cell card indent.
-			maxSummary := innerW - 2
-			if maxSummary < 1 {
-				maxSummary = 1
-			}
-			runes := []rune(tui.SanitizeRow(issue.Summary))
-			summary := string(runes)
-			if len(runes) > maxSummary {
-				summary = string(runes[:maxSummary-1]) + "…"
-			}
-
-			// Calculate days in column and get color
-			days := tui.DaysInColumn(issue.StatusChangedDate)
-			daysColor := tui.DaysColor(days)
-			daysStr := fmt.Sprintf("%dd", days)
-
-			// Format assignee
-			assigneeStr := ""
-			if issue.Assignee != "" {
-				assigneeStr = issue.Assignee
-			}
-
-			if isSelected {
-				// D1: no per-card box or status gutter. The cursor card is a
-				// ColorSurface fill with a ▶ marker, sized to the whole column body
-				// so the highlight runs border to border rather than just behind
-				// the text.
-				cardStyle := lipgloss.NewStyle().
-					Background(tui.ColorSurface).
-					Foreground(tui.ColorForeground).
-					Width(contentW)
-				lines = append(lines,
-					cardStyle.Render(" ▶ "+issue.Key),
-					cardStyle.Render("   "+summary),
-				)
-				if assigneeStr != "" || days > 0 {
-					var metaParts []string
-					if assigneeStr != "" {
-						metaParts = append(metaParts, assigneeStr)
-					}
-					if days > 0 {
-						metaParts = append(metaParts, daysStr)
-					}
-					lines = append(lines, cardStyle.Render("   "+strings.Join(metaParts, " • ")))
+			for _, line := range renderKanbanCard(issue, isSelected, contentW) {
+				cardStyle := lipgloss.NewStyle().Width(contentW)
+				if isSelected {
+					cardStyle = cardStyle.Background(tui.ColorSurface).Foreground(tui.ColorForeground)
 				}
-			} else {
-				lines = append(lines,
-					"   "+keyStyle.Render(issue.Key),
-					"   "+tui.MutedStyle.Render(summary),
-				)
-				if assigneeStr != "" || days > 0 {
-					var metaParts []string
-					if assigneeStr != "" {
-						metaParts = append(metaParts, assigneeStyle.Render(assigneeStr))
-					}
-					if days > 0 {
-						metaParts = append(metaParts, daysStyle.Foreground(daysColor).Render(daysStr))
-					}
-					lines = append(lines, "   "+tui.MutedStyle.Render(strings.Join(metaParts, " • ")))
-				}
+				lines = append(lines, cardStyle.Render(line))
 			}
 		}
 

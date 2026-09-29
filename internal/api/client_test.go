@@ -505,6 +505,7 @@ func TestFetchAgileIssues_DynamicStoryPointsField(t *testing.T) {
 				"fields": {
 					"summary": "Test Issue",
 					"status": {"id": "1", "name": "To Do"},
+					"statuscategorychangedate": "2026-09-20T10:00:00.000+0000",
 					"issuetype": {"name": "Story"},
 					"parent": {
 						"key": "PROJ-100",
@@ -541,11 +542,23 @@ func TestFetchAgileIssues_DynamicStoryPointsField(t *testing.T) {
 	if issues[0].StoryPoints != 8.0 {
 		t.Errorf("StoryPoints = %v, want 8.0", issues[0].StoryPoints)
 	}
+	if issues[0].StatusChangedDate != "2026-09-20" {
+		t.Errorf("StatusChangedDate = %q, want %q", issues[0].StatusChangedDate, "2026-09-20")
+	}
 	if issues[0].SprintName != "Sprint 1" {
 		t.Errorf("SprintName = %q, want %q", issues[0].SprintName, "Sprint 1")
 	}
 	if issues[0].EpicStatus != "Closed" {
 		t.Errorf("EpicStatus = %q, want %q", issues[0].EpicStatus, "Closed")
+	}
+}
+
+func TestAgileIssueFieldsIncludesStatusCategoryChangeDate(t *testing.T) {
+	for _, storyPointsField := range []string{"", "customfield_10034"} {
+		fields := agileIssueFields(storyPointsField)
+		if !strings.Contains(fields, "statuscategorychangedate") {
+			t.Errorf("agileIssueFields(%q) = %q, missing statuscategorychangedate", storyPointsField, fields)
+		}
 	}
 }
 

@@ -514,6 +514,20 @@ padding; content is inset by one cell manually. The cursor card is a
 border. Sizing a bordered style with a content width instead of the full block
 width silently wraps the title rule and the card.
 
+The kanban card layout is fixed at three lines so issue density and scrolling are
+stable regardless of optional fields:
+
+1. Summary, preceded by a one-cell vertical bar coloured by issue type.
+2. Epic name coloured with `tui.EpicColor`; an issue without an epic shows `—`.
+3. Muted issue key, story points, days in column, and assignee, separated by
+   ` · ` when present.
+
+Summary, epic names, and assignees are sanitised and truncated to the available
+column width. The issue-type bar is the only issue-type treatment; the issue key
+and secondary text metadata are muted, while epic and days in column retain
+their semantic colours. Selection uses the card surface fill without an
+additional cursor glyph or card frame.
+
 ### Detail View
 
 On `enter`, `fetchIssueCmd` is fired as a `tea.Cmd`. It:

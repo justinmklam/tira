@@ -239,9 +239,112 @@ func TestKanbanArrowKeys_AtBoundaries(t *testing.T) {
 	})
 }
 
-// TestKanbanColumnsUseStatusColours checks that the three fixture columns get
-// three distinct status colours and that each colour actually reaches the
-// rendered frame.
+// TestRenderKanbanCardUsesThreeLineHierarchy verifies the three-line card
+// layout, issue-type rail, and muted secondary metadata.
+func TestRenderKanbanCardUsesThreeLineHierarchy(t *testing.T) {
+	issue := models.Issue{
+		Key:               "PROJ-123",
+		Summary:           "Fix the authentication timeout",
+		IssueType:         "Bug",
+		Priority:          "High",
+		StoryPoints:       5,
+		Assignee:          "Ada Lovelace",
+		EpicKey:           "PROJ-100",
+		EpicName:          "Authentication Epic",
+		StatusChangedDate: "2026-03-01",
+	}
+
+	lines := renderKanbanCard(issue, false, 60)
+	if got, want := len(lines), 3; got != want {
+		t.Fatalf("renderKanbanCard returned %d lines, want %d", got, want)
+	}
+
+	plain := make([]string, len(lines))
+	for i, line := range lines {
+		plain[i] = stripANSI(line)
+	}
+	if !strings.Contains(plain[0], "Fix the authentication timeout") {
+		t.Errorf("summary line = %q, want summary", plain[0])
+	}
+	if !strings.Contains(plain[1], "Authentication Epic") {
+		t.Errorf("epic line = %q, want epic name", plain[1])
+	}
+	if strings.Contains(plain[1], "PROJ-100") {
+		t.Errorf("epic line = %q, should show the name rather than key", plain[1])
+	}
+	for _, want := range []string{"PROJ-123", "5 SP", "Ada Lovelace"} {
+		if !strings.Contains(plain[2], want) {
+			t.Errorf("metadata line = %q, want %q", plain[2], want)
+		}
+	}
+	days := tui.DaysInColumn(issue.StatusChangedDate)
+	if want := fmt.Sprintf("%dd", days); !strings.Contains(plain[2], want) {
+		t.Errorf("metadata line = %q, want days-in-column value %q", plain[2], want)
+	}
+	if strings.Contains(plain[2], "↑") {
+		t.Errorf("metadata line = %q, should not include the priority glyph", plain[2])
+	}
+	if got, want := strings.Count(plain[2], " · "), 3; got != want {
+		t.Errorf("metadata line = %q, has %d separators, want %d", plain[2], got, want)
+	}
+	if strings.Contains(plain[2], "B PROJ-123") {
+		t.Errorf("metadata line = %q, should not include the issue-type glyph", plain[2])
+	}
+	if !strings.HasPrefix(plain[0], "▌ ") || !strings.HasPrefix(plain[1], "▌ ") || !strings.HasPrefix(plain[2], "▌ ") {
+		t.Errorf("card lines do not start with the issue-type bar: %q", plain)
+	}
+
+	typePrefix := strings.SplitN(lipgloss.NewStyle().Foreground(tui.IssueTypeColor("Bug")).Render("x"), "m", 2)[0]
+	if !strings.Contains(lines[0], typePrefix) {
+		t.Errorf("card does not contain issue-type colour prefix %q", typePrefix)
+	}
+	epicColor := tui.EpicColor("PROJ-100")
+	if epicColor == nil {
+		epicColor = tui.ColorMuted
+	}
+	epicPrefix := strings.SplitN(lipgloss.NewStyle().Foreground(epicColor).Render("x"), "m", 2)[0]
+	if !strings.Contains(lines[1], epicPrefix) {
+		t.Errorf("card does not contain epic colour prefix %q", epicPrefix)
+	}
+	mutedKey := lipgloss.NewStyle().Foreground(tui.ColorMuted).Render("PROJ-123")
+	if !strings.Contains(lines[2], mutedKey) {
+		t.Errorf("card does not render the issue key with the muted colour")
+	}
+}
+
+func TestRenderKanbanCardTruncatesDynamicText(t *testing.T) {
+	issue := models.Issue{
+		Key:         "PROJ-1",
+		Summary:     "A very long summary that must stay on one line",
+		IssueType:   "Story",
+		Assignee:    "A very long assignee name that must be truncated",
+		EpicKey:     "PROJ-999",
+		EpicName:    "A very long epic name that must be truncated",
+		StoryPoints: 3,
+	}
+
+	for _, selected := range []bool{false, true} {
+		for _, width := range []int{22, 40} {
+			lines := renderKanbanCard(issue, selected, width)
+			if len(lines) != 3 {
+				t.Fatalf("selected=%v width=%d: got %d lines, want 3", selected, width, len(lines))
+			}
+			for i, line := range lines {
+				if got := tui.DisplayWidth(line); got > width {
+					t.Errorf("selected=%v width=%d line %d has width %d: %q", selected, width, i, got, line)
+				}
+			}
+		}
+	}
+}
+
+func TestKanbanItemLinesAlwaysIncludesMetadata(t *testing.T) {
+	for _, issue := range []models.Issue{{}, {Assignee: "Ada"}, {StatusChangedDate: "2026-03-01"}} {
+		if got := kanbanItemLines(issue); got != 3 {
+			t.Errorf("kanbanItemLines(%+v) = %d, want 3", issue, got)
+		}
+	}
+}
 func TestKanbanColumnsUseStatusColours(t *testing.T) {
 	m := kanbanArrowTestModel()
 	view := m.viewBoard()
@@ -286,8 +389,8 @@ func TestKanbanViewFitsHeight(t *testing.T) {
 				if len(lines) != height {
 					t.Errorf("view rendered %d lines, want %d", len(lines), height)
 				}
-				if got := strings.Count(view, "▶"); got != 1 {
-					t.Errorf("view has %d cursor markers, want exactly 1", got)
+				if got := strings.Count(view, "▶"); got != 0 {
+					t.Errorf("view has %d cursor markers, want none", got)
 				}
 
 				// R1: only the columns carry a frame. The columns share the row, so
