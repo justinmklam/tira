@@ -177,7 +177,7 @@ primitives they are blocks, not single lines.
 
 | Helper | Guarantee |
 |--------|-----------|
-| `Frame(title, body, outerW, h, bc, tc)` | exactly `outerW` columns × `h` rows (border included); `h <= 0` sizes to the body; a body line is clamped with `FixedWidth(line, outerW-2)` so an over-wide line truncates with `…` rather than wrapping; a padded row is never the empty string, which keeps the snapshot empty-line check honest; `outerW < 4` returns `""` |
+| `Frame(title, body, outerW, h, bc, tc)` | exactly `outerW` columns × `h` rows (border included); a non-empty title is embedded in the top border and the body is preceded by one blank padding row; `h <= 0` sizes to the body (padding included); a body line is clamped with `FixedWidth(line, outerW-2)` so an over-wide line truncates with `…` rather than wrapping; a padded row is never the empty string, which keeps the snapshot empty-line check honest; `outerW < 4` returns `""` |
 | `SplitView(listBody, detailBody, totalW, h)` | an untitled list frame and a `Details` frame joined by a one-column gutter; exactly `totalW` columns and `h` rows |
 
 `ListPaneWidth` returns the list pane's **content** width. `DetailPaneWidth`
@@ -193,7 +193,8 @@ Frame geometry, stated once so a height change is a one-line change:
 - Pane outer height `paneH` is `viewHeight()+3`, so the top pad, tab strip, pane,
   and footer sum to exactly `height`.
 - Each pane body is `paneH-2` rows: the column header plus `viewHeight()` issue
-  rows for the list, and the sidebar sliced to `viewHeight()+1` rows.
+  rows for the untitled list, and the sidebar sliced to `viewHeight()` rows for
+  the titled detail pane, whose first body row is `Frame`'s title padding.
 - Kanban has no split frame, so `availableIssueLines()` is `height-7` (top pad,
   tab strip, footer, and the per-column border-top, title, separator, and
   border-bottom).
@@ -553,8 +554,9 @@ When the user presses `e` or `c`, `kanbanModel` sets `m.result.editKey` or `m.re
 The form uses the same five-tier scale as the board:
 
 - The body is four nested `tui.Frame` sections — `Summary`, `Details`,
-  `Description`, `Acceptance Criteria` — each with a subtle border and a bright
-  bold title in its top border, indented one cell inside the modal's own frame.
+  `Description`, `Acceptance Criteria` — each with a subtle border, a bright bold
+  title in its top border, and `Frame`'s blank title-padding row, indented one
+  cell inside the modal's own frame.
   `setSize` derives `secW = w-2` (a section's outer width) and `secInner = secW-2`
   (its content width) once, and both it and `View` size every slot off those two
   values.
@@ -575,11 +577,11 @@ The form uses the same five-tier scale as the board:
   for the edit form, `w-1` for the comment modal), so it measures exactly the
   content width it sits in.
 
-`setSize`'s `overhead = 16` is the exact fixed row cost — two border rows per
-section frame (4 sections), one `Summary` value row, five `Details` rows, and the
-blank plus hint row after the last section. The form renders `16 + 2*taHeight`
-rows, with no reserved slack. A change that adds or removes a row must re-derive
-it — `TestEditFormViewLayout` asserts the count.
+`setSize`'s `overhead = 20` is the exact fixed row cost — two border rows plus one
+title padding row per section frame (4 sections), one `Summary` value row, five
+`Details` rows, and the blank plus hint row after the last section. The form
+renders `20 + 2*taHeight` rows, with no reserved slack. A change that adds or
+removes a row must re-derive it — `TestEditFormViewLayout` asserts the count.
 
 ### Navigation
 
@@ -636,8 +638,8 @@ site); the issue summary is not repeated as a body row.
 
 The textarea is always focused and carries no `┃` prompt bar: `Prompt` is cleared
 before `SetWidth` and `View` indents each line by one cell, so the block measures
-exactly the width `setSize` was given. A blank body row separates the border title
-from the textarea's first row.
+exactly the width `setSize` was given. `Frame` supplies the blank row between the
+border title and the textarea's first row.
 
 After comment saves (`commentSaveDoneMsg`), `boardModel` refreshes the detail view if currently in the detail state for backlog or kanban (re-fetches the issue to show the new comment).
 

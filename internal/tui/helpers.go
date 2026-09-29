@@ -305,16 +305,21 @@ func Clamp(v, lo, hi int) int {
 
 // Frame renders body inside a rounded border of exactly outerW columns and h
 // rows (border included). A non-empty title is embedded in the top border after
-// "─ ". Body lines are clamped to outerW-2, so an over-wide line is truncated
-// with … rather than wrapped. bc colours the border, tc the bold title. h <= 0
-// sizes the frame to the body, and the frame emits exactly h rows: body lines
-// past h-2 are dropped and short bodies are padded with empty framed rows.
+// "─ ", and the body is preceded by one blank padding row so the title never
+// sits flush against the first content row. Body lines are clamped to outerW-2,
+// so an over-wide line is truncated with … rather than wrapped. bc colours the
+// border, tc the bold title. h <= 0 sizes the frame to the body (padding
+// included), and the frame emits exactly h rows: body lines past the padding row
+// plus h-2 are dropped and short bodies are padded with empty framed rows.
 func Frame(title, body string, outerW, h int, bc, tc color.Color) string {
 	if outerW < 4 {
 		return ""
 	}
 	innerW := outerW - 2
 	bodyLines := strings.Split(body, "\n")
+	if title != "" {
+		bodyLines = append([]string{""}, bodyLines...)
+	}
 	if h <= 0 {
 		h = len(bodyLines) + 2
 	}

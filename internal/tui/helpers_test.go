@@ -217,6 +217,34 @@ func TestFrame(t *testing.T) {
 		})
 	}
 
+	t.Run("titled frame pads under the title", func(t *testing.T) {
+		out := Frame("Details", "one\ntwo", 30, 0, ColorSubtle, ColorForegroundBright)
+		lines := strings.Split(out, "\n")
+		if len(lines) != 5 {
+			t.Fatalf("titled frame rendered %d rows, want 5"+"\n%s", len(lines), out)
+		}
+		if !strings.Contains(ansi.Strip(lines[0]), "Details") {
+			t.Errorf("top border lacks the title: %q", ansi.Strip(lines[0]))
+		}
+		if !blankInner(lines[1]) {
+			t.Errorf("row under the title is not blank padding: %q", ansi.Strip(lines[1]))
+		}
+		if !strings.Contains(ansi.Strip(lines[2]), "one") {
+			t.Errorf("body did not shift down by the padding row: %q", ansi.Strip(lines[2]))
+		}
+	})
+
+	t.Run("untitled frame has no padding row", func(t *testing.T) {
+		out := Frame("", "one\ntwo", 30, 0, ColorSubtle, ColorForegroundBright)
+		lines := strings.Split(out, "\n")
+		if len(lines) != 4 {
+			t.Fatalf("untitled frame rendered %d rows, want 4", len(lines))
+		}
+		if !strings.Contains(ansi.Strip(lines[1]), "one") {
+			t.Errorf("untitled body did not start under the border: %q", ansi.Strip(lines[1]))
+		}
+	})
+
 	t.Run("wide body does not add rows", func(t *testing.T) {
 		out := Frame("", strings.Repeat("x", 200), 20, 4, ColorSubtle, ColorForegroundBright)
 		if got := len(strings.Split(out, "\n")); got != 4 {
@@ -245,6 +273,11 @@ func TestFrame(t *testing.T) {
 			t.Errorf("Frame with outerW < 4 = %q, want empty", got)
 		}
 	})
+}
+
+// blankInner reports whether a framed row's content between its borders is blank.
+func blankInner(line string) bool {
+	return strings.TrimSpace(strings.Trim(strings.TrimSpace(ansi.Strip(line)), "│")) == ""
 }
 
 // TestSplitView pins the two-pane geometry: exactly the terminal width, each

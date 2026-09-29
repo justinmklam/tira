@@ -167,7 +167,7 @@ func (m boardModel) viewCommentForm(w, h int) string {
 		title += " · " + summary
 	}
 
-	body := "\n" + strings.TrimSuffix(m.commentForm.View().Content, "\n")
+	body := strings.TrimSuffix(m.commentForm.View().Content, "\n")
 	if m.commentErr != "" {
 		body += "\n" + lipgloss.NewStyle().Foreground(tui.ColorError).Render("  "+m.commentErr)
 	}

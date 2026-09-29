@@ -149,9 +149,12 @@ func (m epicModel) viewList() string {
 
 	sidebarLines := strings.Split(m.sidebarContent, "\n")
 	sidebarStart := tui.Clamp(m.sidebarOffset, 0, max(len(sidebarLines)-1, 0))
-	sidebarEnd := min(sidebarStart+vh+1, len(sidebarLines))
+	// The titled detail frame spends one body row on the title padding, so only
+	// viewHeight() sidebar lines fit; keeping the slice to vh lines keeps the last
+	// line reachable at max scroll.
+	sidebarEnd := min(sidebarStart+vh, len(sidebarLines))
 	sidebar := append([]string(nil), sidebarLines[sidebarStart:sidebarEnd]...)
-	for len(sidebar) < vh+1 {
+	for len(sidebar) < vh {
 		sidebar = append(sidebar, "")
 	}
 	detailBody := strings.Join(sidebar, "\n")

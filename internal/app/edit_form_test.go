@@ -32,10 +32,10 @@ func TestEditFormViewLayout(t *testing.T) {
 		t.Run(fmt.Sprintf("%dx%d", size.w, size.h), func(t *testing.T) {
 			m := newTestEditModel(t, size.w, size.h)
 			lines := editFormLines(m)
-			// Fixed rows are the four section frames' borders (4x2), the blank row
-			// and hint row after the last section = 16. setSize's overhead constant
-			// is the exact fixed cost, not slack.
-			if got, want := len(lines), 16+2*m.taHeight; got != want {
+			// Fixed rows are the four section frames' borders and title padding
+			// (4x3), the blank row and hint row after the last section = 20.
+			// setSize's overhead constant is the exact fixed cost, not slack.
+			if got, want := len(lines), 20+2*m.taHeight; got != want {
 				t.Errorf("form rendered %d rows, want %d", got, want)
 			}
 			for i, line := range lines {
@@ -203,10 +203,13 @@ func TestEditFormBorderTitle(t *testing.T) {
 		}
 	}
 
-	// The title is drawn in the modal's own frame, so the only surviving header
-	// row is the first body row: the Summary section's border.
-	if second := ansi.Strip(lines[topIdx+1]); !strings.Contains(second, "╭─ Summary") {
-		t.Errorf("line after the top border is not the Summary frame border: %q", second)
+	// The title is drawn in the modal's own frame, so the first body row is the
+	// frame's title padding row and the Summary border sits below it.
+	if pad := ansi.Strip(lines[topIdx+1]); strings.TrimSpace(strings.Trim(strings.TrimSpace(pad), "│")) != "" {
+		t.Errorf("row under the top border is not blank padding: %q", pad)
+	}
+	if second := ansi.Strip(lines[topIdx+2]); !strings.Contains(second, "╭─ Summary") {
+		t.Errorf("line after the title padding is not the Summary frame border: %q", second)
 	}
 
 	// The top border measures exactly the modal width.

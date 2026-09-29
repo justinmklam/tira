@@ -248,12 +248,15 @@ func (m blModel) viewList() string {
 	// Sidebar content with scroll
 	sidebarLines := strings.Split(m.sidebarContent, "\n")
 	totalSidebarLines := len(sidebarLines)
-	sidebarEnd := m.sidebarOffset + vh + 1
+	// The titled detail frame spends one body row on the title padding, so only
+	// viewHeight() sidebar lines fit; keeping the slice to vh lines keeps the last
+	// line reachable at max scroll.
+	sidebarEnd := m.sidebarOffset + vh
 	if sidebarEnd > totalSidebarLines {
 		sidebarEnd = totalSidebarLines
 	}
 	visibleSidebarLines := sidebarLines[m.sidebarOffset:sidebarEnd]
-	for len(visibleSidebarLines) < vh+1 {
+	for len(visibleSidebarLines) < vh {
 		visibleSidebarLines = append(visibleSidebarLines, "")
 	}
 	detailBody := strings.Join(visibleSidebarLines, "\n")

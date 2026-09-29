@@ -153,11 +153,11 @@ func (m *editModel) setSize(w, h int) {
 	m.acTA.SetWidth(taW)
 
 	// Compute textarea height from available space. The form renders
-	// 16 + 2*taHeight rows: two border rows per section frame (4 sections), one
-	// Summary value row, five Details value rows, and one blank plus one hint
-	// row after the last section. 16 is the exact fixed cost, not slack;
-	// TestEditFormViewLayout asserts the formula.
-	const overhead = 16
+	// 20 + 2*taHeight rows: two border rows and one title padding row per section
+	// frame (4 sections = 12), one Summary value row, five Details value rows, and
+	// one blank plus one hint row after the last section. 20 is the exact fixed
+	// cost, not slack; TestEditFormViewLayout asserts the formula.
+	const overhead = 20
 	taH := (h - overhead) / 2
 	if taH < 4 {
 		taH = 4
@@ -332,6 +332,7 @@ func (m *editModel) fieldLabel(i int) string {
 
 // section renders one nested section frame with its title in the top border and
 // indents every row by one cell so the section sits inside the modal's frame.
+// Frame itself supplies the blank padding row under the title.
 func (m *editModel) section(title, body string) []string {
 	rows := strings.Split(tui.Frame(title, body, m.secW, 0, tui.ColorSubtle, tui.ColorForegroundBright), "\n")
 	for i, row := range rows {
