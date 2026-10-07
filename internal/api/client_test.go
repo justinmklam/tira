@@ -757,3 +757,84 @@ func TestGetEpicChildren_EmptyAndError(t *testing.T) {
 		}
 	})
 }
+
+func TestAddCommentPostsADFAndReturnsAPIError(t *testing.T) {
+	t.Run("posts ADF comment to issue endpoint", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost {
+				t.Errorf("request method = %q, want POST", r.Method)
+			}
+			if r.URL.Path != "/rest/api/3/issue/PROJ-123/comment" {
+				t.Errorf("request path = %q, want /rest/api/3/issue/PROJ-123/comment", r.URL.Path)
+			}
+
+			var payload map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Errorf("decode request body: %v", err)
+				return
+			}
+			body, ok := payload["body"].(map[string]any)
+			if !ok {
+				t.Errorf("payload body has type %T, want map[string]any", payload["body"])
+				return
+			}
+			if body["type"] != "doc" || body["version"] != float64(1) {
+				t.Errorf("ADF body header = (%v, %v), want (doc, 1)", body["type"], body["version"])
+			}
+			content, ok := body["content"].([]any)
+			if !ok || len(content) != 1 {
+				t.Errorf("ADF content = %v, want one paragraph", body["content"])
+				return
+			}
+			paragraph, ok := content[0].(map[string]any)
+			if !ok || paragraph["type"] != "paragraph" {
+				t.Errorf("ADF first content node = %v, want paragraph", content[0])
+				return
+			}
+			nodes, ok := paragraph["content"].([]any)
+			if !ok || len(nodes) != 1 {
+				t.Errorf("ADF paragraph content = %v, want one text node", paragraph["content"])
+				return
+			}
+			textNode, ok := nodes[0].(map[string]any)
+			if !ok || textNode["text"] != "hello from CLI" {
+				t.Errorf("ADF text node = %v, want text hello from CLI", nodes[0])
+			}
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"id":"10001"}`))
+		}))
+		defer server.Close()
+
+		if err := newTestClient(server).AddComment("PROJ-123", "hello from CLI"); err != nil {
+			t.Fatalf("AddComment() error = %v", err)
+		}
+	})
+
+	t.Run("returns API error", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = w.Write([]byte(`{"errorMessages":["not allowed"]}`))
+		}))
+		defer server.Close()
+
+		if err := newTestClient(server).AddComment("PROJ-123", "hello"); err == nil {
+			t.Fatal("AddComment() error = nil, want Jira API error")
+		}
+	})
+
+	t.Run("returns transport error", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			connection, _, err := w.(http.Hijacker).Hijack()
+			if err != nil {
+				t.Errorf("hijack connection: %v", err)
+				return
+			}
+			_ = connection.Close()
+		}))
+		defer server.Close()
+
+		if err := newTestClient(server).AddComment("PROJ-123", "hello"); err == nil {
+			t.Fatal("AddComment() error = nil, want transport error")
+		}
+	})
+}

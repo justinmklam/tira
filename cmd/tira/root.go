@@ -55,6 +55,9 @@ Quick reference for AI agents and automation:
     # edit /tmp/issue.md, changing only what you need, then:
     cat /tmp/issue.md | tira update <KEY> --no-edit
 
+  Add a comment to an issue:
+    tira comment <KEY> "Comment text"
+
   Edit an existing issue interactively:
     tira update <KEY>`,
 	RunE: func(cmd *cobra.Command, args []string) error {

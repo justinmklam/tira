@@ -19,6 +19,7 @@ Demo:
 ## Features
 
 - Create and edit issues
+- Add comments to existing issues
 - Organize issues across sprints
 - Set issue status, assignee, story points, epics, and more
 - Fuzzy search picker for setting assignees and parent issues
@@ -158,6 +159,14 @@ tira get MP-101 --attachments=auto --attachments-dir ./tira-attachments  # save 
 tira get MP-101 --attachments=none  # omit attachment downloads
 tira get https://your-domain.atlassian.net/browse/MP-101  # full browse URL also works
 ```
+
+**Add a comment to an issue:**
+
+```sh
+tira comment MP-101 "The fix is ready for review."
+```
+
+Pass the comment as one shell-quoted argument. A full Jira browse URL can be used instead of the issue key.
 
 **Update an issue (non-interactive, recommended for scripts/agents):**
 

@@ -1,5 +1,5 @@
 ---
-description: Create, read, or update Jira tickets using the tira CLI. Use when the user wants to create a Jira issue/ticket/story/task/bug, look up a ticket by key (e.g. PROJ-123), update/edit an existing ticket, or mentions "tira".
+description: Create, read, update, or comment on Jira tickets using the tira CLI. Use when the user wants to create a Jira issue/ticket/story/task/bug, look up a ticket by key (e.g. PROJ-123), update/edit an existing ticket, add a comment, or mentions "tira".
 name: tira
 ---
 # Tira — Jira Ticket Management
@@ -15,6 +15,16 @@ tira get <KEY> --attachments=auto
 `tira get` includes attachment metadata by default. With `--attachments=auto`, supported small text attachments are included inline in the Markdown output. Images and other binary files are saved locally and their paths are included in the output so an agent can inspect them with filesystem/image tools. Use `--attachments-dir <path>` for a persistent location, or `--attachments=none` when attachments are not needed.
 
 Output is plain text — ticket summary, description, status, assignee, comments, and attachment content/references.
+
+## Commenting on a ticket
+
+Draft the exact comment text and ask the user to confirm before posting it. After confirmation, pass the text as one shell-quoted argument:
+
+```bash
+tira comment PROJ-123 "The fix is ready for review."
+```
+
+A full Jira browse URL can be used instead of the issue key. The command rejects blank comment text and reports success only after Jira accepts the comment.
 
 ## Updating a ticket
 

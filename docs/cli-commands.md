@@ -6,6 +6,7 @@ tira provides the following commands:
 |---------|-------------|
 | `get <key\|url> [--edit] [--attachments <mode>] [--attachments-dir <path>]` | Fetch and display a single issue (accepts an issue key or full browse URL); attachments are included by default |
 | `update <key\|url> [--show] [--no-edit] [--file <path>]` | Update an existing issue; non-interactively (agents) via `--show`/`--no-edit`/`--file`, or interactively via `$EDITOR` |
+| `comment <key\|url> <text>` | Add a comment to an existing issue |
 | `create [--project <key>] [--type <type>] [--parent <key>]` | Create a new issue via `$EDITOR` |
 | `board [--view backlog\|kanban\|epics] [--board-id <id>] [--snapshot] [--snapshot-size WxH]` | Launch the unified TUI (backlog + kanban + epics views), or render one frame with `--snapshot` |
 | `backlog` | **Deprecated** — alias for `board --view backlog` |
@@ -124,6 +125,23 @@ validates (looping on validation errors with `AnnotateTemplate`), and updates vi
 ```bash
 ./tira update MP-101
 ```
+
+---
+
+## `tira comment <key|url> <text>`
+
+**File:** `cmd/tira/comment.go`
+
+Adds a comment to an existing issue. The first argument may be an issue key or full Jira browse URL. The comment text is required, must not be blank, and must be passed as one argument; quote text containing spaces. Comment text is converted to Jira ADF using the same Markdown conversion as issue descriptions.
+
+**Examples:**
+
+```bash
+tira comment MP-101 "The fix is ready for review."
+tira comment https://your-domain.atlassian.net/browse/MP-101 "Please verify the latest build."
+```
+
+The command prints a success message to stderr after Jira accepts the comment and returns a contextual error if posting fails. It does not fetch the issue first.
 
 ---
 
