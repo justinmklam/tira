@@ -206,7 +206,7 @@ tira --debug-file /tmp/tira.log get MP-101   # log to a specific path
 Clone the repository and build the CLI:
 
 ```sh
-make check        # Run all checks (fmt, vet, lint, test)
+make check        # Run all checks (fmt, vet, lint, test, vulnerability scan)
 make build        # Compile the binary
 make run          # Run the tui using your default profile
 ```

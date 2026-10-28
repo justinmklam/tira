@@ -7,7 +7,7 @@
 - `make fmt-check` — check formatting without modifying files
 - `make vet` — run go vet
 - `make lint` — run golangci-lint (requires [golangci-lint](https://golangci-lint.run/welcome/install/))
-- `make check` — run all checks (fmt, vet, lint, test) — mirrors CI
+- `make check` — run all checks (fmt, vet, lint, test, vulnerability scan) — mirrors CI
 
 Important: Always run `make fmt check` after every code change.
 
