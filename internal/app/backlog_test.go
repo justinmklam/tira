@@ -26,7 +26,7 @@ func TestBlBuildRows_BasicStructure(t *testing.T) {
 	}
 
 	collapsed := make(map[int]bool)
-	rows := blBuildRows(groups, collapsed, "", "")
+	rows := blBuildRows(groups, collapsed, "", "", false)
 
 	// Expected structure:
 	// Row 0: Sprint 1 header
@@ -88,6 +88,71 @@ func TestRenderSprintRowShowsStoryPointTotalBeforeIssueCount(t *testing.T) {
 	}
 }
 
+func TestBlBuildRows_HideClosedIssuesAndHeaderTotals(t *testing.T) {
+	groups := []models.SprintGroup{{
+		Sprint: models.Sprint{ID: 1, Name: "Sprint 1"},
+		Issues: []models.Issue{
+			{Key: "PROJ-1", Summary: "Auth closed", StatusCategory: "done", StoryPoints: 8, EpicKey: "EPIC-1"},
+			{Key: "PROJ-2", Summary: "Auth open", StatusCategory: "indeterminate", StoryPoints: 3, EpicKey: "EPIC-1"},
+			{Key: "PROJ-3", Summary: "Unknown", StoryPoints: 1, EpicKey: "EPIC-2"},
+		},
+	}}
+
+	tests := []struct {
+		name         string
+		hideClosed   bool
+		wantRows     int
+		wantPoints   string
+		wantIssueCnt string
+	}{
+		{name: "enabled", hideClosed: true, wantRows: 3, wantPoints: "4 SP", wantIssueCnt: "2 issues"},
+		{name: "disabled", hideClosed: false, wantRows: 4, wantPoints: "12 SP", wantIssueCnt: "3 issues"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			rows := blBuildRows(groups, map[int]bool{}, "", "", tc.hideClosed)
+			if len(rows) != tc.wantRows {
+				t.Fatalf("row count = %d, want %d", len(rows), tc.wantRows)
+			}
+			if tc.hideClosed && rows[1].issueIdx != 1 {
+				t.Errorf("first visible issue index = %d, want 1", rows[1].issueIdx)
+			}
+			m := blModel{groups: groups, collapsed: map[int]bool{}, hideClosedIssues: tc.hideClosed}
+			header := m.renderSprintRow(blRow{kind: blRowSprint, groupIdx: 0}, false, -1, 80)
+			if !strings.Contains(header, tc.wantPoints) || !strings.Contains(header, tc.wantIssueCnt) {
+				t.Errorf("sprint header = %q, want %q and %q", header, tc.wantPoints, tc.wantIssueCnt)
+			}
+		})
+	}
+
+	filteredRows := blBuildRows(groups, map[int]bool{}, "auth", "EPIC-1", true)
+	if len(filteredRows) != 2 || filteredRows[1].kind != blRowIssue || filteredRows[1].issueIdx != 1 {
+		t.Errorf("text and epic filtered rows = %+v, want only the open matching issue", filteredRows)
+	}
+}
+
+func TestBlPatchIssuePreservesStatusCategory(t *testing.T) {
+	m := blModel{
+		groups: []models.SprintGroup{{Issues: []models.Issue{{
+			Key:            "PROJ-1",
+			StatusCategory: "done",
+		}}}},
+		collapsed:        map[int]bool{},
+		hideClosedIssues: true,
+	}
+	m.patchIssue(models.Issue{Key: "PROJ-1", Status: "Closed", Summary: "Updated"})
+
+	if got := m.groups[0].Issues[0].StatusCategory; got != "done" {
+		t.Errorf("StatusCategory after patch = %q, want %q", got, "done")
+	}
+	for _, row := range m.rows {
+		if row.kind == blRowIssue {
+			t.Fatal("closed issue became visible after patch")
+		}
+	}
+}
+
 func TestBlBuildRows_Collapsed(t *testing.T) {
 	groups := []models.SprintGroup{
 		{
@@ -102,7 +167,7 @@ func TestBlBuildRows_Collapsed(t *testing.T) {
 
 	// Collapse Sprint 1
 	collapsed := map[int]bool{0: true}
-	rows := blBuildRows(groups, collapsed, "", "")
+	rows := blBuildRows(groups, collapsed, "", "", false)
 
 	// Expected structure:
 	// Row 0: Sprint 1 header
@@ -143,7 +208,7 @@ func TestBlBuildRows_Collapsed(t *testing.T) {
 func TestBlBuildRows_EmptyGroups(t *testing.T) {
 	groups := []models.SprintGroup{}
 	collapsed := make(map[int]bool)
-	rows := blBuildRows(groups, collapsed, "", "")
+	rows := blBuildRows(groups, collapsed, "", "", false)
 
 	if len(rows) != 0 {
 		t.Errorf("expected 0 rows for empty groups, got %d", len(rows))
@@ -161,7 +226,7 @@ func TestBlBuildRows_WithFilter(t *testing.T) {
 	collapsed := make(map[int]bool)
 
 	// Filter by "auth"
-	rows := blBuildRows(groups, collapsed, "auth", "")
+	rows := blBuildRows(groups, collapsed, "auth", "", false)
 
 	// Only PROJ-1 should match
 	expectedRows := 2 // Sprint header + 1 matching issue
@@ -293,7 +358,7 @@ func TestBlSetEpicFilterSelectsFirstMatchingIssue(t *testing.T) {
 	m := blModel{
 		state:     blList,
 		groups:    groups,
-		rows:      blBuildRows(groups, map[int]bool{}, "", ""),
+		rows:      blBuildRows(groups, map[int]bool{}, "", "", false),
 		collapsed: map[int]bool{},
 		cursor:    2,
 	}
@@ -369,7 +434,7 @@ func blTestModel(groups []models.SprintGroup, startCursor int) blModel {
 		width:     120,
 		height:    40,
 		groups:    groups,
-		rows:      blBuildRows(groups, collapsed, "", ""),
+		rows:      blBuildRows(groups, collapsed, "", "", false),
 		collapsed: collapsed,
 		cursor:    startCursor,
 		selected:  map[string]bool{},

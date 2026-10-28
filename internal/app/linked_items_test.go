@@ -111,7 +111,7 @@ func newBacklogLinkPickerModel(issue *models.Issue) blModel {
 	return blModel{
 		state:            blList,
 		groups:           groups,
-		rows:             blBuildRows(groups, map[int]bool{}, "", ""),
+		rows:             blBuildRows(groups, map[int]bool{}, "", "", false),
 		collapsed:        map[int]bool{},
 		cursor:           1,
 		jiraURL:          "https://example.atlassian.net",

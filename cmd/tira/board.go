@@ -181,9 +181,9 @@ func runBoardCmd(startView app.BoardView) error {
 	}
 
 	if boardSnapshot {
-		fmt.Print(app.RenderBoardSnapshot(client, id, cfg.JiraURL, project, cfg.ClassicProject, data, startView, snapshotW, snapshotH))
+		fmt.Print(app.RenderBoardSnapshot(client, id, cfg.JiraURL, project, cfg.ClassicProject, data, startView, cfg.HideClosedIssues, snapshotW, snapshotH))
 		return nil
 	}
 
-	return app.RunBoardTUI(client, id, cfg.JiraURL, project, cfg.ClassicProject, data, startView, cfg.DefaultIssueType)
+	return app.RunBoardTUI(client, id, cfg.JiraURL, project, cfg.ClassicProject, data, startView, cfg.DefaultIssueType, cfg.HideClosedIssues)
 }

@@ -261,14 +261,14 @@ func activeSprintFromGroups(groups []models.SprintGroup) ([]models.Issue, string
 	return nil, ""
 }
 
-func newBoardModel(client api.Client, boardID int, jiraURL, project string, classicProject bool, data BoardInitData, startView BoardView, defaultIssueType string) (boardModel, tea.Cmd) {
+func newBoardModel(client api.Client, boardID int, jiraURL, project string, classicProject bool, data BoardInitData, startView BoardView, defaultIssueType string, hideClosedIssues bool) (boardModel, tea.Cmd) {
 	issues, sprintName := activeSprintFromGroups(data.Groups)
 
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	s.Style = lipgloss.NewStyle().Foreground(tui.ColorSpinner)
 
-	backlog, backlogCmd := newBacklogModel(client, boardID, data.Groups, project, jiraURL)
+	backlog, backlogCmd := newBacklogModel(client, boardID, data.Groups, project, jiraURL, hideClosedIssues)
 	epics, epicCmd := newEpicModel(client, data.Groups, jiraURL, true)
 
 	cmds := []tea.Cmd{backlogCmd, epicCmd}
@@ -1093,8 +1093,8 @@ func (m boardModel) issueURL(key string) string {
 }
 
 // RunBoardTUI runs the interactive board TUI.
-func RunBoardTUI(client api.Client, boardID int, jiraURL, project string, classicProject bool, data BoardInitData, startView BoardView, defaultIssueType string) error {
-	m, _ := newBoardModel(client, boardID, jiraURL, project, classicProject, data, startView, defaultIssueType)
+func RunBoardTUI(client api.Client, boardID int, jiraURL, project string, classicProject bool, data BoardInitData, startView BoardView, defaultIssueType string, hideClosedIssues bool) error {
+	m, _ := newBoardModel(client, boardID, jiraURL, project, classicProject, data, startView, defaultIssueType, hideClosedIssues)
 	p := tea.NewProgram(m)
 	_, err := p.Run()
 	if err != nil {

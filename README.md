@@ -55,6 +55,7 @@ profiles:
     project: MYPROJ
     board_id: 42
     classic_project: true   # Optional, set to true for company-managed (classic) projects
+    hide_closed_issues: true # Optional, defaults to true; set false to show done issues in backlog
 ```
 
 Alternatively, set values via environment variables (takes precedence over the config file):

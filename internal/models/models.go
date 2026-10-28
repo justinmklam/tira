@@ -7,6 +7,7 @@ type Issue struct {
 	AcceptanceCriteria string
 	Status             string
 	StatusID           string
+	StatusCategory     string
 	IssueType          string
 	Priority           string
 	Assignee           string

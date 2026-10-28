@@ -47,7 +47,7 @@ func TestBoardViewSwitchToEpicsSyncsBacklogProjection(t *testing.T) {
 		backlog: blModel{
 			state:     blList,
 			groups:    groups,
-			rows:      blBuildRows(groups, map[int]bool{}, "", ""),
+			rows:      blBuildRows(groups, map[int]bool{}, "", "", false),
 			collapsed: map[int]bool{},
 		},
 		kanban: kanbanModel{state: stateBoard},
@@ -162,7 +162,7 @@ func TestBoardAppliesEpicFilterFromEpicsView(t *testing.T) {
 		backlog: blModel{
 			state:     blList,
 			groups:    groups,
-			rows:      blBuildRows(groups, map[int]bool{}, "", ""),
+			rows:      blBuildRows(groups, map[int]bool{}, "", "", false),
 			collapsed: map[int]bool{},
 		},
 		epics: epicModel{

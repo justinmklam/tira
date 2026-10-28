@@ -565,6 +565,42 @@ func TestFetchAgileIssues_DynamicStoryPointsField(t *testing.T) {
 	}
 }
 
+func TestFetchAgileIssues_StatusCategory(t *testing.T) {
+	tests := []struct {
+		name         string
+		status       string
+		wantCategory string
+	}{
+		{name: "done", status: `{"id":"1","name":"Closed","statusCategory":{"key":"done"}}`, wantCategory: "done"},
+		{name: "in progress", status: `{"id":"2","name":"In Progress","statusCategory":{"key":"indeterminate"}}`, wantCategory: "indeterminate"},
+		{name: "missing category", status: `{"id":"3","name":"Unknown"}`},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			fixture := `{"issues":[{"key":"PROJ-1","fields":{"summary":"Test","status":` + tc.status + `}}]}`
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(fixture))
+			}))
+			defer server.Close()
+
+			client := newTestClient(server)
+			issues, err := client.fetchAgileIssues(server.URL+"/rest/agile/1.0/sprint/1/issue", "Sprint 1", "")
+			if err != nil {
+				t.Fatalf("fetchAgileIssues() error = %v", err)
+			}
+			if len(issues) != 1 {
+				t.Fatalf("expected 1 issue, got %d", len(issues))
+			}
+			if issues[0].StatusCategory != tc.wantCategory {
+				t.Errorf("StatusCategory = %q, want %q", issues[0].StatusCategory, tc.wantCategory)
+			}
+		})
+	}
+}
+
 func TestAgileIssueFieldsIncludesStatusCategoryChangeDate(t *testing.T) {
 	for _, storyPointsField := range []string{"", "customfield_10034"} {
 		fields := agileIssueFields(storyPointsField)

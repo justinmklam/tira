@@ -7,6 +7,7 @@ profiles:
     project: MYPROJ
     board_id: 42
     classic_project: true   # set to true for company-managed (classic) projects
+    hide_closed_issues: true # hide issues in the Done status category from the backlog
     default_view: backlog   # starting view for `tira board`: backlog, kanban, or epics
     default_issue_type: Task  # type new issues start as (must be valid for the project)
   dev:

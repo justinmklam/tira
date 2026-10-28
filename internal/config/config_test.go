@@ -73,7 +73,7 @@ func blankLoaderEnv(t *testing.T, names ...string) {
 	t.Helper()
 	all := []string{
 		"TIRA_JIRA_URL", "TIRA_EMAIL", "TIRA_TOKEN", "TIRA_PROJECT", "TIRA_BOARD_ID",
-		"TIRA_CLASSIC_PROJECT", "TIRA_THEME", "TIRA_DEFAULT_VIEW", "TIRA_DEFAULT_ISSUE_TYPE", "JIRA_TOKEN", "JIRA_API_TOKEN",
+		"TIRA_CLASSIC_PROJECT", "TIRA_THEME", "TIRA_DEFAULT_VIEW", "TIRA_DEFAULT_ISSUE_TYPE", "TIRA_HIDE_CLOSED_ISSUES", "JIRA_TOKEN", "JIRA_API_TOKEN",
 	}
 	for _, env := range append(all, names...) {
 		t.Setenv(env, "")
@@ -151,6 +151,41 @@ func TestLoadDev(t *testing.T) {
 	})
 }
 
+func TestLoad_HideClosedIssuesDefaultsAndOverrides(t *testing.T) {
+	tests := []struct {
+		name       string
+		profile    string
+		env        string
+		wantHidden bool
+	}{
+		{name: "missing config defaults to hidden", wantHidden: true},
+		{name: "profile omits value", profile: "profiles:\n  default:\n    project: TEST\n", wantHidden: true},
+		{name: "profile enables hiding", profile: "profiles:\n  default:\n    hide_closed_issues: true\n", wantHidden: true},
+		{name: "profile disables hiding", profile: "profiles:\n  default:\n    hide_closed_issues: false\n", wantHidden: false},
+		{name: "environment enables hiding", profile: "profiles:\n  default:\n    hide_closed_issues: false\n", env: "true", wantHidden: true},
+		{name: "environment disables hiding", profile: "profiles:\n  default:\n    hide_closed_issues: true\n", env: "false", wantHidden: false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			blankLoaderEnv(t)
+			dir := t.TempDir()
+			if tc.profile != "" {
+				assert.NoError(t, os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(tc.profile), 0o600))
+			}
+			if tc.env != "" {
+				t.Setenv("TIRA_HIDE_CLOSED_ISSUES", tc.env)
+			}
+
+			cfg, err := LoadDev("default", dir)
+			assert.NoError(t, err)
+			if assert.NotNil(t, cfg) {
+				assert.Equal(t, tc.wantHidden, cfg.HideClosedIssues)
+			}
+		})
+	}
+}
+
 func TestLoad_EnvVarOverride(t *testing.T) {
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.yaml")
@@ -170,7 +205,7 @@ func TestLoad_EnvVarOverride(t *testing.T) {
 			had  bool
 		}
 		var states []envState
-		for _, env := range []string{"TIRA_JIRA_URL", "TIRA_EMAIL", "TIRA_TOKEN", "TIRA_PROJECT", "TIRA_BOARD_ID", "TIRA_CLASSIC_PROJECT", "TIRA_THEME", "TIRA_DEFAULT_VIEW", "TIRA_DEFAULT_ISSUE_TYPE", "JIRA_TOKEN", "JIRA_API_TOKEN"} {
+		for _, env := range []string{"TIRA_JIRA_URL", "TIRA_EMAIL", "TIRA_TOKEN", "TIRA_PROJECT", "TIRA_BOARD_ID", "TIRA_CLASSIC_PROJECT", "TIRA_THEME", "TIRA_DEFAULT_VIEW", "TIRA_DEFAULT_ISSUE_TYPE", "TIRA_HIDE_CLOSED_ISSUES", "JIRA_TOKEN", "JIRA_API_TOKEN"} {
 			old, had := os.LookupEnv(env)
 			states = append(states, envState{env, old, had})
 			os.Unsetenv(env) //nolint:errcheck

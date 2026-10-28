@@ -377,11 +377,16 @@ func (m blModel) renderSprintRow(row blRow, isSelected bool, activeGroupIdx, wid
 	}
 
 	var storyPoints float64
+	issueCount := 0
 	for _, issue := range group.Issues {
+		if !blIssueVisible(issue, m.hideClosedIssues) {
+			continue
+		}
 		storyPoints += issue.StoryPoints
+		issueCount++
 	}
 	pointsStr := tui.FormatStoryPoints(storyPoints) + " SP"
-	countStr := fmt.Sprintf("%d issues", len(group.Issues))
+	countStr := fmt.Sprintf("%d issues", issueCount)
 	rightStr := pointsStr + " · " + countStr
 	right := fill.Foreground(tui.ColorMuted).Render(rightStr)
 

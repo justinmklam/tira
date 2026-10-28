@@ -26,6 +26,8 @@ type Config struct {
 	// type is chosen. It must name a type valid for the project; an unrecognised
 	// value falls back to the first valid type with a warning.
 	DefaultIssueType string `mapstructure:"default_issue_type"`
+	// HideClosedIssues hides Jira issues in the done status category from backlog rows by default.
+	HideClosedIssues bool `mapstructure:"hide_closed_issues"`
 }
 
 func Load(profileName string, searchPaths ...string) (*Config, error) {
@@ -63,7 +65,7 @@ func load(profileName string, requireCredentials bool, searchPaths ...string) (*
 		v.AddConfigPath(".") // Also look in current directory for convenience
 	}
 
-	cfg := &Config{}
+	cfg := &Config{HideClosedIssues: true}
 
 	if err := v.ReadInConfig(); err != nil {
 		if requireCredentials || !isConfigNotFound(err) {
@@ -95,7 +97,7 @@ func load(profileName string, requireCredentials bool, searchPaths ...string) (*
 		return cfg, nil
 	}
 
-	var loaded Config
+	loaded := Config{HideClosedIssues: true}
 	if err := v.UnmarshalKey(profileKey, &loaded); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal profile %q: %w", profileName, err)
 	}
@@ -135,6 +137,9 @@ func applyEnv(cfg *Config) {
 	}
 	if v := os.Getenv("TIRA_DEFAULT_ISSUE_TYPE"); v != "" {
 		cfg.DefaultIssueType = v
+	}
+	if v := os.Getenv("TIRA_HIDE_CLOSED_ISSUES"); v != "" {
+		cfg.HideClosedIssues = strings.EqualFold(v, "true")
 	}
 	if v := os.Getenv("TIRA_CLASSIC_PROJECT"); v != "" {
 		cfg.ClassicProject = strings.EqualFold(v, "true")

@@ -125,7 +125,7 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		row := m.rows[m.cursor]
 		gIdx := row.groupIdx
 		m.collapsed[gIdx] = !m.collapsed[gIdx]
-		m.rows = blBuildRows(m.groups, m.collapsed, m.filter, m.filterEpic)
+		m.rows = blBuildRows(m.groups, m.collapsed, m.filter, m.filterEpic, m.hideClosedIssues)
 		m.cursor = tui.Clamp(m.cursor, 0, len(m.rows)-1)
 		return blScrollToFit(m), nil
 
@@ -140,7 +140,7 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		for i := range m.groups {
 			m.collapsed[i] = anyExpanded
 		}
-		m.rows = blBuildRows(m.groups, m.collapsed, m.filter, m.filterEpic)
+		m.rows = blBuildRows(m.groups, m.collapsed, m.filter, m.filterEpic, m.hideClosedIssues)
 		m.cursor = tui.Clamp(m.cursor, 0, len(m.rows)-1)
 		return blScrollToFit(m), nil
 
@@ -148,7 +148,7 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.filter != "" {
 			m.filter = ""
 			m.filterInput.SetValue("")
-			m.rows = blBuildRows(m.groups, m.collapsed, "", m.filterEpic)
+			m.rows = blBuildRows(m.groups, m.collapsed, "", m.filterEpic, m.hideClosedIssues)
 			m.cursor = tui.Clamp(m.cursor, 0, len(m.rows)-1)
 		} else if m.visualMode {
 			m.commitVisualSelection()
@@ -177,7 +177,7 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if row.kind == blRowSprint {
 			m.collapsed[row.groupIdx] = !m.collapsed[row.groupIdx]
-			m.rows = blBuildRows(m.groups, m.collapsed, m.filter, m.filterEpic)
+			m.rows = blBuildRows(m.groups, m.collapsed, m.filter, m.filterEpic, m.hideClosedIssues)
 			m.cursor = tui.Clamp(m.cursor, 0, len(m.rows)-1)
 			return blScrollToFit(m), nil
 		}
@@ -447,14 +447,14 @@ func (m blModel) updateFilter(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.filterInput.SetValue("")
 			m.filterInput.Blur()
 			m.state = blList
-			m.rows = blBuildRows(m.groups, m.collapsed, "", m.filterEpic)
+			m.rows = blBuildRows(m.groups, m.collapsed, "", m.filterEpic, m.hideClosedIssues)
 			m.cursor = tui.Clamp(m.cursor, 0, len(m.rows)-1)
 			return m, nil
 		case "enter":
 			m.filter = m.filterInput.Value()
 			m.filterInput.Blur()
 			m.state = blList
-			m.rows = blBuildRows(m.groups, m.collapsed, m.filter, m.filterEpic)
+			m.rows = blBuildRows(m.groups, m.collapsed, m.filter, m.filterEpic, m.hideClosedIssues)
 			m.cursor = tui.Clamp(m.cursor, 0, len(m.rows)-1)
 			return m, nil
 		case "ctrl+c":
@@ -465,7 +465,7 @@ func (m blModel) updateFilter(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	m.filterInput, cmd = m.filterInput.Update(msg)
 	m.filter = m.filterInput.Value()
-	m.rows = blBuildRows(m.groups, m.collapsed, m.filter, m.filterEpic)
+	m.rows = blBuildRows(m.groups, m.collapsed, m.filter, m.filterEpic, m.hideClosedIssues)
 	m.cursor = tui.Clamp(m.cursor, 0, len(m.rows)-1)
 	return m, cmd
 }
@@ -615,7 +615,7 @@ func (m blModel) moveSelectionDown() (tea.Model, tea.Cmd) {
 
 	blockerKey := issues[blockerIdx].Key
 	m.groups[groupIdx].Issues = blReorderDown(issues, moveSet, blockerKey)
-	m.rows = blBuildRows(m.groups, m.collapsed, m.filter, m.filterEpic)
+	m.rows = blBuildRows(m.groups, m.collapsed, m.filter, m.filterEpic, m.hideClosedIssues)
 	m.cursor = m.findIssueRow(groupIdx, cursorKey)
 	return blScrollToFit(m), blRankCmd(m.client, moveKeys, blockerKey, "")
 }
@@ -658,7 +658,7 @@ func (m blModel) moveSelectionUp() (tea.Model, tea.Cmd) {
 
 	blockerKey := issues[blockerIdx].Key
 	m.groups[groupIdx].Issues = blReorderUp(issues, moveSet, blockerKey)
-	m.rows = blBuildRows(m.groups, m.collapsed, m.filter, m.filterEpic)
+	m.rows = blBuildRows(m.groups, m.collapsed, m.filter, m.filterEpic, m.hideClosedIssues)
 	m.cursor = m.findIssueRow(groupIdx, cursorKey)
 	return blScrollToFit(m), blRankCmd(m.client, moveKeys, "", blockerKey)
 }
@@ -836,7 +836,7 @@ func (m blModel) updateEpicFilterPicker(msg tea.Msg) (tea.Model, tea.Cmd) {
 // one exists, and refreshes the sidebar for the new cursor position.
 func (m blModel) setEpicFilter(epicKey string) (blModel, tea.Cmd) {
 	m.filterEpic = epicKey
-	m.rows = blBuildRows(m.groups, m.collapsed, m.filter, m.filterEpic)
+	m.rows = blBuildRows(m.groups, m.collapsed, m.filter, m.filterEpic, m.hideClosedIssues)
 	m.cursor = tui.Clamp(m.cursor, 0, max(len(m.rows)-1, 0))
 
 	for i, row := range m.rows {

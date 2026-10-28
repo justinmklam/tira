@@ -112,6 +112,8 @@ type blModel struct {
 	project string
 	jiraURL string
 
+	hideClosedIssues bool
+
 	groups    []models.SprintGroup
 	rows      []blRow
 	cursor    int
@@ -191,7 +193,7 @@ type blModel struct {
 	linkPickerReturn blState
 }
 
-func blBuildRows(groups []models.SprintGroup, collapsed map[int]bool, filter string, filterEpic string) []blRow {
+func blBuildRows(groups []models.SprintGroup, collapsed map[int]bool, filter string, filterEpic string, hideClosed bool) []blRow {
 	var rows []blRow
 	for i, g := range groups {
 		if i > 0 {
@@ -200,13 +202,17 @@ func blBuildRows(groups []models.SprintGroup, collapsed map[int]bool, filter str
 		rows = append(rows, blRow{kind: blRowSprint, groupIdx: i, issueIdx: -1})
 		if !collapsed[i] {
 			for j, issue := range g.Issues {
-				if blMatchesFilter(issue, filter, filterEpic) {
+				if blIssueVisible(issue, hideClosed) && blMatchesFilter(issue, filter, filterEpic) {
 					rows = append(rows, blRow{kind: blRowIssue, groupIdx: i, issueIdx: j})
 				}
 			}
 		}
 	}
 	return rows
+}
+
+func blIssueVisible(issue models.Issue, hideClosed bool) bool {
+	return !hideClosed || !strings.EqualFold(issue.StatusCategory, "done")
 }
 
 func blMatchesFilter(issue models.Issue, filter string, filterEpic string) bool {
@@ -226,7 +232,7 @@ func blMatchesFilter(issue models.Issue, filter string, filterEpic string) bool 
 	return false
 }
 
-func newBacklogModel(client api.Client, boardID int, groups []models.SprintGroup, project, jiraURL string) (blModel, tea.Cmd) {
+func newBacklogModel(client api.Client, boardID int, groups []models.SprintGroup, project, jiraURL string, hideClosedIssues bool) (blModel, tea.Cmd) {
 	collapsed := make(map[int]bool)
 
 	ti := textinput.New()
@@ -246,21 +252,22 @@ func newBacklogModel(client api.Client, boardID int, groups []models.SprintGroup
 	s.Style = lipgloss.NewStyle().Foreground(tui.ColorSpinner)
 
 	m := blModel{
-		state:           blList,
-		client:          client,
-		boardID:         boardID,
-		project:         project,
-		jiraURL:         jiraURL,
-		groups:          groups,
-		collapsed:       collapsed,
-		filterInput:     ti,
-		storyPointInput: spTi,
-		keySearchInput:  ksTi,
-		loadSpinner:     s,
-		selected:        make(map[string]bool),
-		cutKeys:         make(map[string]bool),
+		state:            blList,
+		client:           client,
+		boardID:          boardID,
+		project:          project,
+		jiraURL:          jiraURL,
+		hideClosedIssues: hideClosedIssues,
+		groups:           groups,
+		collapsed:        collapsed,
+		filterInput:      ti,
+		storyPointInput:  spTi,
+		keySearchInput:   ksTi,
+		loadSpinner:      s,
+		selected:         make(map[string]bool),
+		cutKeys:          make(map[string]bool),
 	}
-	m.rows = blBuildRows(groups, collapsed, "", "")
+	m.rows = blBuildRows(groups, collapsed, "", "", hideClosedIssues)
 	// Start cursor on the first issue row, skipping sprint headers.
 	for i, row := range m.rows {
 		if row.kind == blRowIssue {
@@ -283,7 +290,7 @@ func newBacklogModel(client api.Client, boardID int, groups []models.SprintGroup
 // Returns a command to re-fetch the sidebar issue at the correct width.
 func (m *blModel) refreshData(groups []models.SprintGroup) tea.Cmd {
 	m.groups = groups
-	m.rows = blBuildRows(groups, m.collapsed, m.filter, m.filterEpic)
+	m.rows = blBuildRows(groups, m.collapsed, m.filter, m.filterEpic, m.hideClosedIssues)
 	m.cursor = tui.Clamp(m.cursor, 0, max(len(m.rows)-1, 0))
 	// Reset sidebar cache and show a preview while the full issue is re-fetched.
 	m.sidebarFullIssue = nil
@@ -300,7 +307,7 @@ func (m *blModel) refreshData(groups []models.SprintGroup) tea.Cmd {
 
 // patchIssue updates a single issue in place within the sprint groups and
 // rebuilds derived state (rows, sidebar). Preserves agile-only fields that
-// GetIssue does not return (StatusID, EpicKey, EpicName, EpicStatus,
+// GetIssue does not return (StatusID, StatusCategory, EpicKey, EpicName, EpicStatus,
 // ProjectKey, StatusChangedDate) from the existing record.
 func (m *blModel) patchIssue(fresh models.Issue) {
 	for gi := range m.groups {
@@ -311,6 +318,7 @@ func (m *blModel) patchIssue(fresh models.Issue) {
 			existing := m.groups[gi].Issues[ii]
 			// Preserve fields not returned by GetIssue.
 			fresh.StatusID = existing.StatusID
+			fresh.StatusCategory = existing.StatusCategory
 			fresh.EpicKey = existing.EpicKey
 			fresh.EpicName = existing.EpicName
 			fresh.EpicStatus = existing.EpicStatus
@@ -324,7 +332,7 @@ func (m *blModel) patchIssue(fresh models.Issue) {
 			m.groups[gi].Issues[ii] = fresh
 		}
 	}
-	m.rows = blBuildRows(m.groups, m.collapsed, m.filter, m.filterEpic)
+	m.rows = blBuildRows(m.groups, m.collapsed, m.filter, m.filterEpic, m.hideClosedIssues)
 	m.cursor = tui.Clamp(m.cursor, 0, max(len(m.rows)-1, 0))
 	// Update sidebar if it is already showing this issue.
 	if m.sidebarFullIssue != nil && m.sidebarFullIssue.Key == fresh.Key {
@@ -337,7 +345,7 @@ func (m *blModel) patchIssue(fresh models.Issue) {
 // to the backlog model and rebuilds the row list. Preserves cursor position.
 func (m *blModel) appendGroups(groups []models.SprintGroup) {
 	m.groups = append(m.groups, groups...)
-	m.rows = blBuildRows(m.groups, m.collapsed, m.filter, m.filterEpic)
+	m.rows = blBuildRows(m.groups, m.collapsed, m.filter, m.filterEpic, m.hideClosedIssues)
 	// Cursor stays where it is — new groups are appended below the viewport.
 }
 
@@ -353,7 +361,7 @@ func (m *blModel) insertIssue(issue models.Issue, sprintID int) {
 			break
 		}
 	}
-	m.rows = blBuildRows(m.groups, m.collapsed, m.filter, m.filterEpic)
+	m.rows = blBuildRows(m.groups, m.collapsed, m.filter, m.filterEpic, m.hideClosedIssues)
 	m.cursor = tui.Clamp(m.cursor, 0, max(len(m.rows)-1, 0))
 }
 
@@ -610,7 +618,7 @@ func (m blModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.selected = make(map[string]bool)
 			m.cutKeys = make(map[string]bool)
 			m.visualMode = false
-			m.rows = blBuildRows(m.groups, m.collapsed, m.filter, m.filterEpic)
+			m.rows = blBuildRows(m.groups, m.collapsed, m.filter, m.filterEpic, m.hideClosedIssues)
 			if msg.followCursor {
 				// Navigate cursor to the first moved issue's new position.
 				if msg.firstMovedKey != "" {

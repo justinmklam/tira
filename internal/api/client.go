@@ -1229,8 +1229,11 @@ func (c *jiraClient) fetchAgileIssues(url, sprintName, spField string) ([]models
 	type agileFields struct {
 		Summary string `json:"summary"`
 		Status  struct {
-			ID   string `json:"id"`
-			Name string `json:"name"`
+			ID             string `json:"id"`
+			Name           string `json:"name"`
+			StatusCategory struct {
+				Key string `json:"key"`
+			} `json:"statusCategory"`
 		} `json:"status"`
 		StatusCategoryChangedDate string `json:"statuscategorychangedate"`
 		Issuetype                 struct {
@@ -1272,6 +1275,7 @@ func (c *jiraClient) fetchAgileIssues(url, sprintName, spField string) ([]models
 			Summary:           af.Summary,
 			Status:            af.Status.Name,
 			StatusID:          af.Status.ID,
+			StatusCategory:    af.Status.StatusCategory.Key,
 			StatusChangedDate: trimDateStr(af.StatusCategoryChangedDate),
 			IssueType:         af.Issuetype.Name,
 			Priority:          af.Priority.Name,

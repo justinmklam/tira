@@ -19,8 +19,8 @@ import (
 // "" if the model does not survive the size update, so callers never panic on
 // an unexpected model type.
 func RenderBoardSnapshot(client api.Client, boardID int, jiraURL, project string,
-	classicProject bool, data BoardInitData, view BoardView, width, height int) string {
-	m, _ := newBoardModel(client, boardID, jiraURL, project, classicProject, data, view, "")
+	classicProject bool, data BoardInitData, view BoardView, hideClosedIssues bool, width, height int) string {
+	m, _ := newBoardModel(client, boardID, jiraURL, project, classicProject, data, view, "", hideClosedIssues)
 
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: width, Height: height})
 	board, ok := updated.(boardModel)
