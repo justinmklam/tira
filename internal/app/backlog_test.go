@@ -1,12 +1,14 @@
 package app
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"strconv"
 	"strings"
 	"testing"
 
+	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"github.com/justinmklam/tira/internal/api"
 	"github.com/justinmklam/tira/internal/models"
@@ -382,6 +384,161 @@ func TestBlSetEpicFilterSelectsFirstMatchingIssue(t *testing.T) {
 				t.Fatalf("filtered rows contain %s", issue.Key)
 			}
 		}
+	}
+}
+
+func TestBlAddLabelsHotkeyTargetsSelectionAndAddsLabels(t *testing.T) {
+	client := &bulkLabelsTestClient{}
+	m := blTestModel(blSprintJumpGroups(), 1)
+	m.client = client
+	m.labelInput = textinput.New()
+	m.selected["PROJ-1"] = true
+	m.selected["PROJ-3"] = true
+
+	updated, _ := m.Update(keyPress("#"))
+	m = updated.(blModel)
+	if m.state != blLabelInput {
+		t.Fatalf("state after # = %v, want blLabelInput", m.state)
+	}
+	if got, want := m.labelTargetKeys, []string{"PROJ-1", "PROJ-3"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("label targets = %v, want %v", got, want)
+	}
+
+	m.labelInput.SetValue("frontend, urgent, frontend, , ")
+	updated, cmd := m.Update(keyPress("enter"))
+	m = updated.(blModel)
+	if m.state != blLabelSaving {
+		t.Fatalf("state after enter = %v, want blLabelSaving", m.state)
+	}
+	if cmd == nil {
+		t.Fatal("enter should start the bulk add command")
+	}
+
+	msg, ok := blAddLabelsCmd(client, m.labelTargetKeys, parseAddedLabels(m.labelInput.Value()))().(blBulkDoneMsg)
+	if !ok {
+		t.Fatalf("command returned %T, want blBulkDoneMsg", cmd())
+	}
+	if !reflect.DeepEqual(client.keys, []string{"PROJ-1", "PROJ-3"}) {
+		t.Errorf("BulkAddLabels keys = %v, want [PROJ-1 PROJ-3]", client.keys)
+	}
+	if !reflect.DeepEqual(client.labels, []string{"frontend", "urgent"}) {
+		t.Errorf("BulkAddLabels labels = %v, want [frontend urgent]", client.labels)
+	}
+	if !reflect.DeepEqual(msg.Keys, client.keys) {
+		t.Errorf("completion keys = %v, want %v", msg.Keys, client.keys)
+	}
+}
+
+func TestBlAddLabelsHotkeyFallsBackToCursorAndBlankOrCancelDoesNothing(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		key   string
+		value string
+	}{
+		{name: "blank input", key: "enter", value: " ,  "},
+		{name: "cancel", key: "esc", value: "frontend"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			client := &bulkLabelsTestClient{}
+			m := blTestModel(blSprintJumpGroups(), 1)
+			m.client = client
+			m.labelInput = textinput.New()
+			updated, _ := m.Update(keyPress("#"))
+			m = updated.(blModel)
+			if !reflect.DeepEqual(m.labelTargetKeys, []string{"PROJ-1"}) {
+				t.Fatalf("label targets = %v, want cursor issue PROJ-1", m.labelTargetKeys)
+			}
+			m.labelInput.SetValue(tc.value)
+
+			updated, cmd := m.Update(keyPress(tc.key))
+			m = updated.(blModel)
+			if m.state != blList {
+				t.Fatalf("state after %s = %v, want blList", tc.key, m.state)
+			}
+			if cmd != nil {
+				t.Errorf("command after %s = %v, want nil", tc.key, cmd)
+			}
+			if client.calls != 0 {
+				t.Errorf("BulkAddLabels calls = %d, want 0", client.calls)
+			}
+		})
+	}
+}
+
+type bulkLabelsTestClient struct {
+	api.Client
+	keys   []string
+	labels []string
+	calls  int
+}
+
+func (c *bulkLabelsTestClient) BulkAddLabels(keys []string, labels []string) []error {
+	c.calls++
+	c.keys = append([]string(nil), keys...)
+	c.labels = append([]string(nil), labels...)
+	return make([]error, len(keys))
+}
+
+func TestBlBulkLabelDoneReportsPartialFailure(t *testing.T) {
+	m := blTestModel(blSprintJumpGroups(), 1)
+	m.state = blLabelSaving
+	m.labelTargetKeys = []string{"PROJ-1", "PROJ-2"}
+
+	updated, _ := m.Update(blBulkDoneMsg{
+		Keys:     []string{"PROJ-1", "PROJ-2"},
+		Errors:   []error{nil, errors.New("permission denied")},
+		LabelAdd: true,
+	})
+	m = updated.(blModel)
+	if m.labelResult == "" || !strings.Contains(m.labelResult, "1/2") || !strings.Contains(m.labelResult, "PROJ-2") || !m.labelResultFailed {
+		t.Fatalf("label result = %q, failed = %v; want visible partial-failure report", m.labelResult, m.labelResultFailed)
+	}
+	if m.state != blList {
+		t.Errorf("state after label completion = %v, want blList", m.state)
+	}
+}
+
+func TestBlUnrelatedBulkDoneDoesNotCompleteLabelOperation(t *testing.T) {
+	m := blTestModel(blSprintJumpGroups(), 1)
+	m.state = blLabelSaving
+	m.labelTargetKeys = []string{"PROJ-1"}
+
+	updated, _ := m.Update(blBulkDoneMsg{Keys: []string{"PROJ-2"}, Errors: []error{nil}})
+	m = updated.(blModel)
+	if m.state != blLabelSaving {
+		t.Fatalf("state after unrelated bulk completion = %v, want blLabelSaving", m.state)
+	}
+	if m.labelResult != "" {
+		t.Fatalf("label result after unrelated bulk completion = %q, want empty", m.labelResult)
+	}
+}
+
+func TestBlLabelResultTimerDoesNotClearNewerResult(t *testing.T) {
+	m := blTestModel(blSprintJumpGroups(), 1)
+	m.labelResult = "new result"
+	m.labelResultGeneration = 2
+
+	updated, _ := m.Update(blLabelResultDoneMsg{generation: 1})
+	m = updated.(blModel)
+	if m.labelResult != "new result" {
+		t.Fatalf("label result = %q after stale timer, want newer result preserved", m.labelResult)
+	}
+
+	updated, _ = m.Update(blLabelResultDoneMsg{generation: 2})
+	m = updated.(blModel)
+	if m.labelResult != "" {
+		t.Fatalf("label result = %q after matching timer, want cleared", m.labelResult)
+	}
+}
+
+func TestBlLabelResultVisibleInFooterWhenTabDetailDoesNotFit(t *testing.T) {
+	m := blTestModel(blSprintJumpGroups(), 1)
+	m.width = 50
+	m.labelResult = "LABELS failed: UNIQUE-FAIL-KEY"
+	m.labelResultFailed = true
+
+	if got := m.viewList(); !strings.Contains(got, "UNIQUE-FAIL-KEY") {
+		t.Fatalf("view does not show label failure when tab detail is too wide: %q", got)
 	}
 }
 

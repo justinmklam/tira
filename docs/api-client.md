@@ -13,6 +13,7 @@ type Client interface {
     GetIssue(key string) (*models.Issue, error)
     UpdateIssue(key string, fields models.IssueFields) error
     SetLabels(issueKey string, labels []string) error
+    BulkAddLabels(keys []string, labels []string) []error
     CreateIssue(projectKey string, fields models.IssueFields) (*models.Issue, error)
     GetValidValues(projectKey string) (*models.ValidValues, error)
     GetIssueMetadata(projectKey string) (*models.ValidValues, error)
@@ -168,6 +169,17 @@ Before updating, `fetchFieldIDs(key)` makes a request to `?expand=names` on the 
 `SetLabels(issueKey, labels)` replaces the issue's complete label set through
 `fields.labels`. It always sends the field, including an empty JSON array when
 `labels` is empty, so clearing labels is distinct from omitting the field.
+
+### BulkAddLabels — Additive Bulk Update
+
+`BulkAddLabels(keys, labels)` adds every supplied label to each issue without
+replacing its current label set. It uses Jira's issue update operation with one
+`{"add": "label"}` entry per label, so concurrent label changes are not lost.
+The result contains one error per key (nil for success). Every non-empty bulk
+attempt invalidates affected issue and sprint-group caches, even when a ticket
+returns an error, because an operation can fail after a partial or in-memory
+mutation. Empty label input is a no-op. Dev mode applies the same add-only
+behavior to its fixture and avoids duplicate labels.
 
 ### CreateIssue — Field ID Resolution
 

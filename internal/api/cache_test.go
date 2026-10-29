@@ -15,6 +15,7 @@ type stubClient struct {
 	epicChildren      map[string][]models.Issue
 	epicChildrenErr   error
 	epicChildrenCalls int
+	bulkAddLabelsErrs []error
 }
 
 func (c *stubClient) GetEpicChildren(epicKey string) ([]models.Issue, error) {
@@ -26,6 +27,26 @@ func (c *stubClient) GetEpicChildren(epicKey string) ([]models.Issue, error) {
 }
 
 func (c *stubClient) SetParent(_, _ string) error { return nil }
+
+func (c *stubClient) BulkAddLabels(_, _ []string) []error {
+	return c.bulkAddLabelsErrs
+}
+
+func TestCachedClient_BulkAddLabelsInvalidatesCachesEvenOnPartialFailure(t *testing.T) {
+	inner := &stubClient{bulkAddLabelsErrs: []error{errors.New("write failed")}}
+	client := NewCachedClient(inner)
+	client.cset("issue:PROJ-1", &models.Issue{Key: "PROJ-1"})
+	client.cset("sprint_groups:1", []models.SprintGroup{{}})
+
+	client.BulkAddLabels([]string{"PROJ-1"}, []string{"frontend"})
+
+	if _, ok := client.cget("issue:PROJ-1"); ok {
+		t.Fatal("issue cache retained after attempted label update")
+	}
+	if _, ok := client.cget("sprint_groups:1"); ok {
+		t.Fatal("sprint-group cache retained after attempted label update")
+	}
+}
 
 func TestCachedClient_GetEpicChildrenCachesPerEpic(t *testing.T) {
 	inner := &stubClient{epicChildren: map[string][]models.Issue{

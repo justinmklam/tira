@@ -372,11 +372,12 @@ Editor/validator packages are pure string/struct logic with no I/O — keep them
 
 ## Keybindings
 
-Any new keybindings should be updated in:
+When adding or updating keyboard shortcuts, always update:
 
 - [docs/keybindings-backlog.md](docs/keybindings-backlog.md)
-- [internal/tui/help.go](internal/tui/help.go) (optional)
-- Bottom persistent help (optional)
+- [internal/tui/help.go](internal/tui/help.go) — the help menu
+
+Update the bottom persistent help when relevant; it is optional.
 
 ## Design Decisions and Gotchas
 

@@ -51,6 +51,7 @@ type Client interface {
 	AddComment(issueKey, text string) error
 	ValidateProject(projectKey string) error
 	// Bulk operations (parallel execution)
+	BulkAddLabels(keys []string, labels []string) []error
 	BulkSetAssignee(keys []string, accountID string) []error
 	BulkSetParent(keys []string, parentKey string) []error
 	BulkUpdateIssue(keys []string, fields models.IssueFields) []error
@@ -1645,6 +1646,37 @@ func trimDateStr(s string) string {
 		return s[:10]
 	}
 	return s
+}
+
+// BulkAddLabels adds labels to multiple issues without replacing labels already present.
+// Returns a slice of errors, one for each failed issue (nil for successes).
+func (c *jiraClient) BulkAddLabels(keys []string, labels []string) []error {
+	if len(keys) == 0 || len(labels) == 0 {
+		return nil
+	}
+	return c.bulkOperation(keys, func(key string) error {
+		return c.addLabels(key, labels)
+	})
+}
+
+// addLabels uses Jira's update operation so existing labels are preserved.
+func (c *jiraClient) addLabels(issueKey string, labels []string) error {
+	operations := make([]map[string]string, len(labels))
+	for i, label := range labels {
+		operations[i] = map[string]string{"add": label}
+	}
+	payload := map[string]any{
+		"update": map[string]any{
+			"labels": operations,
+		},
+	}
+	req, err := c.client.NewRequest(context.Background(), http.MethodPut,
+		fmt.Sprintf("rest/api/3/issue/%s", issueKey), payload)
+	if err != nil {
+		return err
+	}
+	_, err = c.client.Do(req, nil)
+	return err
 }
 
 // BulkSetAssignee updates the assignee for multiple issues in parallel.

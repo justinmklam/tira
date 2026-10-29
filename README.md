@@ -134,6 +134,7 @@ starts on.
 | `A` | Set assignee |
 | `S` | Set story points |
 | `P` | Set parent |
+| `#` | Add labels to selected tickets, or the cursor ticket |
 | `l` (Epics) | Edit the selected epic's labels |
 | `f<num>` | Jump to issue by number |
 | `/<keyword>` | Filter issues by keyword |

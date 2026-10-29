@@ -8,6 +8,7 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"github.com/justinmklam/tira/internal/api"
+	"github.com/justinmklam/tira/internal/debug"
 	"github.com/justinmklam/tira/internal/models"
 	"github.com/justinmklam/tira/internal/tui"
 )
@@ -237,6 +238,16 @@ func (m blModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.visualAnchor = m.cursor
 		}
 		return m, nil
+
+	case "#":
+		keys := m.moveKeys()
+		if len(keys) == 0 {
+			return m, nil
+		}
+		m.labelTargetKeys = keys
+		m.labelInput.SetValue("")
+		m.state = blLabelInput
+		return m, m.labelInput.Focus()
 
 	case "S":
 		keys := m.moveKeys()
@@ -964,6 +975,58 @@ func (m blModel) updateSprintPicker(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loadSpinner.Tick,
 		blMoveMultiCmd(m.client, keys, target.Sprint.ID, idx, lastIssueKey(target.Issues, movingSet), false),
 	)
+}
+
+func parseAddedLabels(value string) []string {
+	var labels []string
+	seen := make(map[string]bool)
+	for _, label := range strings.Split(value, ",") {
+		label = strings.TrimSpace(label)
+		if label != "" && !seen[label] {
+			labels = append(labels, label)
+			seen[label] = true
+		}
+	}
+	return labels
+}
+
+func (m blModel) updateLabelInput(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if key, ok := msg.(tea.KeyPressMsg); ok {
+		switch key.String() {
+		case "ctrl+c":
+			m.quitting = true
+			return m, nil
+		case "esc":
+			m.state = blList
+			m.labelTargetKeys = nil
+			return m, nil
+		case "enter":
+			labels := parseAddedLabels(m.labelInput.Value())
+			if len(labels) == 0 {
+				m.state = blList
+				m.labelTargetKeys = nil
+				return m, nil
+			}
+			m.state = blLabelSaving
+			return m, tea.Batch(m.loadSpinner.Tick, blAddLabelsCmd(m.client, m.labelTargetKeys, labels))
+		}
+	}
+
+	var cmd tea.Cmd
+	m.labelInput, cmd = m.labelInput.Update(msg)
+	return m, cmd
+}
+
+func blAddLabelsCmd(client api.Client, keys, labels []string) tea.Cmd {
+	return func() tea.Msg {
+		errs := client.BulkAddLabels(keys, labels)
+		for i, err := range errs {
+			if err != nil && i < len(keys) {
+				debug.LogError("client.BulkAddLabels for "+keys[i], err)
+			}
+		}
+		return blBulkDoneMsg{Keys: keys, Errors: errs, LabelAdd: true}
+	}
 }
 
 func blDoAssignCmd(client api.Client, keys []string, accountID string) tea.Cmd {

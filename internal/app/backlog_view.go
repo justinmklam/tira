@@ -129,6 +129,8 @@ func (m blModel) View() tea.View {
 		return tea.NewView(m.viewAssignPicker())
 	case blStoryPointInput:
 		return tea.NewView(m.viewStoryPointInput())
+	case blLabelInput, blLabelSaving:
+		return tea.NewView(m.viewLabelInput())
 	case blStatusPicker:
 		return tea.NewView(m.viewStatusPicker())
 	case blEpicFilterPicker:
@@ -286,6 +288,13 @@ func (m blModel) viewList() string {
 			spinnerStr := m.loadSpinner.View() + tui.MutedStyle.Render(" Moving…")
 			leftWidth := listPaneW - lipgloss.Width(spinnerStr) - 2
 			footer = tui.FooterHints(hints, leftWidth) + "  " + spinnerStr
+		case m.labelResult != "":
+			color := tui.ColorSuccess
+			if m.labelResultFailed {
+				color = tui.ColorError
+			}
+			footer = lipgloss.NewStyle().Foreground(color).
+				Render(tui.FixedWidth(tui.SanitizeRow(m.labelResult), width))
 		default:
 			footer = tui.FooterHints(hints, listPaneW)
 		}
@@ -305,7 +314,13 @@ var blHints = []string{
 // badges, most important first.
 func (m blModel) topDetail() string {
 	var b strings.Builder
-	if m.yankMessage != "" {
+	if m.labelResult != "" {
+		color := tui.ColorSuccess
+		if m.labelResultFailed {
+			color = tui.ColorError
+		}
+		b.WriteString(lipgloss.NewStyle().Bold(true).Foreground(color).Render(tui.SanitizeRow(m.labelResult)))
+	} else if m.yankMessage != "" {
 		b.WriteString(lipgloss.NewStyle().Bold(true).Foreground(tui.ColorSuccess).Render(tui.SanitizeRow(m.yankMessage)))
 	} else if m.visualMode {
 		b.WriteString(lipgloss.NewStyle().Bold(true).Foreground(tui.ColorSpecial).Render("VISUAL"))
@@ -600,6 +615,36 @@ func (m blModel) viewSprintPicker() string {
 		title,
 		func(innerW, listH int) string { return m.sprintPicker.View(innerW, listH) },
 		tui.PickerFooter,
+		m.width,
+		m.height,
+	)
+}
+
+func (m blModel) viewLabelInput() string {
+	n := len(m.labelTargetKeys)
+	noun := "issue"
+	if n != 1 {
+		noun = "issues"
+	}
+	title := fmt.Sprintf("Add Labels  (%d %s)", n, noun)
+
+	if m.state == blLabelSaving {
+		return tui.RenderPickerModal(
+			title,
+			func(innerW, _ int) string {
+				return tui.FixedWidth("  "+m.loadSpinner.View()+" Adding labels...", innerW)
+			},
+			"",
+			m.width,
+			m.height,
+		)
+	}
+	return tui.RenderPickerModal(
+		title,
+		func(innerW, _ int) string {
+			return "  " + tui.FitInput(m.labelInput, innerW-2)
+		},
+		"  enter: add   esc: cancel   comma-separated labels",
 		m.width,
 		m.height,
 	)

@@ -101,6 +101,7 @@ labels; existing labels are replaced by the submitted list.
 | `C` | Create new ticket in backlog |
 | `P` | Set parent — fuzzy picker (works on selection or cursor ticket) |
 | `A` | Set assignee — fuzzy picker (works on selection or cursor ticket) |
+| `#` | Add comma-separated labels to selected tickets, or the cursor ticket (preserves existing labels) |
 | `F` | Filter by epic — fuzzy picker |
 | `<Enter>` | Open ticket detail pane (press `e` from there to edit) |
 | `L` | Pick a linked item to open in Jira (works in the list and the detail pane) |
@@ -200,6 +201,11 @@ When the help overlay is open (`?`), use these keys to navigate:
 2. Use `j`/`k` to extend selection
 3. Press `<Enter>` to confirm selection (toggles with existing selection)
 4. Selected tickets shown with highlighted background
+
+### Add Labels (`#`)
+- Adds comma-separated labels to the selected tickets; if nothing is selected, it targets the cursor ticket.
+- Existing labels are preserved, and repeated labels in the input are ignored.
+- An empty input or `<Esc>` cancels without making an API request.
 
 ### Story Points (`S`)
 - Works on single issue or multiple selected issues

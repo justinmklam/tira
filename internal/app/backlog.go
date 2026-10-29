@@ -33,6 +33,8 @@ const (
 	blParentPicker     // floating parent/epic picker
 	blAssignPicker     // floating assignee picker
 	blStoryPointInput  // floating story point input
+	blLabelInput       // floating add-label input
+	blLabelSaving      // adding labels to selected issues
 	blStatusPicker     // floating status picker
 	blEpicFilterPicker // floating epic filter picker
 	blSprintPicker     // floating sprint target picker
@@ -84,11 +86,16 @@ type blBulkDoneMsg struct {
 	Keys        []string
 	Errors      []error
 	FullRefresh bool
+	LabelAdd    bool
 }
 
 type yankMsg struct{}
 
 type yankDoneMsg struct{}
+
+type blLabelResultDoneMsg struct {
+	generation int
+}
 
 type blSprintDoneMsg struct {
 	created *models.Sprint // non-nil when a new sprint was just created
@@ -150,6 +157,9 @@ type blModel struct {
 	storyPointInput      textinput.Model
 	storyPointTargetKeys []string
 
+	labelInput      textinput.Model
+	labelTargetKeys []string
+
 	// status picker state
 	statusPicker     tui.PickerModel
 	statusTargetKeys []string
@@ -174,6 +184,10 @@ type blModel struct {
 	// yank indicator state
 	yankMessage string
 	yankTimer   *time.Timer
+
+	labelResult           string
+	labelResultFailed     bool
+	labelResultGeneration int
 
 	result   blResult
 	quitting bool
@@ -243,6 +257,10 @@ func newBacklogModel(client api.Client, boardID int, groups []models.SprintGroup
 	spTi.Placeholder = "story points (e.g. 1, 2, 3, 5, 8)"
 	spTi.CharLimit = 10
 
+	labelTi := textinput.New()
+	labelTi.Placeholder = "label, label"
+	labelTi.CharLimit = 200
+
 	ksTi := textinput.New()
 	ksTi.Placeholder = "issue number…"
 	ksTi.CharLimit = 20
@@ -262,6 +280,7 @@ func newBacklogModel(client api.Client, boardID int, groups []models.SprintGroup
 		collapsed:        collapsed,
 		filterInput:      ti,
 		storyPointInput:  spTi,
+		labelInput:       labelTi,
 		keySearchInput:   ksTi,
 		loadSpinner:      s,
 		selected:         make(map[string]bool),
@@ -587,7 +606,7 @@ func (m blModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case spinner.TickMsg:
-		if m.state == blLoading || m.moving || m.sprintFormSubmitting {
+		if m.state == blLoading || m.moving || m.sprintFormSubmitting || m.state == blLabelSaving {
 			var cmd tea.Cmd
 			m.loadSpinner, cmd = m.loadSpinner.Update(msg)
 			return m, cmd
@@ -651,6 +670,36 @@ func (m blModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case blBulkDoneMsg:
+		labelOperation := msg.LabelAdd
+		labelGeneration := 0
+		if labelOperation {
+			if m.state == blLabelSaving {
+				m.state = blList
+				m.labelTargetKeys = nil
+			}
+			failed := make([]string, 0)
+			for i, key := range msg.Keys {
+				if i >= len(msg.Errors) || msg.Errors[i] != nil {
+					failed = append(failed, key)
+				}
+			}
+			succeeded := len(msg.Keys) - len(failed)
+			m.labelResultGeneration++
+			labelGeneration = m.labelResultGeneration
+			m.labelResultFailed = len(failed) > 0
+			failedSummary := strings.Join(failed[:min(len(failed), 3)], ", ")
+			if len(failed) > 3 {
+				failedSummary += fmt.Sprintf(", +%d more", len(failed)-3)
+			}
+			switch {
+			case len(failed) == 0:
+				m.labelResult = fmt.Sprintf("LABELS added to %d tickets", succeeded)
+			case succeeded == 0:
+				m.labelResult = "LABELS failed: " + failedSummary
+			default:
+				m.labelResult = fmt.Sprintf("LABELS %d/%d updated; failed: %s", succeeded, len(msg.Keys), failedSummary)
+			}
+		}
 		m.selected = make(map[string]bool)
 		m.visualMode = false
 		if msg.FullRefresh {
@@ -665,6 +714,11 @@ func (m blModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if i < len(msg.Errors) && msg.Errors[i] == nil {
 				cmds = append(cmds, issueRefreshCmd(m.client, key))
 			}
+		}
+		if labelOperation {
+			cmds = append(cmds, tea.Tick(4*time.Second, func(time.Time) tea.Msg {
+				return blLabelResultDoneMsg{generation: labelGeneration}
+			}))
 		}
 		return m, tea.Batch(cmds...)
 
@@ -704,6 +758,13 @@ func (m blModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case yankDoneMsg:
 		m.yankMessage = ""
 		return m, nil
+
+	case blLabelResultDoneMsg:
+		if msg.generation == m.labelResultGeneration {
+			m.labelResult = ""
+			m.labelResultFailed = false
+		}
+		return m, nil
 	}
 
 	switch m.state {
@@ -719,6 +780,10 @@ func (m blModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateAssignPicker(msg)
 	case blStoryPointInput:
 		return m.updateStoryPointInput(msg)
+	case blLabelInput:
+		return m.updateLabelInput(msg)
+	case blLabelSaving:
+		return m, nil
 	case blStatusPicker:
 		return m.updateStatusPicker(msg)
 	case blEpicFilterPicker:

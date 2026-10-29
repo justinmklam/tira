@@ -206,6 +206,54 @@ func TestFetchFullIssue_NilOptionalFields(t *testing.T) {
 	}
 }
 
+func TestBulkAddLabelsUsesAddOperations(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut {
+			t.Errorf("method = %q, want %q", r.Method, http.MethodPut)
+		}
+		if r.URL.Path != "/rest/api/3/issue/PROJ-1" {
+			t.Errorf("path = %q, want %q", r.URL.Path, "/rest/api/3/issue/PROJ-1")
+		}
+
+		var payload struct {
+			Update struct {
+				Labels []map[string]string `json:"labels"`
+			} `json:"update"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Errorf("decoding request body: %v", err)
+		}
+		want := []map[string]string{{"add": "frontend"}, {"add": "urgent"}}
+		if len(payload.Update.Labels) != len(want) {
+			t.Errorf("label operations = %v, want %v", payload.Update.Labels, want)
+		}
+		for i := range want {
+			if i < len(payload.Update.Labels) && payload.Update.Labels[i]["add"] != want[i]["add"] {
+				t.Errorf("label operation[%d] = %v, want %v", i, payload.Update.Labels[i], want[i])
+			}
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	errs := newTestClient(server).BulkAddLabels([]string{"PROJ-1"}, []string{"frontend", "urgent"})
+	if len(errs) != 1 || errs[0] != nil {
+		t.Fatalf("BulkAddLabels() errors = %v, want one success", errs)
+	}
+}
+
+func TestBulkAddLabelsEmptyLabelsDoesNotSendRequest(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	if errs := newTestClient(server).BulkAddLabels([]string{"PROJ-1"}, nil); errs != nil {
+		t.Fatalf("BulkAddLabels() errors = %v, want nil for no labels", errs)
+	}
+}
+
 func TestSetLabelsSerializesReplacementAndClear(t *testing.T) {
 	tests := []struct {
 		name   string

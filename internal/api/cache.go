@@ -235,6 +235,20 @@ func (c *cachedClient) RankIssues(keys []string, rankAfterKey, rankBeforeKey str
 
 // --- Bulk operations: invalidate affected issue caches on success ---
 
+func (c *cachedClient) BulkAddLabels(keys []string, labels []string) []error {
+	errs := c.inner.BulkAddLabels(keys, labels)
+	if len(labels) == 0 {
+		return errs
+	}
+	for _, key := range keys {
+		c.cdel("issue:" + key)
+	}
+	if len(keys) > 0 {
+		c.cdelPrefix("sprint_groups:")
+	}
+	return errs
+}
+
 func (c *cachedClient) BulkSetAssignee(keys []string, accountID string) []error {
 	errs := c.inner.BulkSetAssignee(keys, accountID)
 	for i, key := range keys {

@@ -212,6 +212,27 @@ func TestBoardColumnsResolveStatusNames(t *testing.T) {
 	assert.Equal(t, []string{"31"}, columns[2].StatusIDs)
 }
 
+func TestBulkAddLabelsPreservesExistingAndDeduplicates(t *testing.T) {
+	c := newTestClient(t)
+	before := mustGet(t, c, "DEMO-3")
+	want := append(append([]string(nil), before.Labels...), "bulk-one", "bulk-two")
+
+	errs := c.BulkAddLabels([]string{"DEMO-3", "DEMO-999"}, []string{"bulk-one", "bulk-one", "bulk-two"})
+	require.Len(t, errs, 2)
+	require.NoError(t, errs[0])
+	require.Error(t, errs[1])
+
+	issue := mustGet(t, c, "DEMO-3")
+	assert.Equal(t, want, issue.Labels)
+}
+
+func TestBulkAddLabelsEmptyLabelsIsNoOp(t *testing.T) {
+	c := newTestClient(t)
+	if errs := c.BulkAddLabels([]string{"DEMO-999"}, nil); errs != nil {
+		t.Fatalf("BulkAddLabels() errors = %v, want nil for empty labels", errs)
+	}
+}
+
 func TestMutationsAreVisibleToTheNextRead(t *testing.T) {
 	c := newTestClient(t)
 

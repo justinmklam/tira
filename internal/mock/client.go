@@ -664,6 +664,29 @@ func (c *Client) UpdateSprint(sprintID int, name, startDate, endDate string) err
 	return c.persist()
 }
 
+func (c *Client) BulkAddLabels(keys []string, labels []string) []error {
+	if len(keys) == 0 || len(labels) == 0 {
+		return nil
+	}
+	return c.bulk(keys, func(key string) error { return c.addLabels(key, labels) })
+}
+
+func (c *Client) addLabels(issueKey string, labels []string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	fx, err := c.mutableIssue(issueKey)
+	if err != nil {
+		return err
+	}
+	for _, label := range labels {
+		if label != "" && !slices.Contains(fx.Labels, label) {
+			fx.Labels = append(fx.Labels, label)
+		}
+	}
+	return c.persist()
+}
+
 func (c *Client) BulkSetAssignee(keys []string, accountID string) []error {
 	return c.bulk(keys, func(key string) error { return c.SetAssignee(key, accountID) })
 }

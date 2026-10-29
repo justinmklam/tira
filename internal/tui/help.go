@@ -116,6 +116,7 @@ func HelpSections() []HelpSection {
 				{Key: "C", Description: "Create new ticket in backlog"},
 				{Key: "P", Description: "Set parent — fuzzy picker (works on selection or cursor ticket)"},
 				{Key: "A", Description: "Set assignee — fuzzy picker (works on selection or cursor ticket)"},
+				{Key: "#", Description: "Add comma-separated labels to selected tickets or cursor ticket; preserves existing labels"},
 				{Key: "F", Description: "Filter by epic — fuzzy picker"},
 				{Key: "o", Description: "Open ticket in browser"},
 				{Key: "O", Description: "Open all selected tickets in browser"},
