@@ -147,10 +147,8 @@ For AI Agents:
 				fields.Priority = valid.Priorities[len(valid.Priorities)/2]
 			}
 
-			// Apply --parent flag override
-			if createParent != "" {
-				fields.ParentKey = createParent
-			}
+			// Apply --parent flag override.
+			fields.ParentKey = resolveCreateParent(createParent, fields.ParentKey)
 
 			// Resolve assignee if provided
 			if fields.Assignee != "" && len(valid.Assignees) > 0 {
@@ -210,6 +208,15 @@ For AI Agents:
 	},
 }
 
+// resolveCreateParent applies the explicit --parent override when present;
+// otherwise it preserves the parent parsed from a non-interactive template.
+func resolveCreateParent(flagParent, templateParent string) string {
+	if flagParent != "" {
+		return flagParent
+	}
+	return templateParent
+}
+
 // resolveCreateIssueType applies the precedence --type (or a template's type)
 // > default_issue_type > first valid type. It returns the resolved type, a
 // non-empty warning when a configured default was rejected, and an error when
@@ -257,10 +264,14 @@ priority: <Priority>       # Optional. Defaults to middle priority if omitted
 assignee: <DisplayName>    # Optional. Case-insensitive name match
 story_points: <Number>     # Optional. Positive integer or leave blank
 labels: <comma-separated>  # Optional. e.g., "backend, api, bug"
-parent: <IssueKey>         # Optional. e.g., "MP-42" (read-only, shown in comment)
+parent: <IssueKey>         # Optional for non-interactive create; --parent overrides
 
 ---
 ` + "```" + `
+
+` + "`parent`" + ` is active when supplied in a non-interactive create template. In
+interactive create and update templates, an existing parent is shown as a
+read-only HTML comment and is not editable.
 
 ## Markdown Body Structure
 

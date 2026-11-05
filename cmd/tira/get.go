@@ -155,6 +155,12 @@ func applyTemplateUpdate(client api.Client, issue *models.Issue, valid *models.V
 // applyUpdate diffs fields against issue, calls UpdateIssue, and reports the
 // result. It is a no-op (with a message) if nothing changed.
 func applyUpdate(client api.Client, issue *models.Issue, fields *models.IssueFields) error {
+	// Parent is read-only in update templates; the API contract only supports
+	// parent assignment through the dedicated SetParent operation.
+	if fields.ParentKey != "" && fields.ParentKey != issue.ParentKey {
+		fmt.Fprintf(os.Stderr, "warning: parent is read-only in update templates; ignoring %q\n", fields.ParentKey)
+	}
+	fields.ParentKey = ""
 	printFieldDiff(issue, fields)
 
 	if err := client.UpdateIssue(issue.Key, *fields); err != nil {

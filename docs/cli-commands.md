@@ -92,6 +92,9 @@ kept as a backward-compatible alias and prints a deprecation warning on stderr, 
 
 Updates an existing issue. Only non-empty fields/sections in the parsed template are sent to the
 API (`client.UpdateIssue` skips empty fields) — omitted fields are left unchanged on the ticket.
+The `parent` field is read-only for updates: an active `parent: <IssueKey>` line that differs from
+the current parent is ignored, a warning is printed, and the existing parent remains unchanged.
+Existing parent references rendered by `--show` are HTML comments and are ignored by the parser.
 
 ### Non-interactive mode (recommended for AI agents)
 
@@ -104,6 +107,7 @@ API (`client.UpdateIssue` skips empty fields) — omitted fields are left unchan
    stdin, which is auto-detected the same way `create` detects it) reads the edited template via
    `readInput`, parses it with `editor.ParseTemplate`, validates via `validator.Validate`
    (returning validation errors without opening an editor if invalid), resolves the assignee ID,
+   ignores any active `parent: <IssueKey>` line that differs from the current parent with a warning,
    diffs against the current issue (`printFieldDiff`), and calls `client.UpdateIssue`.
 
 **Example:**
@@ -169,7 +173,9 @@ When no `--file` or `--no-edit` flag is provided and stdin is a terminal:
 **Flags:**
 - `--project <key>` — Project key (overrides config default)
 - `--type <type>` — Issue type (e.g., `Bug`, `Story`, `Task`). Overrides `default_issue_type`.
-- `--parent <key>` — Parent issue key (for sub-tasks)
+- `--parent <key>` — Parent issue key. In interactive mode it pre-fills a read-only parent reference;
+  in non-interactive create templates, an active `parent: <IssueKey>` field is accepted. The flag
+  overrides a template parent when both are provided.
 
 **Example:**
 ```bash
@@ -188,7 +194,9 @@ When no `--file` or `--no-edit` flag is provided and stdin is a terminal:
 When `--file`, `--no-edit`, or piped stdin is used:
 
 1. Reads template content from file (`--file`) or stdin (`--no-edit` or pipe)
-2. Parses the template format (YAML-like front matter + Markdown body)
+2. Parses the template format (YAML-like front matter + Markdown body). For non-interactive create,
+   an active `parent: <IssueKey>` front-matter field associates the new issue with that parent.
+   In interactive templates, parent references are HTML comments and remain read-only.
 3. Validates all fields (type, priority, required summary); an omitted type resolves to `--type` > `default_issue_type` > first valid type
 4. Resolves assignee display name to account ID if provided
 5. Calls `client.CreateIssue`
@@ -209,6 +217,7 @@ assignee: John Doe
 story_points: 3
 <!-- Comma-separated, e.g. backend, auth -->
 labels: backend, api
+parent: DEMO-1
 
 ---
 

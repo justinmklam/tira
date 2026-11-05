@@ -1,6 +1,28 @@
 package main
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/justinmklam/tira/internal/editor"
+)
+
+func TestResolveCreateParent(t *testing.T) {
+	content := `<!-- tira: do not remove this line or change field names -->
+parent: DEMO-1
+---
+# Create a child issue`
+	fields, err := editor.ParseTemplate(content)
+	if err != nil {
+		t.Fatalf("ParseTemplate error: %v", err)
+	}
+
+	if got := resolveCreateParent("", fields.ParentKey); got != "DEMO-1" {
+		t.Errorf("template parent = %q, want %q", got, "DEMO-1")
+	}
+	if got := resolveCreateParent("DEMO-2", fields.ParentKey); got != "DEMO-2" {
+		t.Errorf("flag parent = %q, want %q", got, "DEMO-2")
+	}
+}
 
 func TestResolveCreateIssueType(t *testing.T) {
 	valid := []string{"Bug", "Story", "Task"}

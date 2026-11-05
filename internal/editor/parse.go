@@ -59,6 +59,8 @@ func ParseTemplate(content string) (*models.IssueFields, error) {
 					fields.Labels = append(fields.Labels, strings.TrimSpace(l))
 				}
 			}
+		case "parent":
+			fields.ParentKey = val
 		}
 	}
 

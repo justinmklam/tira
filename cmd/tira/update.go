@@ -61,6 +61,8 @@ Non-interactive mode (recommended for AI agents / automation):
   heading. Omitted/blank fields (type, priority, assignee, story_points,
   labels) are left unchanged on the ticket. Description and Acceptance
   Criteria are only replaced if their sections are present with content.
+  Parent is read-only in update templates: an active ` + "`parent: <IssueKey>`" + ` line that differs from
+  the current parent is ignored and reported as a warning; the existing parent is unchanged.
 
   Piping via stdin (without --no-edit) also works automatically when stdout
   is not a terminal — --no-edit is accepted for clarity/explicitness.

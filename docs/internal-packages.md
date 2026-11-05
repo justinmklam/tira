@@ -243,7 +243,7 @@ story_points: 5
 <!-- Comma-separated, e.g. backend, auth -->
 labels: backend, auth
 
-<!-- parent: MP-42: Parent issue summary -->
+<!-- parent: DEMO-1: Parent summary -->
 
 ---
 
@@ -269,7 +269,9 @@ Criteria here...
 - The H1 heading (`# KEY: Summary`) provides the Summary field during parse
 - `## Description` and `## Acceptance Criteria` sections are extracted by `extractSection`
 - `## Linked Work Items` is read-only (comments only, not parsed into writable fields)
-- Parent is shown as a read-only comment, not editable through the template
+- An active `parent: <IssueKey>` line is parsed for non-interactive create; `--parent` overrides it
+- Parent references rendered in interactive create/update templates are HTML comments and remain read-only;
+  update templates ignore active parent values and warn when the value differs from the current parent
 
 ### Functions
 

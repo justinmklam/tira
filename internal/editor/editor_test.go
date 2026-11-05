@@ -106,6 +106,22 @@ func TestParseTemplate_StoryPointsInvalid(t *testing.T) {
 	}
 }
 
+func TestParseTemplate_ParentReferences(t *testing.T) {
+	content := sentinel + "\nparent: PROJ-19\n---\n# PROJ-20: Child issue"
+	fields, err := ParseTemplate(content)
+	if err != nil {
+		t.Fatalf("ParseTemplate error: %v", err)
+	}
+	assertEqual(t, "ParentKey", "PROJ-19", fields.ParentKey)
+
+	commented := sentinel + "\n<!-- parent: PROJ-19: Parent issue -->\n---\n# PROJ-20: Child issue"
+	fields, err = ParseTemplate(commented)
+	if err != nil {
+		t.Fatalf("ParseTemplate error for commented parent: %v", err)
+	}
+	assertEqual(t, "commented ParentKey", "", fields.ParentKey)
+}
+
 func TestSplitOnSeparator(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -198,6 +214,12 @@ func TestRenderTemplate_WithParent(t *testing.T) {
 	if !containsStr(tmpl, "parent: PROJ-19: Epic task") {
 		t.Error("expected parent reference in template")
 	}
+
+	fields, err := ParseTemplate(tmpl)
+	if err != nil {
+		t.Fatalf("ParseTemplate error: %v", err)
+	}
+	assertEqual(t, "commented ParentKey", "", fields.ParentKey)
 }
 
 func assertEqual(t *testing.T, field, want, got string) {
