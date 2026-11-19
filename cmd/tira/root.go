@@ -29,6 +29,10 @@ Quick reference for AI agents and automation:
     tira get <KEY>
     tira get <KEY> | cat
 
+  Export all issues in a project as CSV:
+    tira export --output <path>
+    tira export --project <KEY> --output <path>
+
   Create an issue from stdin (non-interactive):
     cat <<'EOF' | tira create --no-edit
     <!-- tira: do not remove this line or change field names -->

@@ -12,10 +12,21 @@ import (
 type stubClient struct {
 	Client
 
-	epicChildren      map[string][]models.Issue
-	epicChildrenErr   error
-	epicChildrenCalls int
-	bulkAddLabelsErrs []error
+	epicChildren       map[string][]models.Issue
+	epicChildrenErr    error
+	epicChildrenCalls  int
+	bulkAddLabelsErrs  []error
+	projectIssues      map[string][]models.Issue
+	projectIssuesErr   error
+	projectIssuesCalls int
+}
+
+func (c *stubClient) GetProjectIssues(projectKey string) ([]models.Issue, error) {
+	c.projectIssuesCalls++
+	if c.projectIssuesErr != nil {
+		return nil, c.projectIssuesErr
+	}
+	return c.projectIssues[projectKey], nil
 }
 
 func (c *stubClient) GetEpicChildren(epicKey string) ([]models.Issue, error) {
@@ -45,6 +56,38 @@ func TestCachedClient_BulkAddLabelsInvalidatesCachesEvenOnPartialFailure(t *test
 	}
 	if _, ok := client.cget("sprint_groups:1"); ok {
 		t.Fatal("sprint-group cache retained after attempted label update")
+	}
+}
+
+func TestCachedClient_GetProjectIssuesCachesPerProjectAndDoesNotCacheErrors(t *testing.T) {
+	inner := &stubClient{projectIssues: map[string][]models.Issue{
+		"PROJ":  {{Key: "PROJ-1"}},
+		"OTHER": {{Key: "OTHER-1"}},
+	}}
+	client := NewCachedClient(inner)
+
+	for range 2 {
+		issues, err := client.GetProjectIssues("PROJ")
+		if err != nil || len(issues) != 1 || issues[0].Key != "PROJ-1" {
+			t.Fatalf("GetProjectIssues(PROJ) = (%+v, %v)", issues, err)
+		}
+	}
+	if _, err := client.GetProjectIssues("OTHER"); err != nil {
+		t.Fatal(err)
+	}
+	if inner.projectIssuesCalls != 2 {
+		t.Errorf("calls = %d, want one per distinct project", inner.projectIssuesCalls)
+	}
+
+	inner.projectIssuesErr = errors.New("temporary")
+	if _, err := client.GetProjectIssues("ERROR"); err == nil {
+		t.Fatal("first error result = nil, want error")
+	}
+	if _, err := client.GetProjectIssues("ERROR"); err == nil {
+		t.Fatal("second error result = nil, want error")
+	}
+	if inner.projectIssuesCalls != 4 {
+		t.Errorf("calls = %d, want retry after error", inner.projectIssuesCalls)
 	}
 }
 

@@ -3,6 +3,7 @@ package app
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/spinner"
 	"charm.land/bubbles/v2/textinput"
@@ -102,6 +103,7 @@ type epicModel struct {
 	loadSpinner spinner.Model
 	loading     bool
 	loadError   string
+	yankMessage string
 	quitting    bool
 	result      epicResult
 
@@ -579,6 +581,16 @@ func (m epicModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case yankMsg:
+		m.yankMessage = "YANKED"
+		return m, tea.Tick(2*time.Second, func(time.Time) tea.Msg {
+			return yankDoneMsg{}
+		})
+
+	case yankDoneMsg:
+		m.yankMessage = ""
+		return m, nil
+
 	case spinner.TickMsg:
 		if m.state == epicLoading || m.state == epicLabelLoading || m.state == epicLabelSaving {
 			var cmd tea.Cmd
@@ -727,6 +739,10 @@ func (m epicModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case "o":
 		if item := m.selectedItem(); item != nil {
 			return m, openInBrowserCmd(m.issueURL(item.Key))
+		}
+	case "y":
+		if item := m.selectedItem(); item != nil {
+			return m, copyToClipboardCmd(m.issueURL(item.Key))
 		}
 	case "b":
 		if item := m.selectedItem(); item != nil {

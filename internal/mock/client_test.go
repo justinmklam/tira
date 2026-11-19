@@ -53,6 +53,23 @@ func TestGetIssueCarriesFixtureContext(t *testing.T) {
 	assert.NotContains(t, again.Labels, "mutated")
 }
 
+func TestGetProjectIssuesFiltersProjectAndReturnsFields(t *testing.T) {
+	c := newTestClient(t)
+
+	issues, err := c.GetProjectIssues("DEMO")
+	require.NoError(t, err)
+	require.NotEmpty(t, issues)
+	assert.Equal(t, "DEMO-1", issues[0].Key, "issues are returned in key order")
+	assert.Equal(t, "DEMO", issues[0].ProjectKey)
+	assert.Equal(t, "Epic", issues[0].IssueType)
+	assert.Equal(t, "Grace Hopper", issues[0].Assignee)
+	assert.Equal(t, "Ada Lovelace", issues[0].Reporter)
+
+	other, err := c.GetProjectIssues("OTHER")
+	require.NoError(t, err)
+	assert.Empty(t, other)
+}
+
 func TestGetIssueIncludesAttachments(t *testing.T) {
 	c := newTestClient(t)
 

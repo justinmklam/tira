@@ -842,6 +842,108 @@ func TestGetEpicChildren_EmptyAndError(t *testing.T) {
 	})
 }
 
+func TestGetProjectIssues_PaginatesAndMapsExportFields(t *testing.T) {
+	var requests []map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/rest/api/3/search/jql" {
+			t.Errorf("request = %s %s, want POST /rest/api/3/search/jql", r.Method, r.URL.Path)
+		}
+		var payload map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Errorf("decoding payload: %v", err)
+		}
+		requests = append(requests, payload)
+		w.Header().Set("Content-Type", "application/json")
+		if len(requests) == 1 {
+			_, _ = w.Write([]byte(`{"issues":[{"key":"PROJ-1","fields":{"summary":"First","issuetype":{"name":"Story"},"status":{"name":"To Do"},"priority":{"name":"High"},"assignee":{"displayName":"Ada"},"reporter":{"displayName":"Grace"},"labels":["one","two"],"parent":{"key":"PROJ-100","fields":{"issuetype":{"name":"Epic"}}},"customfield_10021":3}}],"nextPageToken":"page-2"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"issues":[{"key":"PROJ-2","fields":{"summary":"Second","issuetype":{"name":"Task"},"status":{"name":"Done"},"labels":[]}}]}`))
+	}))
+	defer server.Close()
+
+	client := newTestClient(server)
+	client.spFieldOnce.Do(func() { client.spFieldID = "customfield_10021" })
+	issues, err := client.GetProjectIssues("PROJ")
+	if err != nil {
+		t.Fatalf("GetProjectIssues() error = %v", err)
+	}
+	if len(issues) != 2 {
+		t.Fatalf("issues = %d, want 2", len(issues))
+	}
+	first := issues[0]
+	if first.Key != "PROJ-1" || first.ProjectKey != "PROJ" || first.Summary != "First" || first.IssueType != "Story" || first.Status != "To Do" || first.Priority != "High" || first.Assignee != "Ada" || first.Reporter != "Grace" || first.StoryPoints != 3 {
+		t.Errorf("first issue projection = %+v", first)
+	}
+	if strings.Join(first.Labels, "; ") != "one; two" || first.ParentKey != "PROJ-100" || first.EpicKey != "PROJ-100" {
+		t.Errorf("first issue relationships/labels = %+v", first)
+	}
+	if issues[1].Priority != "" || issues[1].Assignee != "" || issues[1].Reporter != "" || issues[1].EpicKey != "" || issues[1].StoryPoints != 0 {
+		t.Errorf("missing optional values should be empty: %+v", issues[1])
+	}
+	if len(requests) != 2 {
+		t.Fatalf("requests = %d, want two pages", len(requests))
+	}
+	for _, payload := range requests {
+		if payload["jql"] != `project = "PROJ" ORDER BY key ASC` {
+			t.Errorf("jql = %v", payload["jql"])
+		}
+		fields, ok := payload["fields"].([]any)
+		if !ok {
+			t.Fatalf("fields payload has type %T", payload["fields"])
+		}
+		fieldSet := make(map[string]bool, len(fields))
+		for _, field := range fields {
+			fieldSet[field.(string)] = true
+		}
+		for _, field := range []string{"summary", "issuetype", "status", "priority", "assignee", "reporter", "labels", "parent", "customfield_10021"} {
+			if !fieldSet[field] {
+				t.Errorf("fields projection missing %q: %v", field, fields)
+			}
+		}
+	}
+	if _, ok := requests[0]["nextPageToken"]; ok {
+		t.Error("first request unexpectedly has nextPageToken")
+	}
+	if requests[1]["nextPageToken"] != "page-2" {
+		t.Errorf("second nextPageToken = %v, want page-2", requests[1]["nextPageToken"])
+	}
+}
+
+func TestGetProjectIssues_EmptyAndErrors(t *testing.T) {
+	t.Run("empty project", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write([]byte(`{"issues":[]}`))
+		}))
+		defer server.Close()
+		client := newTestClient(server)
+		client.spFieldOnce.Do(func() {})
+		issues, err := client.GetProjectIssues("EMPTY")
+		if err != nil || len(issues) != 0 {
+			t.Fatalf("GetProjectIssues() = (%v, %v), want empty result", issues, err)
+		}
+	})
+
+	for _, tc := range []struct {
+		name string
+		body string
+		code int
+	}{{name: "http", body: `{"errorMessages":["denied"]}`, code: http.StatusForbidden}, {name: "parse", body: `{`, code: http.StatusOK}} {
+		t.Run(tc.name+" error", func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(tc.code)
+				_, _ = w.Write([]byte(tc.body))
+			}))
+			defer server.Close()
+			client := newTestClient(server)
+			client.spFieldOnce.Do(func() {})
+			if _, err := client.GetProjectIssues("PROJ"); err == nil {
+				t.Fatal("GetProjectIssues() error = nil, want error")
+			}
+		})
+	}
+}
+
 func TestAddCommentPostsADFAndReturnsAPIError(t *testing.T) {
 	t.Run("posts ADF comment to issue endpoint", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -143,6 +143,19 @@ func (c *cachedClient) GetEpics(projectKey, query string) ([]models.Issue, error
 	return result, nil
 }
 
+func (c *cachedClient) GetProjectIssues(projectKey string) ([]models.Issue, error) {
+	ckey := "project_issues:" + projectKey
+	if v, ok := c.cget(ckey); ok {
+		return v.([]models.Issue), nil
+	}
+	result, err := c.inner.GetProjectIssues(projectKey)
+	if err != nil {
+		return nil, err
+	}
+	c.cset(ckey, result)
+	return result, nil
+}
+
 func (c *cachedClient) GetEpicChildren(epicKey string) ([]models.Issue, error) {
 	ckey := "epic_children:" + epicKey
 	if v, ok := c.cget(ckey); ok {

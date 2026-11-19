@@ -43,13 +43,16 @@ func epicColumnHeader(width int) string {
 // epicHints are the epics footer hints, most-used first: they are dropped from
 // the tail when the footer is too narrow.
 var epicHints = []string{
-	"j/k move", "enter details", "L linked", "/ filter", "l labels", "b backlog", "o open Jira", "R refresh", "ctrl+d/u scroll", "q quit",
+	"j/k move", "enter details", "L linked", "/ filter", "l labels", "b backlog", "o open Jira", "y copy URL", "R refresh", "ctrl+d/u scroll", "q quit",
 }
 
 // epicTopDetail renders the tab strip's right-hand detail: the load state and
 // filter, most important first.
 func (m epicModel) epicTopDetail() string {
 	var b strings.Builder
+	if m.yankMessage != "" {
+		b.WriteString(lipgloss.NewStyle().Bold(true).Foreground(tui.ColorSuccess).Render(tui.SanitizeRow(m.yankMessage)))
+	}
 	if m.loadError != "" {
 		b.WriteString(lipgloss.NewStyle().Foreground(tui.ColorError).Render("⚠ " + tui.SanitizeRow(m.loadError)))
 	}

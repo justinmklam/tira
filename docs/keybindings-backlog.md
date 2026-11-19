@@ -50,6 +50,7 @@ Modelled on yazi's philosophy: modal only where the modality is obvious from con
 | `<Esc>` / `q` | Close epic detail / cancel action |
 | `L` | Pick a linked item or child work item and open it in Jira |
 | `o` | Open selected epic in Jira |
+| `y` | Copy selected epic URL to clipboard |
 | `b` | Switch to Backlog and filter by selected epic |
 
 ---

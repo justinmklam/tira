@@ -18,13 +18,29 @@ Output is plain text — ticket summary, description, status, assignee, comments
 
 ## Commenting on a ticket
 
-Draft the exact comment text and ask the user to confirm before posting it. After confirmation, pass the text as one shell-quoted argument:
+Draft the exact comment text and ask the user to confirm before posting it. For short single-line
+comments, pass the text as one shell-quoted argument. For multiline comments, use `--file` or
+`--file -` for stdin; do not encode line breaks as `\\n` inside a quoted shell argument because
+many shells pass those characters literally.
 
 ```bash
+# Short comment
 tira comment PROJ-123 "The fix is ready for review."
+
+# Multiline comment from a file
+cat > /tmp/proj-123-comment.md <<'EOF'
+First paragraph.
+
+Second paragraph.
+EOF
+tira comment PROJ-123 --file /tmp/proj-123-comment.md
+
+# Multiline comment from stdin
+cat /tmp/proj-123-comment.md | tira comment PROJ-123 --file -
 ```
 
-A full Jira browse URL can be used instead of the issue key. The command rejects blank comment text and reports success only after Jira accepts the comment.
+A full Jira browse URL can be used instead of the issue key. The command rejects blank comment text,
+mutually exclusive text/file input, and reports success only after Jira accepts the comment.
 
 ## Updating a ticket
 

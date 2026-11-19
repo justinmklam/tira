@@ -258,6 +258,23 @@ func (c *Client) GetEpics(projectKey, query string) ([]models.Issue, error) {
 	return issues, nil
 }
 
+func (c *Client) GetProjectIssues(projectKey string) ([]models.Issue, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	issues := make([]models.Issue, 0)
+	for _, fx := range c.fixture.Issues {
+		if projectKeyOf(fx.Key) != projectKey {
+			continue
+		}
+		issues = append(issues, c.toIssue(fx, c.sprintNameFor(fx.Key)))
+	}
+	slices.SortFunc(issues, func(a, b models.Issue) int {
+		return strings.Compare(a.Key, b.Key)
+	})
+	return issues, nil
+}
+
 func (c *Client) GetEpicChildren(epicKey string) ([]models.Issue, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()

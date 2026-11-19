@@ -162,6 +162,15 @@ tira get MP-101 --attachments=none  # omit attachment downloads
 tira get https://your-domain.atlassian.net/browse/MP-101  # full browse URL also works
 ```
 
+**Export project issues to CSV:**
+
+```sh
+tira export --output ./issues.csv  # use the profile's configured project
+tira export --project DEV --output ./dev-issues.csv  # override the project
+```
+
+The export uses Jira's paginated bulk search. It writes a fixed set of issue fields; values Jira does not return are blank, and the existing output file is overwritten.
+
 **Add a comment to an issue:**
 
 ```sh

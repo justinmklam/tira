@@ -186,6 +186,55 @@ func TestEpicFilterCancelRestoresAllItems(t *testing.T) {
 	}
 }
 
+func TestEpicCopyURLHotkeyUsesSelectedEpic(t *testing.T) {
+	m := epicModel{
+		state:   epicList,
+		jiraURL: "https://example.atlassian.net/",
+		items: []epicItem{{
+			Key:  "EPIC-A",
+			Name: "Alpha",
+		}},
+		cursor: 0,
+	}
+
+	updated, cmd := m.Update(keyPress("y"))
+	m = updated.(epicModel)
+	if cmd == nil {
+		t.Fatal("copy URL hotkey should return a clipboard command")
+	}
+	if got := m.selectedKey(); got != "EPIC-A" {
+		t.Fatalf("selected epic = %q, want EPIC-A", got)
+	}
+	if got := m.issueURL(m.selectedKey()); got != "https://example.atlassian.net/browse/EPIC-A" {
+		t.Fatalf("epic URL = %q, want https://example.atlassian.net/browse/EPIC-A", got)
+	}
+}
+
+func TestEpicYankFeedbackIsTransient(t *testing.T) {
+	m := epicModel{state: epicList}
+
+	updated, cmd := m.Update(yankMsg{})
+	m = updated.(epicModel)
+	if cmd == nil {
+		t.Fatal("yank feedback should schedule a clear command")
+	}
+	if m.yankMessage != "YANKED" {
+		t.Fatalf("yank message = %q, want YANKED", m.yankMessage)
+	}
+	if got := stripANSI(m.epicTopDetail()); !strings.Contains(got, "YANKED") {
+		t.Fatalf("top detail = %q, want YANKED feedback", got)
+	}
+
+	updated, cmd = m.Update(yankDoneMsg{})
+	m = updated.(epicModel)
+	if cmd != nil {
+		t.Fatal("clearing yank feedback should not schedule another command")
+	}
+	if m.yankMessage != "" {
+		t.Fatalf("yank message after clear = %q, want empty", m.yankMessage)
+	}
+}
+
 func TestEpicDetailLoadsAndReturnsToList(t *testing.T) {
 	m := epicModel{
 		state:  epicList,

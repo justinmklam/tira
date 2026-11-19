@@ -38,6 +38,8 @@ type Client interface {
 	// GetEpicChildren returns the direct children of an epic, including closed
 	// ones, paging through the JQL search API until exhausted.
 	GetEpicChildren(epicKey string) ([]models.Issue, error)
+	// GetProjectIssues returns all issues in a project using paginated bulk search.
+	GetProjectIssues(projectKey string) ([]models.Issue, error)
 	MoveIssuesToSprint(sprintID int, keys []string) error
 	MoveIssuesToBacklog(keys []string) error
 	RankIssues(keys []string, rankAfterKey, rankBeforeKey string) error
@@ -1359,6 +1361,122 @@ func (c *jiraClient) GetEpics(projectKey, query string) ([]models.Issue, error) 
 // epicChildrenPageSize is the page size used when paging through epic children.
 const epicChildrenPageSize = 100
 
+const projectIssuesPageSize = 100
+
+// GetProjectIssues returns the project's issues using Jira's paginated bulk
+// search endpoint. It deliberately avoids fetching individual issue details.
+func (c *jiraClient) GetProjectIssues(projectKey string) ([]models.Issue, error) {
+	jql := fmt.Sprintf(`project = "%s" ORDER BY key ASC`, strings.ReplaceAll(projectKey, "\"", "\\\""))
+	fields := []string{"summary", "issuetype", "status", "priority", "assignee", "reporter", "labels", "parent"}
+	if spField := c.resolveStoryPointsField(); spField != "" {
+		fields = append(fields, spField)
+	}
+
+	issues := make([]models.Issue, 0)
+	nextPageToken := ""
+	for {
+		payload := map[string]any{
+			"jql":        jql,
+			"maxResults": projectIssuesPageSize,
+			"fields":     fields,
+		}
+		if nextPageToken != "" {
+			payload["nextPageToken"] = nextPageToken
+		}
+		req, err := c.client.NewRequest(context.Background(), http.MethodPost, "rest/api/3/search/jql", payload)
+		if err != nil {
+			return nil, fmt.Errorf("searching project %s issues: %w", projectKey, err)
+		}
+		var page struct {
+			Issues []struct {
+				Key    string                     `json:"key"`
+				Fields map[string]json.RawMessage `json:"fields"`
+			} `json:"issues"`
+			NextPageToken string `json:"nextPageToken"`
+		}
+		if _, err := c.client.Do(req, &page); err != nil {
+			return nil, fmt.Errorf("searching project %s issues: %w", projectKey, err)
+		}
+
+		for _, rawIssue := range page.Issues {
+			var parsed struct {
+				Summary   string `json:"summary"`
+				IssueType *struct {
+					Name string `json:"name"`
+				} `json:"issuetype"`
+				Status *struct {
+					Name string `json:"name"`
+				} `json:"status"`
+				Priority *struct {
+					Name string `json:"name"`
+				} `json:"priority"`
+				Assignee *struct {
+					DisplayName string `json:"displayName"`
+				} `json:"assignee"`
+				Reporter *struct {
+					DisplayName string `json:"displayName"`
+				} `json:"reporter"`
+				Labels []string `json:"labels"`
+				Parent *struct {
+					Key    string `json:"key"`
+					Fields *struct {
+						IssueType *struct {
+							Name string `json:"name"`
+						} `json:"issuetype"`
+					} `json:"fields"`
+				} `json:"parent"`
+			}
+			fieldData, err := json.Marshal(rawIssue.Fields)
+			if err != nil {
+				return nil, fmt.Errorf("parsing project %s issue %s: %w", projectKey, rawIssue.Key, err)
+			}
+			if err := json.Unmarshal(fieldData, &parsed); err != nil {
+				return nil, fmt.Errorf("parsing project %s issue %s: %w", projectKey, rawIssue.Key, err)
+			}
+			issue := models.Issue{
+				Key:        rawIssue.Key,
+				ProjectKey: projectKey,
+				Summary:    parsed.Summary,
+				Labels:     parsed.Labels,
+			}
+			if parsed.IssueType != nil {
+				issue.IssueType = parsed.IssueType.Name
+			}
+			if parsed.Status != nil {
+				issue.Status = parsed.Status.Name
+			}
+			if parsed.Priority != nil {
+				issue.Priority = parsed.Priority.Name
+			}
+			if parsed.Assignee != nil {
+				issue.Assignee = parsed.Assignee.DisplayName
+			}
+			if parsed.Reporter != nil {
+				issue.Reporter = parsed.Reporter.DisplayName
+			}
+			if parsed.Parent != nil {
+				issue.ParentKey = parsed.Parent.Key
+				if parsed.Parent.Fields != nil && parsed.Parent.Fields.IssueType != nil && parsed.Parent.Fields.IssueType.Name == "Epic" {
+					issue.EpicKey = parsed.Parent.Key
+				}
+			}
+			if spField := c.spFieldID; spField != "" {
+				if value, ok := rawIssue.Fields[spField]; ok && string(value) != "null" {
+					if err := json.Unmarshal(value, &issue.StoryPoints); err != nil {
+						return nil, fmt.Errorf("parsing story points for %s: %w", rawIssue.Key, err)
+					}
+				}
+			}
+			issues = append(issues, issue)
+		}
+		nextPageToken = page.NextPageToken
+		if nextPageToken == "" {
+			return issues, nil
+		}
+	}
+}
+
+// GetEpicChildren returns the direct children of an epic, including closed
 // GetEpicChildren returns the direct children of an epic, including closed
 // ones. It pages through /rest/api/3/search/jql until the API stops returning a
 // continuation token, so epics with more than one page of children are complete.

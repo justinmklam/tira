@@ -5,8 +5,9 @@ tira provides the following commands:
 | Command | Description |
 |---------|-------------|
 | `get <key\|url> [--edit] [--attachments <mode>] [--attachments-dir <path>]` | Fetch and display a single issue (accepts an issue key or full browse URL); attachments are included by default |
+| `export --output <path> [--project <key>]` | Export all issues in a project to CSV using paginated bulk search |
 | `update <key\|url> [--show] [--no-edit] [--file <path>]` | Update an existing issue; non-interactively (agents) via `--show`/`--no-edit`/`--file`, or interactively via `$EDITOR` |
-| `comment <key\|url> <text>` | Add a comment to an existing issue |
+| `comment <key\|url> [text] [--file <path>]` | Add a comment to an existing issue; use `--file -` for stdin/multiline text |
 | `create [--project <key>] [--type <type>] [--parent <key>]` | Create a new issue via `$EDITOR` |
 | `board [--view backlog\|kanban\|epics] [--board-id <id>] [--snapshot] [--snapshot-size WxH]` | Launch the unified TUI (backlog + kanban + epics views), or render one frame with `--snapshot` |
 | `backlog` | **Deprecated** — alias for `board --view backlog` |
@@ -27,6 +28,25 @@ fixture instead of Jira — no config file, credentials, or network required. Se
 > `board --view kanban`, and `update <key> --show`, respectively. See
 > [command-restructure-proposal.md](command-restructure-proposal.md) for the full rationale and
 > migration timeline.
+
+---
+
+## `tira export --output <path> [--project <key>]`
+
+**File:** `cmd/tira/export.go`
+
+Exports all issues in the configured project to a CSV file. Use `--project` to select a different project. The required `--output` path is created or overwritten after the complete paginated result has been fetched; a failed fetch therefore does not truncate an existing destination.
+
+```bash
+tira export --output ./issues.csv
+tira export --project DEV --output ./dev-issues.csv
+```
+
+The CSV header is fixed and ordered as follows:
+
+`Issue Key`, `Issue URL`, `Summary`, `Epic Key`, `Epic URL`, `Type`, `Story Points`, `Assignee`, `Priority`, `Status`, `Reporter`, `Labels`, `Parent Key`, `Parent URL`.
+
+Issues are fetched with Jira's paginated bulk search API. The export includes only fields available in that response and does not fetch issues individually. Missing or unavailable values—including unresolved story points and epic relationships omitted by Jira—are blank. Labels are joined with `; `, and CSV quoting preserves commas, quotes, and newlines in values.
 
 ---
 
@@ -132,20 +152,25 @@ validates (looping on validation errors with `AnnotateTemplate`), and updates vi
 
 ---
 
-## `tira comment <key|url> <text>`
+## `tira comment <key|url> [text] [--file <path>]`
 
 **File:** `cmd/tira/comment.go`
 
-Adds a comment to an existing issue. The first argument may be an issue key or full Jira browse URL. The comment text is required, must not be blank, and must be passed as one argument; quote text containing spaces. Comment text is converted to Jira ADF using the same Markdown conversion as issue descriptions.
+Adds a comment to an existing issue. Pass short text as the positional argument, or use `--file` for
+multiline comments. Use `--file -` to read the comment body from stdin. The two input modes are
+mutually exclusive. Comment text is converted to Jira ADF using the same Markdown conversion as issue
+descriptions.
 
 **Examples:**
 
 ```bash
 tira comment MP-101 "The fix is ready for review."
-tira comment https://your-domain.atlassian.net/browse/MP-101 "Please verify the latest build."
+tira comment MP-101 --file comment.md
+cat comment.md | tira comment MP-101 --file -
 ```
 
-The command prints a success message to stderr after Jira accepts the comment and returns a contextual error if posting fails. It does not fetch the issue first.
+The command prints a success message to stderr after Jira accepts the comment and returns a contextual
+error if posting fails. It does not fetch the issue first.
 
 ---
 
@@ -271,6 +296,8 @@ EOF
 - Validation is still performed in non-interactive mode (valid types, priorities, required fields)
 - If `type` or `priority` is omitted, defaults are applied (first type, middle priority)
 - Assignee is resolved by display name (case-insensitive match)
+- In non-interactive create, `parent: <IssueKey>` is active; `--parent` overrides it
+- In interactive create and update templates, parent references are read-only comments
 - Errors are returned with clear messages for invalid templates
 
 ### Template Format (for AI Agents)

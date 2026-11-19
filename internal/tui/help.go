@@ -77,6 +77,7 @@ func HelpSections() []HelpSection {
 				{Key: "Esc / q", Description: "Close epic detail / cancel action"},
 				{Key: "L", Description: "Pick a linked or child item to open in Jira"},
 				{Key: "o", Description: "Open selected epic in Jira"},
+				{Key: "y", Description: "Copy selected epic URL to clipboard"},
 				{Key: "b", Description: "Filter backlog by selected epic"},
 			},
 		},

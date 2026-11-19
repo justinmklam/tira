@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"os"
 	"strings"
 	"testing"
 
@@ -34,6 +35,14 @@ func TestCommentCommandArgs(t *testing.T) {
 	if err := commentCmd.Args(commentCmd, []string{"DEMO-3", "hello"}); err != nil {
 		t.Errorf("commentCmd.Args() error = %v, want nil", err)
 	}
+	commentFile = "-"
+	t.Cleanup(func() { commentFile = "" })
+	if err := commentCmd.Args(commentCmd, []string{"DEMO-3"}); err != nil {
+		t.Errorf("commentCmd.Args() with --file error = %v, want nil", err)
+	}
+	if err := commentCmd.Args(commentCmd, []string{"DEMO-3", "hello"}); err == nil {
+		t.Error("commentCmd.Args() with --file and text error = nil, want an error")
+	}
 }
 
 func TestCommentCommandAddsComment(t *testing.T) {
@@ -64,6 +73,28 @@ func TestCommentCommandAddsComment(t *testing.T) {
 	}
 	if got, want := stderr.String(), "✓ Comment added to DEMO-3.\n"; got != want {
 		t.Errorf("stderr = %q, want %q", got, want)
+	}
+}
+
+func TestCommentCommandReadsMultilineFile(t *testing.T) {
+	withCommentTestClient(t)
+	commentFile = t.TempDir() + "/comment.md"
+	t.Cleanup(func() { commentFile = "" })
+	wantText := "first line\n\nsecond line\n"
+	if err := os.WriteFile(commentFile, []byte(wantText), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	if err := commentCmd.RunE(&cobra.Command{}, []string{"DEMO-3"}); err != nil {
+		t.Fatalf("comment command error = %v", err)
+	}
+
+	issue, err := devClient.GetIssue("DEMO-3")
+	if err != nil {
+		t.Fatalf("GetIssue() error = %v", err)
+	}
+	if got := issue.Comments[0].Body; got != wantText {
+		t.Errorf("new comment body = %q, want %q", got, wantText)
 	}
 }
 
